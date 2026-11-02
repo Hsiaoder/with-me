@@ -13,6 +13,10 @@ export interface Platform {
   sendCursor(p: Point): void
   /** 面板里有输入框时才临时可聚焦。 */
   setFocusable(on: boolean): void
+  /** 页面加载完成时回调一次。首屏数据（皮肤）必须等这个时机才发得出去。 */
+  onPageReady(cb: () => void): void
+  /** 向渲染层发一条消息。业务语义在调用方，这里只负责搬运。 */
+  send(channel: string, payload: unknown): void
   show(): void
   hide(): void
 }

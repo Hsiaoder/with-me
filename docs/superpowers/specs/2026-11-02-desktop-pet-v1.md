@@ -87,9 +87,9 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 
 | 部件 | 对外承诺 | 验收看什么 |
 |---|---|---|
-| P1 平台层 | `Platform { createWindow, setInteractive, sendCursor, setFocusable, show, hide }`；未建窗前调用其余动作抛错 | 窗口尺寸 = 主屏工作区且永不改变；穿透开关生效 |
-| P2 皮肤包 | `validateManifest(raw)`、`loadSkin(dir)`、`clipPath(skin,pool,name)`、`missingRequiredPools(m)` | 契约见[皮肤包契约 spec](2026-11-02-skin-pack-contract.md)；错误逐条可读 |
-| P3 播放器 | `ClipPlayer { prepare, play, cancel, current, generation, frameIndex, snapshot, hitTest, destroy }` | 四条铁律逐条有测试：等 `loadeddata` 再切、代际号丢弃过期回调、退位 video 摘 `onended`、0.18s 透明度过渡 |
+| P1 平台层 | `Platform { createWindow, setInteractive, sendCursor, setFocusable, onPageReady, send, show, hide }`；未建窗前调用其余动作抛错 | 窗口尺寸 = 主屏工作区且永不改变；穿透开关生效；窗口方法只出现在 `windows.ts` |
+| P2 皮肤包 | `validateManifest(raw)`、`loadSkin(dir)`、`clipFile(...)`、`clipUrl(pool,name)`、`missingRequiredPools(m)`、`isLooping/isMirrorable/bodyBoxOf` | 契约见[皮肤包契约 spec](2026-11-02-skin-pack-contract.md)；错误一次列全，逐条可读 |
+| P3 播放器 | `ClipPlayer { prepare, play, cancel, current, generation, destroy }`。**没有 loop 概念**，重复播放由行为层再调 `play()` | 四条铁律 + 不许开 `video.loop`，假实现合同 10 条、真 DOM e2e 7 项 |
 | P4 行为调度 | `createRuleEngine(now,idleLongMs).feed(event) → pool`；`createPicker(rng).pickFrom(skin,pool,current)` | 同种子同测试跑十次结果一致；权重与池全部来自 manifest |
 | P5 交互层 | `bodyRect(...)`、`anyContains(...)`、`createHoverTimer(now).onPoint(...)`、`createPanel(...).rect()` | 停留 400ms 开、离开 400ms 关、租约 500ms 超时兜底，三条都有单测 |
 | P6 持久化 | `migrate(raw)`、`saveTo(dir,data)`、`loadFrom(dir)`、`platformDataDir()`、`applyCare(save,action,delta)` | 断电不留半个文件；主档坏读备份、都坏回默认并记 warning；永不抛异常 |
@@ -137,6 +137,7 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 - [x] `npm run alpha:check` 对内置皮肤全部 `haze:false`
 - [x] 渲染层无 `import '../main/'`，shared 无 `import 'electron'` / `node:fs`，且 `src/main/` 下只有 `windows.ts` 出现窗口方法
 
+- [x] `npm run e2e`：播放器与装配在真 Electron 上 7 项通过（含「不许开 video.loop」与 0.18s 过渡）
 - [ ] e2e：面板出现、五个按钮齐全、点 `move` 按钮后当前动画池变为 `move`
 
 **真机**
@@ -165,7 +166,7 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 
 | 项 | 状态 | 影响 |
 |---|---|---|
-| **video 后端还没有自动化验证** | 四条铁律目前只在假实现上被 `test/clip-player.test.ts` 钉住。真实 DOM 交换（`is-front` 唯一、退位摘 `ended`、过期回调丢弃）要到 Task 10 的 Playwright e2e 才复现同一组断言 | 后端可能违反铁律而测试全绿。Task 10 的 e2e 不许跳过 |
+| ~~video 后端没有自动化验证~~ **已闭合** | `e2e/pet-check.mjs`（`npm run e2e`）在真 Electron 上验 7 项：页面从 `app://` 起来且无异常、两槽且前台唯一、`video.loop` 全为 false、过渡时长 0.18s、`currentTime` 在推进、换片后仍只有一个前台、命中框 = 舞台位置 + bodyBox 缩放 | 四铁律不再只靠假实现 |
 | 角色形象授权 | 未定。大肥鱼形象是「署名 · 非商业 · 相同方式共享」，禁商用；「缓存」有完整设定但三视图要重做 | 不阻塞 v1（用色块皮肤），阻塞真实素材进场 |
 | 蓝幕抠像脚本 | 占位皮肤走通了 `colorkey` 最简管线，真实角色素材的容差与溢色处理未验 | 影响素材产能，不影响代码结构 |
 | 内存基线 | spike 那轮把截图缓冲区算进了 Browser 进程，需要一次不带测量的干净读数；GPU 进程 300MB 左右是否能在真实皮肤下降下来也不知道 | 决定预算能不能从 600MB 收紧 |

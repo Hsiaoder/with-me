@@ -2056,7 +2056,22 @@ git commit -m "feat: 可注入随机源的行为抽取与规则层状态转换"
   - `window.petBridge` 类型声明
   - 调试钩子 `window.__testPlay(pool, name, once)`
 
-- [ ] **Step 1: 位移模型（纯逻辑，先测）**
+- [x] **Step 1: 位移模型（纯逻辑，先测）**
+
+> ### 实现时的修正（含对 Codex #1 评审的回应）
+>
+> 1. **宠物起始位置**：样例没给 `start`，`createMotion` 会退到 `minX`，一上台就贴在屏幕最左边。补了水平居中。
+> 2. **脚底对齐**：样例 `snapToBottom()` 用 `bounds.h - STAGE_H_CSS`，把**舞台底边**当脚底。画布脚底线在 330 而不是 360，所以舞台底下还留 15 CSS 像素空白，照样例宠物会浮空。改成 `bounds.h - (STAGE_H_CSS - feetOffsetCss)`，`feetOffsetCss = (CANVAS_H - feetY) * STAGE_SCALE`。
+> 3. **舞台位置不是身体框位置**：样例 `sprite.moveTo(box.x, box.y)` 里的 `box` 是 `bodyRect(...)` 的结果，会让角色整体偏移一个 bodyBox 的距离。改成 `moveTo(motion.pos())`。
+> 4. **素材地址**：样例拼 `file:///${skin.dir}/animation/...`，与 Task 4 已验证的协议根冲突（Windows 反斜杠 + 跨源）。改用 `clipUrl(pool,name)` → `app://skin/<池>/<名>.webm`。
+> 5. **【评审 5.1，最重要】播放器不许有 `video.loop`**：样例写了 `target.video.loop = !once`，正是 spike 实测会卡的那件事。改成：`play()` 没有 `once` 参数、永不设 loop，「循环」由行为层在播完后**再点一次同一条**实现，并顺手 `prepare()` 该条以消接缝。加了源码级回归测试钉住它，e2e 里也断言两个 video 的 `loop` 全为 false。
+> 6. **删掉规则层心跳**：装配时先按样例写了个 `setInterval` 每秒问规则层，实测两个害处——它会把一次性的 `click` 反应掐断，还会跟行为链抢同一条状态机、把 `__testPlay` 手工点歌覆盖掉。因为播放器从不 loop，每条动画都会真的播完并在结束时问规则层（最快 4 秒一拍），心跳是多余的。
+> 7. **【评审 5.5】`LoadedSkin.dir` 不再发给渲染层**：新增 `SkinPayload = { manifest, pools }`，本机绝对目录不出去。渲染层本来就用 `clipUrl`。
+> 8. **【评审 5.5】`sandbox` 改为 `true`**：零 import 的 `.cjs` preload 在沙箱下照常工作，e2e 与 CDP 探针都验过六个桥方法齐全。
+> 9. **【评审 5.8】主进程生命周期**：`startCursorPolling` 的停止函数不再被丢弃，与 sweep 定时器一起在 `before-quit` 里收掉。
+> 10. **【评审 5.3】e2e 落地，但不引 `@playwright/test`**：开发依赖白名单里只有 `playwright`，为一个文件再拉一个测试框架不值得。改成普通脚本 + `node:assert`，`npm run e2e` 跑 7 项真 DOM 断言，全过。Task 7 那个被推迟的 Step 5 到此闭合。
+> 11. `declare global` 不写在 `index.ts` 里，统一放 `renderer/global.d.ts`，并把 `onSkin` 的参数从 `unknown` 收紧成 `SkinLoadedPayload`（联合类型能被 `'errors' in payload` 正确收窄）。
+
 
 桌宠沿桌面的底边散步，脚底贴工作区底部。位移由每帧 `step(dt)` 积分，不靠计时器对齐动画 —— 用 `frameIndex()` 校正。
 
@@ -2091,7 +2106,7 @@ describe('createMotion', () => {
 
 Run: `npm run test -- motion` → Expected: FAIL
 
-- [ ] **Step 2: 实现 motion**
+- [x] **Step 2: 实现 motion**
 
 ```ts
 // src/shared/motion.ts
@@ -2125,7 +2140,7 @@ export function createMotion(bounds: Rect, speedPxPerSec: number, start: Point, 
 }
 ```
 
-- [ ] **Step 3: 舞台 DOM 与样式（透明度交叉淡入是铁律④的落点）**
+- [x] **Step 3: 舞台 DOM 与样式（透明度交叉淡入是铁律④的落点）**
 
 ```css
 /* src/renderer/style.css */
@@ -2168,7 +2183,7 @@ export function createSprite(root: HTMLElement) {
 }
 ```
 
-- [ ] **Step 4: 装配主流程（行为链 + 悬停 + 续期 + 拖拽）**
+- [x] **Step 4: 装配主流程（行为链 + 悬停 + 续期 + 拖拽）**
 
 ```ts
 // src/renderer/index.ts
@@ -2272,7 +2287,7 @@ window.petBridge?.onSkin((s) => {
 })
 ```
 
-- [ ] **Step 5: 验证渲染层没有摸到主进程模块**
+- [x] **Step 5: 验证渲染层没有摸到主进程模块**
 
 `skinLoaded` 消息与 `onSkin` 已在 Task 4 建好，本步只做验证：渲染层通过 `onSkin` 拿到主进程校验过的皮肤，不 import 任何 `src/main` 下的东西（`node:fs` 在渲染层不可用）。
 
@@ -2295,7 +2310,7 @@ Expected（逐项确认并截图存档）：
 4. 鼠标停在色块上 400ms：播一次被点动画（面板在 Task 12）。
 5. 拖动色块：位置跟随光标，松手停在原地，不跳回。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add src/renderer/ src/shared/motion.ts src/shared/ipc.ts src/main/index.ts src/preload/index.cjs test/motion.test.ts

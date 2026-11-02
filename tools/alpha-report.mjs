@@ -10,11 +10,11 @@
  *        残留超阈值时退出码 1。
  */
 import { execFileSync } from 'node:child_process'
-import { readdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { readFileSync, readdirSync } from 'node:fs'
+import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import ffmpegPath from 'ffmpeg-static'
-import { CANVAS_W, CANVAS_H, DEFAULT_BODY_BOX, ANIMATION_EXT } from '../src/shared/config.ts'
+import { ANIMATION_EXT, CANVAS_H, CANVAS_W, DEFAULT_BODY_BOX, SKIN_ANIMATION_DIR, SKIN_MANIFEST } from '../src/shared/config.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -85,10 +85,14 @@ export function analyzeFile(file, body, stride = FRAME_STRIDE) {
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  const body = process.argv[3] ? JSON.parse(process.argv[3]) : DEFAULT_BODY_BOX
-  const files = process.argv[2] ? [process.argv[2]] : listClips(join(ROOT, 'skins', 'block'))
+  const target = process.argv[2]
+  const files = target ? [target] : listClips(join(ROOT, 'skins', 'block'))
+  const explicit = process.argv[3] ? JSON.parse(process.argv[3]) : null
   let hazy = 0
   for (const f of files) {
+    // 每条动画有自己的 bodyBox 覆盖，全批用同一个默认框会让大轮廓动画误报、
+    // 小覆盖框漏检（评审指出的）。显式传参优先，其次查 manifest。
+    const body = explicit ?? bodyBoxForClip(f)
     const report = analyzeFile(f, body)
     console.log(f, JSON.stringify(report))
     if (report.haze) hazy++
@@ -96,5 +100,25 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   if (hazy > 0) {
     console.error(`${hazy}/${files.length} 段动画的背景有 alpha 残留，调小 colorkey 容差后重跑 npm run skin:test`)
     process.exitCode = 1
+  }
+}
+
+/** 从素材路径回溯它属于哪个皮肤、哪个池、哪条动画。 */
+export function locateClip(file) {
+  const parts = resolve(file).split(sep)
+  const at = parts.lastIndexOf(SKIN_ANIMATION_DIR)
+  if (at < 0 || at + 2 >= parts.length) return null
+  return { skinDir: parts.slice(0, at).join(sep), pool: parts[at + 1], name: basename(parts[at + 2], extname(parts[at + 2])) }
+}
+
+/** 该动画该用的身体框；读不到 manifest 时退回全局默认框。 */
+function bodyBoxForClip(file) {
+  const loc = locateClip(file)
+  if (!loc) return DEFAULT_BODY_BOX
+  try {
+    const manifest = JSON.parse(readFileSync(join(loc.skinDir, SKIN_MANIFEST), 'utf8'))
+    return manifest.animationMeta?.[loc.name]?.bodyBox ?? manifest.bodyBox ?? DEFAULT_BODY_BOX
+  } catch {
+    return DEFAULT_BODY_BOX
   }
 }

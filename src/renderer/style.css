@@ -1,0 +1,76 @@
+/*
+ * 覆盖层样式。整页透明，只画宠物本身。
+ */
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+#root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* 舞台定位靠 transform，避免每帧改 left/top 触发布局 */
+.pet-sprite {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.pet-stage {
+  position: relative;
+  overflow: visible;
+}
+
+.pet-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  opacity: 0;
+  /* 铁律④：0.18s 透明度过渡垫住切换接缝，没有这条换动画时会看见一跳 */
+  transition: opacity 0.18s ease;
+}
+
+.pet-video.is-front {
+  opacity: 1;
+}
+
+/* 朝左靠镜像复用朝右素材，不重做出动画。翻整个舞台，两个 video 一起跟着翻 */
+.pet-stage.flip {
+  transform: scaleX(-1);
+}
+
+/* F9 命中区可视化 */
+.hit-outline {
+  position: absolute;
+  border: 1px solid rgba(255, 0, 0, 0.65);
+  background: rgba(255, 0, 0, 0.08);
+  pointer-events: none;
+}
+
+/* 皮肤不合法时大声显示，不静默换默认皮肤 */
+.skin-error {
+  position: absolute;
+  left: 24px;
+  top: 24px;
+  max-width: 520px;
+  margin: 0;
+  padding: 10px 12px;
+  font: 13px/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  color: #7a1414;
+  background: rgba(255, 235, 235, 0.92);
+  border: 1px solid rgba(180, 40, 40, 0.5);
+  border-radius: 6px;
+}

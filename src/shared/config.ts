@@ -29,6 +29,10 @@ export const LEASE_TIMEOUT_MS = 500
 // ---- 行为 ----
 /** 连续无人交互满这么久，规则层允许宠物自主走动。 */
 export const IDLE_LONG_MS = 20000
+/** 自主走动的速度（CSS 像素/秒）。 */
+export const WALK_SPEED_PX_PER_SEC = 40
+/** 舞台宽相对画布宽的缩放，位移与脚底对齐都要用它。 */
+export const STAGE_SCALE = STAGE_W_CSS / CANVAS_W
 
 // ---- 皮肤 ----
 export const SKIN_MANIFEST = 'manifest.json'

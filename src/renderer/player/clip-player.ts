@@ -13,10 +13,13 @@ export interface ClipPlayer {
   /** 提前把素材加载到能立刻显示。重复 prepare 同一个 ref 不许有副作用。 */
   prepare(ref: ClipRef): void
   /**
-   * 播这条动画。
-   * @param opts.once true = 播完 resolve('ended')；false/缺省 = 循环，直到被 cancel
+   * 播这条动画，从头到尾。
+   *
+   * **播放器没有「循环」这个概念**：spike 实测 `<video loop>` 每次回到起点都要重新缓冲
+   * （70 秒 17 次），所以这里永不设置 `video.loop`。要不要重复播同一条是**行为层**的决定
+   * ——它决定后再调一次 play()，而不是让 video 自己绕回去。
    */
-  play(ref: ClipRef, opts?: { once?: boolean }): Promise<PlayResult>
+  play(ref: ClipRef): Promise<PlayResult>
   /** 作废进行中的 play，使其 resolve('cancelled')。 */
   cancel(): void
   /**

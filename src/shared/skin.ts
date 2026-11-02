@@ -39,6 +39,17 @@ export type LoadedSkin = {
 
 export type LoadResult = { ok: true; skin: LoadedSkin } | { ok: false; errors: string[] }
 
+/**
+ * 发给渲染层的形状。刻意不带 `dir`：渲染层用 clipUrl 拼 `app://skin/...` 就够，
+ * 没必要知道本机绝对目录——少一份泄露出去的数据，也少一处将来会被误用的入口。
+ */
+export type SkinPayload = { manifest: SkinManifest; pools: Record<string, string[]> }
+
+export const toSkinPayload = (skin: LoadedSkin): SkinPayload => ({
+  manifest: skin.manifest,
+  pools: skin.pools,
+})
+
 const SUPPORTED_FORMAT = 1
 /** 池名与动画名要拼进文件路径和 URL，所以只放最安全的字符集。契约 3.3。 */
 const POOL_NAME = /^[a-z][a-z0-9_-]{0,31}$/
@@ -189,6 +200,11 @@ export function isLooping(manifest: SkinManifest, pool: string, name: string): b
 /** 缺省不镜像。左右是两回事，擅自翻转等于替作者改了动作方向。 */
 export function isMirrorable(manifest: SkinManifest, name: string): boolean {
   return manifest.animationMeta?.[name]?.mirrorable ?? false
+}
+
+/** 该动画的实际身体框：作者没覆盖就用皮肤默认框。轮廓剧变的动作必须覆盖。 */
+export function bodyBoxOf(manifest: SkinManifest, name: string): Box {
+  return manifest.animationMeta?.[name]?.bodyBox ?? manifest.bodyBox
 }
 
 /** 素材地址。主进程注册的 skin 根指向皮肤目录下的 animation/，所以这里不再带该前缀。 */

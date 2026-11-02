@@ -37,7 +37,7 @@ export function createWindowsPlatform(): Platform {
           preload: join(here, '../preload/index.cjs'),
           contextIsolation: true,
           nodeIntegration: false,
-          sandbox: false,
+          sandbox: true,
         },
       })
       win.setAlwaysOnTop(true, 'screen-saver')
@@ -57,6 +57,12 @@ export function createWindowsPlatform(): Platform {
     },
     setFocusable(on) {
       up().setFocusable(on)
+    },
+    onPageReady(cb) {
+      up().webContents.once('did-finish-load', cb)
+    },
+    send(channel, payload) {
+      up().webContents.send(channel, payload)
     },
     show() {
       up().showInactive()

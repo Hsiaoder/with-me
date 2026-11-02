@@ -8,6 +8,9 @@ import type { ClipRef } from '../../shared/types.js'
  * ③ 退位的 video 立刻摘掉 `onended`，否则它在后台播完会把当前动画杀掉
  * ④ 切换靠 class `is-front`，0.18s 透明度过渡在 style.css 里（这里只管挂摘）
  *
+ * 外加一条规格硬约束：**绝不设置 `video.loop`**。spike 实测它每次回到起点都要重新缓冲，
+ * 重复播放由行为层再调一次 play() 完成（见 renderer/index.ts 的行为链）。
+ *
  * 素材地址由调用方给（`urlFor`），本模块不认识 app://、也不认识皮肤目录，
  * 这样 Task 10 拼地址、这里只管换画面。
  */
@@ -83,8 +86,7 @@ export function createVideoPlayer(opts: VideoPlayerOptions): ClipPlayer {
       loadInto(backSlot, ref)
     },
 
-    play(ref, playOpts) {
-      const once = playOpts?.once ?? false
+    play(ref) {
       generation++
       const myGen = generation
       current = ref
@@ -92,7 +94,6 @@ export function createVideoPlayer(opts: VideoPlayerOptions): ClipPlayer {
 
       const target = backSlot
       loadInto(target, ref)
-      target.video.loop = !once
 
       return new Promise<PlayResult>((resolve) => {
         pending = { resolve, gen: myGen }
@@ -108,7 +109,9 @@ export function createVideoPlayer(opts: VideoPlayerOptions): ClipPlayer {
           if (isStale(myGen)) return
           target.video.removeEventListener('error', fail)
           promote(target)
-          target.video.onended = once ? () => finish('ended') : null
+          // 素材合同保证末帧回到首帧姿势，所以「等 ended 再播下一条」在循环时看不出接缝。
+          // 等 loadeddata 期间旧前台停在最后一帧——也就是首帧那一姿势，不会露白。
+          target.video.onended = () => finish('ended')
           // play() 可能被自动播放策略拒绝，这里不许留未处理的 rejection
           target.video.play().catch(() => finish('cancelled'))
         }

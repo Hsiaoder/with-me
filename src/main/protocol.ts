@@ -17,19 +17,29 @@ import { APP_SCHEME } from '../shared/config.js'
 /** 资源根：主机名 → 绝对目录。 */
 export type Roots = Record<string, string>
 
-export type Mapped = { ok: true; file: string } | { ok: false; status: 403 | 404; reason: string }
+export type Mapped = { ok: true; file: string } | { ok: false; status: 400 | 403 | 404; reason: string }
 
 /**
  * `app://assets/renderer/index.html` → roots.assets + /renderer/index.html
  * `app://skin/idle/patrol.webm`      → roots.skin + /idle/patrol.webm
  *
  * 越界一律拒绝，而不是静默把 `..` 剥掉——剥掉会让 `..%2f..%2fetc` 变成合法路径。
+ * `new URL` 与 `decodeURIComponent` 都会对畸形输入抛异常，这里必须接住：
+ * 它们在协议处理器里跑，漏出去就是一个未处理的 rejection。
  */
 export function mapAppPath(roots: Roots, url: string): Mapped {
-  const { host, pathname } = new URL(url)
+  let host: string
+  let decoded: string
+  try {
+    const parsed = new URL(url)
+    host = parsed.host
+    decoded = decodeURIComponent(parsed.pathname)
+  } catch {
+    return { ok: false, status: 400, reason: '地址无法解析' }
+  }
   const root = roots[host]
   if (!root || !isAbsolute(root)) return { ok: false, status: 403, reason: `未知的资源根：${host}` }
-  const rel = decodeURIComponent(pathname).replace(/^\/+/, '')
+  const rel = decoded.replace(/^\/+/, '')
   const parts = rel.split('/').filter((s) => s !== '')
   if (!parts.length) return { ok: false, status: 404, reason: '缺少文件名' }
   if (parts.includes('..') || rel.includes('..') || rel.includes('\\')) {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { analyzeAlpha, analyzeFile, listClips, BG_ALPHA_WARN } from '../tools/alpha-report.mjs'
-import { DEFAULT_BODY_BOX } from '../src/shared/config.js'
+import { join, resolve } from 'node:path'
+import { analyzeAlpha, analyzeFile, listClips, locateClip, BG_ALPHA_WARN } from '../tools/alpha-report.mjs'
+import { DEFAULT_BODY_BOX, SKIN_ANIMATION_DIR } from '../src/shared/config.js'
 
 // 4x2 的 RGBA 帧：左半是身体（不透明），右半是背景（alpha=0）
 const BODY = 255
@@ -55,3 +56,27 @@ describe('analyzeFile 对占位皮肤', () => {
     }
   })
 })
+
+describe('locateClip', () => {
+  it('从素材路径回溯皮肤目录、池名与动画名', () => {
+    const file = resolve(join('skins', 'mine', SKIN_ANIMATION_DIR, 'idle', 'patrol.webm'))
+    expect(locateClip(file)).toEqual({
+      skinDir: resolve(join('skins', 'mine')),
+      pool: 'idle',
+      name: 'patrol',
+    })
+  })
+
+  it('名字里的后缀被剥掉，多级池目录保留', () => {
+    const file = resolve(join('a', 'b', SKIN_ANIMATION_DIR, 'click', 'tapped.webm'))
+    expect(locateClip(file)?.name).toBe('tapped')
+    expect(locateClip(file)?.pool).toBe('click')
+  })
+
+  it('路径里没有 animation 段时返回 null，调用方好退回默认框', () => {
+    expect(locateClip(resolve(join('other', 'thing.webm')))).toBeNull()
+    // 少了动画名一段
+    expect(locateClip(resolve(join('skins', 'x', SKIN_ANIMATION_DIR, 'idle')))).toBeNull()
+  })
+})
+

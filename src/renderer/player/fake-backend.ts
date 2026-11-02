@@ -4,8 +4,6 @@ import type { ClipRef } from '../../shared/types.js'
 /**
  * 测试替身：play 不自动结束，由 advance() 模拟播完、cancel() 模拟被打断。
  * 这样「四铁律」里跟时序有关的部分能在纯 Node 环境里被钉住，不用起浏览器。
- *
- * 不区分 once 与否：两种都要等 advance 或 cancel，这正是把时序交给测试的手法。
  */
 export type FakePlayer = ClipPlayer & {
   /** 模拟当前这条播完。 */

@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC, type ClickThroughPayload, type FocusablePayload } from '../shared/ipc.js'
+import { IPC, type ClickThroughPayload } from '../shared/ipc.js'
 import type { Platform } from './platform.js'
 import type { ClickThroughBridge } from './clickthrough.js'
 
@@ -10,6 +10,11 @@ import type { ClickThroughBridge } from './clickthrough.js'
  * debugOverlay 与 playClip 两条通道还没有实现，等第 12、13 节各自的任务再注册。
  */
 export function registerIpc(platform: Platform, bridge: ClickThroughBridge): void {
-  ipcMain.on(IPC.clickThroughRequest, (_e, p: ClickThroughPayload) => bridge.request(p.grab))
-  ipcMain.on(IPC.focusable, (_e, on: FocusablePayload) => platform.setFocusable(on))
+  // 渲染层送来的值当外部输入看：先转成真布尔再驱动窗口。
+  // 一个畸形值不该决定整块屏幕能不能点。
+  ipcMain.on(IPC.clickThroughRequest, (_e, p: unknown) => {
+    const grab = Boolean((p as ClickThroughPayload | null | undefined)?.grab)
+    bridge.request(grab)
+  })
+  ipcMain.on(IPC.focusable, (_e, on: unknown) => platform.setFocusable(Boolean(on)))
 }

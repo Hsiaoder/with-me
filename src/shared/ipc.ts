@@ -1,5 +1,5 @@
 import type { ClipRef, Point } from './types.js'
-import type { LoadedSkin } from './skin.js'
+import type { SkinPayload } from './skin.js'
 
 /**
  * IPC 通道名的唯一来源。加一条通道只能改这里，并在 main/ipc.ts 注册、preload 内联、
@@ -19,7 +19,7 @@ export type IpcChannel = (typeof IPC)[keyof typeof IPC]
 export type CursorPayload = Point
 export type ClickThroughPayload = { grab: boolean }
 /** 装载成功给皮肤，失败给逐条错误——两条路都走同一个通道，渲染层不必猜。 */
-export type SkinLoadedPayload = LoadedSkin | { errors: string[] }
+export type SkinLoadedPayload = SkinPayload | { errors: string[] }
 export type FocusablePayload = boolean
 export type DebugOverlayPayload = boolean
 export type PlayClipPayload = ClipRef

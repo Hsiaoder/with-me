@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { createFakePlayer } from '../src/renderer/player/fake-backend.js'
 import { sameClip } from '../src/renderer/player/clip-player.js'
 
@@ -16,9 +17,9 @@ describe('generation', () => {
   it('每次 play 与 cancel 都递增', () => {
     const p = createFakePlayer()
     expect(p.generation).toBe(0)
-    p.play(idle, { once: true })
+    p.play(idle)
     expect(p.generation).toBe(1)
-    p.play(other, { once: true })
+    p.play(other)
     expect(p.generation).toBe(2)
     p.cancel()
     expect(p.generation).toBe(3)
@@ -26,24 +27,24 @@ describe('generation', () => {
 })
 
 describe('play 的收尾', () => {
-  it('once 播放，素材播完后 resolve ended', async () => {
+  it('播完后 resolve ended', async () => {
     const p = createFakePlayer()
-    const r = p.play(tapped, { once: true })
+    const r = p.play(tapped)
     p.advance()
     await expect(r).resolves.toBe('ended')
   })
 
   it('cancel 使进行中的 play resolve cancelled', async () => {
     const p = createFakePlayer()
-    const r = p.play(idle, { once: true })
+    const r = p.play(idle)
     p.cancel()
     await expect(r).resolves.toBe('cancelled')
   })
 
   it('换播下一条会让上一条 resolve cancelled，不会留下悬着的 Promise', async () => {
     const p = createFakePlayer()
-    const first = p.play(idle, { once: true })
-    const second = p.play(other, { once: true })
+    const first = p.play(idle)
+    const second = p.play(other)
     await expect(first).resolves.toBe('cancelled')
     p.advance()
     await expect(second).resolves.toBe('ended')
@@ -51,7 +52,7 @@ describe('play 的收尾', () => {
 
   it('过期回调不许再改动状态：advance 之后重复 advance 不产生第二个结果', async () => {
     const p = createFakePlayer()
-    const r = p.play(idle, { once: true })
+    const r = p.play(idle)
     p.advance()
     p.advance()
     await expect(r).resolves.toBe('ended')
@@ -61,7 +62,7 @@ describe('play 的收尾', () => {
 describe('current', () => {
   it('播完不清空，行为层靠它排除刚播过那条', async () => {
     const p = createFakePlayer()
-    const r = p.play(idle, { once: true })
+    const r = p.play(idle)
     p.advance()
     await r
     expect(p.current).toEqual(idle)
@@ -69,7 +70,7 @@ describe('current', () => {
 
   it('被 cancel 也不清空', async () => {
     const p = createFakePlayer()
-    const r = p.play(tapped, { once: true })
+    const r = p.play(tapped)
     p.cancel()
     await r
     expect(p.current).toEqual(tapped)
@@ -100,5 +101,18 @@ describe('sameClip', () => {
     expect(sameClip(idle, other)).toBe(false)
     expect(sameClip(null, idle)).toBe(false)
     expect(sameClip({ pool: 'idle', name: 'patrol' }, idle)).toBe(true)
+  })
+})
+
+/**
+ * 规格第 4 节的硬约束：spike 实测 `<video loop>` 每次回到起点都要重新缓冲，
+ * 所以后端绝不允许设置它，重复播放由行为层再调一次 play() 完成。
+ * 这条只能查源码——假实现没有 video 元素，真 DOM 验证要等 e2e。
+ */
+describe('播放器不许用 video.loop', () => {
+  it('video-backend 源码里没有给 loop 赋值', () => {
+    const src = readFileSync('src/renderer/player/video-backend.ts', 'utf8')
+    const assignments = src.match(/\.\s*loop\s*=[^=]/g) ?? []
+    expect(assignments, `发现 loop 赋值：${assignments.join(' ')}`).toEqual([])
   })
 })

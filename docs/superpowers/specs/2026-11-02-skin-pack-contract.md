@@ -222,7 +222,7 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 |---|---|
 | 第 3 节字段规则 | `validateManifest(raw) → {ok:true, manifest} \| {ok:false, errors[]}`，纯函数，输入是 `unknown`（JSON 解析结果），所以类型收窄要自己做 |
 | 第 6 节的 `core_gaps` | `missingRequiredPools(manifest) → string[]` |
-| 第 4.2 节的地址规则 | `clipPath(skin, pool, name) → string`，只按名字拼，禁止下标 |
+| 第 4.2 节的地址规则 | `clipUrl(pool, name) → 'app://skin/<池>/<名>.webm'`（在 `shared/skin.ts`，渲染层用）与 `clipFile(skinDir, pool, name)`（在 `main/skin-store.ts`，查存在用）。都只按名字拼，禁止下标 |
 | 第 5 节体检 | **不进装载器**。留在 `tools/alpha-report.mjs`，作为交付前闸门；生产代码不许依赖 `ffmpeg-static` |
 | 素材文件是否真存在 | `loadSkin(dir)` 里做，需要 `node:fs`，所以它在 `src/main/`，不在 `src/shared/` |
 

@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "build": "tsc -p tsconfig.build.json && node tools/copy-static.mjs",
     "start": "npm run build && electron .",
-    "e2e": "playwright test e2e",
+    "e2e": "npm run build && node e2e/pet-check.mjs",
     "skin:test": "node tools/make-test-skin.mjs",
     "alpha:check": "node tools/alpha-report.mjs",
     "progress": "node tools/progress.mjs"

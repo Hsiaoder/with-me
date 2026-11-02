@@ -66,6 +66,15 @@ describe('loadSkin 的拒绝路径', () => {
     if (!r.ok) expect(r.errors.join()).toContain('没有一条素材真正存在')
   })
 
+  it('同名的目录不算素材存在', () => {
+    // existsSync 会让一个叫 left.webm 的目录混过关，必须 statSync().isFile()
+    const dir = makeSkin('clip-is-dir', { skip: ['turn/left'] })
+    mkdirSync(join(dir, 'animation/turn/left.webm'), { recursive: true })
+    const r = loadSkin(dir)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.errors.join()).toContain('animation/turn/left.webm')
+  })
+
   it('一次性报出全部问题，不让作者改一个报一个', () => {
     const r = loadSkin(makeSkin('two-bad', { skip: ['turn/left', 'drag/pulled'] }))
     expect(r.ok).toBe(false)

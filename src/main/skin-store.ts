@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { ANIMATION_EXT, SKIN_ANIMATION_DIR, SKIN_MANIFEST } from '../shared/config.js'
 import {
@@ -18,6 +18,15 @@ import {
  * LoadedSkin / LoadResult 定义在 shared/skin.ts：渲染层要通过 IPC 拿它们，
  * 而分层铁律不许 renderer import main。
  */
+
+/** 素材必须是普通文件。existsSync 会让一个叫 `left.webm` 的**目录**混过关。 */
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
 
 /** 某条动画在磁盘上的位置。 */
 export function clipFile(skinDir: string, pool: string, name: string): string {
@@ -57,7 +66,7 @@ export function loadSkin(rawDir: string): LoadResult {
   const pools: Record<string, string[]> = {}
   for (const [pool, names] of Object.entries(checked.manifest.pools)) {
     pools[pool] = names.filter((name) => {
-      if (existsSync(clipFile(dir, pool, name))) return true
+      if (isFile(clipFile(dir, pool, name))) return true
       errors.push(`找不到素材文件：${relOf(pool, name)}`)
       return false
     })

@@ -71,6 +71,14 @@ describe('mapAppPath', () => {
     expect(mapAppPath({ bad: 'relative/dir' }, 'app://bad/x.js')).toMatchObject({ ok: false, status: 403 })
   })
 
+  it('畸形地址返回 400 而不是抛异常——它在协议处理器里跑，漏出去就是未处理 rejection', () => {
+    // decodeURIComponent 对坏转义抛 URIError
+    expect(mapAppPath(roots, 'app://skin/%e0%a4%')).toMatchObject({ ok: false, status: 400 })
+    // new URL 对非 URL 抛 TypeError
+    expect(mapAppPath(roots, 'not a url at all')).toMatchObject({ ok: false, status: 400 })
+    expect(mapAppPath(roots, '')).toMatchObject({ ok: false, status: 400 })
+  })
+
   it('mimeOf 只认白名单后缀', () => {
     expect(mimeOf('a/b.webm')).toBe('video/webm')
     expect(mimeOf('a/B.WEBM')).toBe('video/webm')
