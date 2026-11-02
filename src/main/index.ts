@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shared/config.js'
 import { IPC } from '../shared/ipc.js'
 import { toSkinPayload } from '../shared/skin.js'
+import { loadFrom, saveTo } from './storage.js'
+import { FALLBACK_SKIN, findSkinDir, platformDataDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
 import { startCursorPolling } from './cursor.js'
 import { registerIpc } from './ipc.js'
@@ -12,8 +14,6 @@ import { loadSkin } from './skin-store.js'
 import { createWindowsPlatform } from './windows.js'
 
 const here = dirname(fileURLToPath(import.meta.url))   // 运行时是 dist/main
-/** v1 内置皮肤。皮肤选择要等第 11 节的存档，届时从这里读出来再动态装配协议资源根。 */
-const SKIN_DIR = join(here, '..', '..', 'skins', 'block')
 
 // 协议特权必须在 ready 之前声明，且整个进程只声明一次。
 declareAppScheme()
@@ -22,13 +22,23 @@ declareAppScheme()
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 void app.whenReady().then(() => {
-  // 皮肤先装载：协议资源根要指向它实际所在的目录
-  const loaded = loadSkin(SKIN_DIR)
+  const dataDir = platformDataDir()
+  const save = loadFrom(dataDir)
+  const warnings = [...save.warnings]
+
+  // 用哪个皮肤来自存档。找不到时不静默换：记一条警告发给渲染层显示。
+  let skinDir = findSkinDir(save.skin)
+  if (!skinDir) {
+    warnings.push(`找不到皮肤「${save.skin}」，改用内置的 ${FALLBACK_SKIN}`)
+    skinDir = findSkinDir(FALLBACK_SKIN) ?? join(here, '..', '..', 'skins', FALLBACK_SKIN)
+  }
+
+  const loaded = loadSkin(skinDir)
   attachAppHandler({
     // 页面在 dist/renderer、模块在 dist/shared，都从 assets 根按路径往下走，
     // 这样 `../shared/config.js` 这类相对 import 才会留在同一个主机里。
     [APP_HOST]: join(here, '..'),
-    [SKIN_HOST]: join(loaded.ok ? loaded.skin.dir : SKIN_DIR, SKIN_ANIMATION_DIR),
+    [SKIN_HOST]: join(loaded.ok ? loaded.skin.dir : skinDir, SKIN_ANIMATION_DIR),
   })
 
   const platform = createWindowsPlatform()
@@ -40,7 +50,7 @@ void app.whenReady().then(() => {
   // 装载失败也要发过去：渲染层会把错误摊在屏幕上，而不是静默换一只默认宠物。
   // 挂在 createWindow 之后——onPageReady 要碰 webContents；同一段同步代码里订阅，
   // 不会漏掉 did-finish-load。
-  const payload = loaded.ok ? toSkinPayload(loaded.skin) : { errors: loaded.errors }
+  const payload = loaded.ok ? toSkinPayload(loaded.skin, warnings) : { errors: loaded.errors, warnings }
   platform.onPageReady(() => platform.send(IPC.skinLoaded, payload))
 
   // 覆盖层与主屏工作区重合且永不移动，所以原点取一次即可。
@@ -54,9 +64,18 @@ void app.whenReady().then(() => {
   const sweeper = setInterval(() => bridge.sweep(), CURSOR_POLL_MS)
   sweeper.unref()
 
-  // 退出前收掉两个定时器，否则会有回调打在已销毁的 webContents 上
+  // 退出前收掉定时器并落盘。落盘放最后：saveTo 会刷新 lastSeenAt。
+  let closing = false
   app.on('before-quit', () => {
+    if (closing) return
+    closing = true
     stopPolling()
     clearInterval(sweeper)
+    try {
+      saveTo(dataDir, save)
+    } catch (e) {
+      // 存档写不进去不该拦住退出，但必须留痕
+      console.error('[save] 退出落盘失败：', e)
+    }
   })
 })

@@ -2334,7 +2334,20 @@ git commit -m "feat: 渲染层装配 — 位置积分、行为链、悬停触发
   - `loadFrom(dir: string): SaveData`（损坏时回退 `.bak`，都坏则用默认值并记录一次警告）
   - `platformDataDir(appName: string): string`
 
-- [ ] **Step 1: 写迁移与损坏回退的失败测试**
+- [x] **Step 1: 写迁移与损坏回退的失败测试**
+
+> ### 实现时的修正
+>
+> 1. **`applyCare` 去掉 `action` 参数**：样例收了 `'feed'|'wash'|'play'` 却一次都没用，函数实际只做「按增量累加并夹在 0..100」。签名改成 `applyCare(save, delta: Partial<Stats>)`，并补了测试（累加、夹取、忽略非数值、不改原对象）。等 v2 真有衰减规则时 `action` 才有意义，那时再加。
+> 2. **样例的 storage 测试用了 `require`**：项目是 ESM，`require` 不存在，跑起来直接报错。改成顶部 `import`。
+> 3. **样例测试对 `.bak` 内容的期望自相矛盾**：它连着写 `good` 再写 `newer`，然后断言回退得到 `newer`，注释里自己也打了问号。按实现语义，`.bak` 存的是**上一版**即 `good`，`newer` 随损坏的主文件一起丢了。断言改成 `good`，并在测试里写明为什么。
+> 4. **`defaultSave(now)` / `migrate(raw, now)` 收时刻参数**：样例里 `defaultSave()` 读全局 `Date.now()`，违反编码规则 14，且让默认值不可复现。
+> 5. **`warnings` 不进存档**：样例用 `{ ...data, warnings: undefined }` 去字段，在 `exactOptionalPropertyTypes` 下过不了编译，而且 `undefined` 会被 `JSON.stringify` 静默丢掉——能跑通但靠的是巧合。改成显式的 `toSaveFile(save)`。
+> 6. **皮肤路径不再硬编码**（评审 5.9）：启动时从存档读 `skin` id，`findSkinDir()` 在「用户目录/skins」优先、内置 `skins/` 兜底里找；找不到就记一条 warning 再回退，不静默换。id 先过字符集校验，解析结果还必须真的落在皮肤根内。
+> 7. **`SkinPayload` 加 `warnings`**，渲染层逐条 `console.warn`；皮肤装载失败时把 warnings 并到错误面板一起摊出来。
+> 8. `paths.ts` 不导出 `saveDir()` 别名——它和 `platformDataDir()` 是同一件事，两个名字只会让人猜差别在哪。
+> 9. **退出落盘加了 `closing` 守卫**：`before-quit` 可能被触发多次，重复 `saveTo` 会把 `.bak` 刷成和主文件一样的内容，等于丢掉备份。
+
 
 ```ts
 // test/save.test.ts
@@ -2365,7 +2378,7 @@ describe('migrate', () => {
 })
 ```
 
-- [ ] **Step 2: 实现存档类型与迁移**
+- [x] **Step 2: 实现存档类型与迁移**
 
 ```ts
 // src/shared/save.ts
@@ -2419,7 +2432,7 @@ export function applyCare(save: SaveData, action: 'feed' | 'wash' | 'play', by: 
 
 Run: `npm run test -- save` → Expected: 4 passed
 
-- [ ] **Step 3: 写原子落盘的失败测试**
+- [x] **Step 3: 写原子落盘的失败测试**
 
 ```ts
 // test/storage.test.ts
@@ -2459,7 +2472,7 @@ describe('saveTo / loadFrom', () => {
 
 Run: `npm run test -- storage` → Expected: FAIL（模块不存在）
 
-- [ ] **Step 4: 实现落盘（原子写：临时文件 + rename，配合 .bak 备份）**
+- [x] **Step 4: 实现落盘（原子写：临时文件 + rename，配合 .bak 备份）**
 
 ```ts
 // src/main/storage.ts
@@ -2492,7 +2505,7 @@ export function loadFrom(dir: string): SaveData {
 }
 ```
 
-- [ ] **Step 5: 平台数据目录（禁止硬编码 APPDATA）**
+- [x] **Step 5: 平台数据目录（禁止硬编码 APPDATA）**
 
 ```ts
 // src/main/paths.ts
@@ -2509,7 +2522,7 @@ export const skinDirs = () => [join(app.getAppPath(), 'skins'), join(platformDat
 
 Run: `npm run test && npm run typecheck` → Expected: 全绿
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/shared/save.ts src/main/storage.ts src/main/paths.ts test/save.test.ts test/storage.test.ts

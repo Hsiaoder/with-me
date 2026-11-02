@@ -170,9 +170,11 @@ function bootstrap(skin: SkinPayload): void {
 }
 
 window.petBridge?.onSkin((payload) => {
+  // 能跑但有情况（旧档回退、指定皮肤找不到）也要大声，只是不拦停
+  for (const w of payload.warnings) console.warn('[pet]', w)
   if ('errors' in payload) {
     // 皮肤不合法就摊在屏幕上显示，不静默换默认皮肤（皮肤契约第 6 节）
-    createSprite(root).showError(payload.errors)
+    createSprite(root).showError([...payload.warnings, ...payload.errors])
     return
   }
   bootstrap(payload)

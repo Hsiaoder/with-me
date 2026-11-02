@@ -40,14 +40,19 @@ export type LoadedSkin = {
 export type LoadResult = { ok: true; skin: LoadedSkin } | { ok: false; errors: string[] }
 
 /**
- * 发给渲染层的形状。刻意不带 `dir`：渲染层用 clipUrl 拼 `app://skin/...` 就够，
+ * 发给渲染层的形状。刻意不带 `dir`：渲染层用 clipUrl 就够，
  * 没必要知道本机绝对目录——少一份泄露出去的数据，也少一处将来会被误用的入口。
+ *
+ * `warnings` 是「能跑但有情况」的通道：皮肤找不到、旧档回退之类，
+ * 要显示出来而不是静默处理（编码规则 15）。
  */
-export type SkinPayload = { manifest: SkinManifest; pools: Record<string, string[]> }
+export type SkinPayload = { manifest: SkinManifest; pools: Record<string, string[]>; warnings: string[] }
+export type SkinErrorPayload = { errors: string[]; warnings: string[] }
 
-export const toSkinPayload = (skin: LoadedSkin): SkinPayload => ({
+export const toSkinPayload = (skin: LoadedSkin, warnings: string[] = []): SkinPayload => ({
   manifest: skin.manifest,
   pools: skin.pools,
+  warnings,
 })
 
 const SUPPORTED_FORMAT = 1
