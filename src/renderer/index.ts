@@ -2,7 +2,6 @@ import {
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
   PANEL_OFFSET_ABOVE,
-  STAGE_H_CSS,
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'

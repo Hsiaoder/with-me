@@ -5,7 +5,6 @@ import {
   missingRequiredPools,
   validateManifest,
   type LoadResult,
-  type SkinManifest,
 } from '../shared/skin.js'
 
 /**
