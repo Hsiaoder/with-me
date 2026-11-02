@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { ANIMATION_EXT, SKIN_ANIMATION_DIR, SKIN_MANIFEST } from '../shared/config.js'
-import { missingRequiredPools, validateManifest, type SkinManifest } from '../shared/skin.js'
+import {
+  missingRequiredPools,
+  validateManifest,
+  type LoadResult,
+  type SkinManifest,
+} from '../shared/skin.js'
 
 /**
  * 皮肤装载：读目录 → 校验 manifest → 确认每条素材文件真的在。
@@ -9,17 +14,10 @@ import { missingRequiredPools, validateManifest, type SkinManifest } from '../sh
  * 透明通道体检**不在这里做**。它要调 ffmpeg 解码，而 `ffmpeg-static` 是开发依赖，
  * 生产代码不许依赖它（也不该为体检多背几十 MB）。体检是交付前的闸门，
  * 跑 `npm run alpha:check`，见皮肤契约 spec 第 5 节。
+ *
+ * LoadedSkin / LoadResult 定义在 shared/skin.ts：渲染层要通过 IPC 拿它们，
+ * 而分层铁律不许 renderer import main。
  */
-
-export type LoadedSkin = {
-  /** 绝对路径。渲染层拿它拼不出地址，地址一律走 shared/skin.ts 的 clipUrl。 */
-  dir: string
-  manifest: SkinManifest
-  /** 池名 → 校验通过的动画名。 */
-  pools: Record<string, string[]>
-}
-
-export type LoadResult = { ok: true; skin: LoadedSkin } | { ok: false; errors: string[] }
 
 /** 某条动画在磁盘上的位置。 */
 export function clipFile(skinDir: string, pool: string, name: string): string {

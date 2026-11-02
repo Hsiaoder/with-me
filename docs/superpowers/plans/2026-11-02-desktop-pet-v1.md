@@ -1395,7 +1395,18 @@ git commit -m "feat: 画布到覆盖层的身体矩形换算与多区命中"
   }
   ```
 
-- [ ] **Step 1: 定义接口与假实现**
+- [x] **Step 1: 定义接口与假实现**
+
+> ### 实现时的修正
+>
+> 1. **接口砍掉 `frameIndex()` / `snapshot()` / `hitTest()`**：v1 没有任何调用方（命中判定走 `shared/geometry.ts` 的 `anyContains`，帧对齐与逐像素是 v3 的事），按编码规则 16「不写没有调用方的代码」先不做。v3 需要时再加，接口是开放的吗——不是，加方法要改两个后端，所以到时候是有意为之的改动，比现在摆三个空函数诚实。
+> 2. **`createVideoPlayer` 改收 options 对象**，且素材地址由调用方注入（`urlFor`）。样例直接 import `LoadedSkin` 与 `clipFile`，会让渲染层依赖主进程模块，违反分层铁律 2。
+> 3. **删掉 `onEnded` 钩子**：`play()` 返回的 Promise 已经表达「这条播完了」，两个出口迟早打架（谁先跑、只跑一个还是都跑）。
+> 4. **补 `error` 兜底**：样例只等 `loadeddata`，素材损坏或文件被删时 `play()` 的 Promise 会永远悬着，行为链就地卡死。
+> 5. **`pending` 收敛成 `{resolve, gen}` 单点管理**。样例在 executor 内、`onReady` 内、以及 addEventListener 之后各赋值一次，`finish` 又拿 `pending !== resolve` 判过期——同一件事三种写法，竞态就藏在里面。
+> 6. **`LoadedSkin` / `LoadResult` 放进 `shared/skin.ts`**，不新建 `skin-store-types.ts`：已经有一个皮肤模块了，再开一个纯类型文件是碎片化。顺带给 `ipc.ts` 补 `SkinLoadedPayload`。
+> 7. **Step 5 的 e2e 整体推到 Task 10**：`test.skip` 的文件验证不了任何东西，而且它依赖 Task 10 才存在的 `window.__testPlay` 钩子。`playwright.config.ts` 一起过去。
+> 8. **已知缺口（已记进规格第 9 节）**：`video-backend.ts` 目前没有自动化测试，四铁律只在假实现上验证过。Task 10 的 e2e 必须在真 DOM 上复现 `test/clip-player.test.ts` 的同一组断言，不许跳过。
 
 ```ts
 // src/renderer/player/clip-player.ts
@@ -1464,7 +1475,7 @@ export function createFakePlayer(): ClipPlayer & {
 }
 ```
 
-- [ ] **Step 2: 写接口约定的失败测试（用假实现锁语义）**
+- [x] **Step 2: 写接口约定的失败测试（用假实现锁语义）**
 
 ```ts
 // test/clip-player.test.ts
@@ -1503,7 +1514,7 @@ describe('ClipPlayer 语义约定', () => {
 
 Run: `npm run test -- clip-player` → Expected: PASS（这组测试是后端的验收标准，Task 7 后半用真 DOM 复现同一组断言）
 
-- [ ] **Step 3: 实现双 video 后端，逐条落地四铁律**
+- [x] **Step 3: 实现双 video 后端，逐条落地四铁律**
 
 ```ts
 // src/renderer/player/video-backend.ts
@@ -1629,7 +1640,7 @@ export function createVideoPlayer(
 function key(ref: ClipRef): string { return `${ref.pool}/${ref.name}` }
 ```
 
-- [ ] **Step 4: 把 LoadedSkin 挪到 shared，避免渲染层 import 主进程模块**
+- [x] **Step 4: 把 LoadedSkin 挪到 shared，避免渲染层 import 主进程模块**
 
 `src/main/skin-store.ts` 里的 `LoadedSkin`/`clipFile` 移到 `src/shared/skin-store-types.ts`（纯类型 + 纯路径拼接），`skin-store.ts` 改为 import 它。运行：
 
@@ -1639,7 +1650,7 @@ grep -rn "skin-store" src/renderer/ || echo "renderer 不依赖 main ✔"
 
 Expected: 打印 `renderer 不依赖 main ✔`
 
-- [ ] **Step 5: 用 Playwright 驱动 Electron，验真实 DOM 交换**
+- [ ] **Step 5: 用 Playwright 驱动 Electron，验真实 DOM 交换 —— 已整体推到 Task 10**
 
 ```ts
 // e2e/video-backend.spec.ts
@@ -1671,7 +1682,7 @@ test('两个 video 元素交替，前台唯一 is-front', async () => {
 //   "e2e": "playwright test e2e"
 ```
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/renderer/player/ src/shared/skin-store-types.ts src/main/skin-store.ts e2e/ package.json

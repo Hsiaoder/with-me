@@ -25,6 +25,20 @@ export type SkinManifest = {
 
 export type ValidationResult = { ok: true; manifest: SkinManifest } | { ok: false; errors: string[] }
 
+/**
+ * 装载成功的皮肤。类型放这里而不是 main/skin-store，因为渲染层要通过 IPC 拿到它——
+ * 分层铁律不许 renderer import main。
+ */
+export type LoadedSkin = {
+  /** 绝对路径。渲染层拿它拼不出地址，地址一律走 clipUrl。 */
+  dir: string
+  manifest: SkinManifest
+  /** 池名 → 校验通过的动画名。 */
+  pools: Record<string, string[]>
+}
+
+export type LoadResult = { ok: true; skin: LoadedSkin } | { ok: false; errors: string[] }
+
 const SUPPORTED_FORMAT = 1
 /** 池名与动画名要拼进文件路径和 URL，所以只放最安全的字符集。契约 3.3。 */
 const POOL_NAME = /^[a-z][a-z0-9_-]{0,31}$/
