@@ -79,7 +79,3 @@ export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}/`
 export const SKIN_ORIGIN = `${APP_SCHEME}://${SKIN_HOST}/`
 /** 面板贴在身体上方的偏移；越界时由渲染层夹回屏幕内。 */
 export const PANEL_OFFSET_ABOVE = 40
-
-// ---- 调试 ----
-/** F9 切换身体矩形可视化。 */
-export const DEBUG_HOTKEY = 'F9'

@@ -1,4 +1,4 @@
-import type { ClipRef, Point } from '../shared/types.js'
+import type { Point } from '../shared/types.js'
 import type { SkinLoadedPayload } from '../shared/ipc.js'
 
 /**
@@ -14,8 +14,6 @@ declare global {
       onSkin(cb: (skin: SkinLoadedPayload) => void): void
       requestGrab(grab: boolean): void
       setFocusable(on: boolean): void
-      setDebugOverlay(on: boolean): void
-      playClip(clip: ClipRef): void
     }
   }
 }

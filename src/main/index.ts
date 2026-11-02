@@ -7,6 +7,7 @@ import { toSkinPayload } from '../shared/skin.js'
 import { loadFrom, saveTo } from './storage.js'
 import { FALLBACK_SKIN, findSkinDir, platformDataDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
+import { startFullscreenWatch } from './fullscreen.js'
 import { startCursorPolling } from './cursor.js'
 import { registerIpc } from './ipc.js'
 import { attachAppHandler, declareAppScheme } from './protocol.js'
@@ -64,13 +65,17 @@ void app.whenReady().then(() => {
   const sweeper = setInterval(() => bridge.sweep(), CURSOR_POLL_MS)
   sweeper.unref()
 
-  // 退出前收掉定时器并落盘。落盘放最后：saveTo 会刷新 lastSeenAt。
+  // 全屏应用让路。探测是个常驻 PowerShell 子进程，必须跟着退出收掉。
+  const stopWatch = startFullscreenWatch(platform, platform.windowHandle())
+
+  // 退出前收掉定时器与子进程并落盘。落盘放最后：saveTo 会刷新 lastSeenAt。
   let closing = false
   app.on('before-quit', () => {
     if (closing) return
     closing = true
     stopPolling()
     clearInterval(sweeper)
+    stopWatch()
     try {
       saveTo(dataDir, save)
     } catch (e) {

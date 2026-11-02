@@ -2762,7 +2762,18 @@ git commit -m "feat: 悬停面板与控件矩形上报，按钮切换动画"
 - Consumes: `Platform.show/hide`
 - Produces: `mapNotificationState(s: number, isPetForeground: boolean): boolean`（返回「宠物该让路吗」）、`startFullscreenWatch(platform, nativeWindowHandle): () => void`
 
-- [ ] **Step 1: 写映射的失败测试（纯函数，测的是数字含义不是 PowerShell）**
+- [x] **Step 1: 写映射的失败测试（纯函数，测的是数字含义不是 PowerShell）**
+
+> ### 实现时的修正
+>
+> 1. **F9 走不通，改成 Ctrl+Shift+点身体**。这扇窗是 `focusable: false` 的（设计文档第 3 节第 3 条保护），永远收不到 `keydown`；改用 `globalShortcut` 会把 F9 从系统里所有应用手里抢走，为一个调试功能不值。渲染层在接住鼠标时本来就能收到 `pointerdown`，用它当开关。
+> 2. **`pet:debug-overlay` 与 `pet:play-clip` 两条通道删掉了**。切换在渲染层本地完成、点歌直接调播放器，都不需要过 IPC。留着就是两条永远没人发的通道，还会让后来的人以为有对应行为。preload、`global.d.ts`、`ipc.ts`、两份文档同步删除。
+> 3. **孤儿防护不用 Job Object**，改用「父进程不在了就自己退出」：PowerShell 每轮先 `Get-Process -Id $parent`，查不到就 break。Job Object 要 native 代码或额外依赖，这个办法零成本且实测有效——我手工 SIGKILL 掉一个测试实例后，那个探测子进程自己退了。
+> 4. **句柄校验**：`petHandle` 会被拼进 PowerShell 源码，所以只接受 1-20 位十进制数字，不合规就放弃探测并记一条错误，绝不拼进去。
+> 5. **`windowHandle()` 按缓冲区实际长度读**：64 位是 8 字节，32 位是 4 字节，直接 `readBigUInt64LE()` 在 32 位上会越界抛错。
+> 6. **`mapNotificationState` 用区间判断而不是样例那串 `($s -ge 2 -and $s -le 4 -and 前台不是自己)`**：加了 `Number.isInteger` 挡 NaN，非法值一律不让路。样例测试里「1 = 全屏应用但不在前台」的说法也不对，1 是 `QS_NOT_BUSY`（没有全屏占用），5 才是闹钟，测试按真实语义重写。
+> 7. **新增 `shouldYieldLine(line)`**：样例把「解析子进程输出」和「改状态」混在回调里，没法单测。拆出来之后空白行、`True`、`'1 '` 这类垃圾行都走「保持上一次决定」而不是当成退出信号。
+> 8. **e2e 验探测子进程不能靠 `app.process().pid`**：Playwright 报的 PID 与真正的 electron 主进程对不上，且 Electron 主进程的 `console.log` 不进被 pipe 的 stdout。改成启动前后做进程树快照对比：新出现的、父进程是某个 electron 的 powershell 就是探测子进程。退出后再验这批 PID 已经不在了（孤儿检查）。
 
 ```ts
 // test/fullscreen.test.ts
@@ -2787,7 +2798,7 @@ describe('mapNotificationState', () => {
 })
 ```
 
-- [ ] **Step 2: 实现探测（含关机期禁止启动子进程的保护）**
+- [x] **Step 2: 实现探测（含关机期禁止启动子进程的保护）**
 
 ```ts
 // src/main/fullscreen.ts
@@ -2840,7 +2851,7 @@ export function startFullscreenWatch(platform: Platform, petHandle: string): () 
 }
 ```
 
-- [ ] **Step 3: 接线 + 快捷键开命中区可视化**
+- [x] **Step 3: 接线 + 快捷键开命中区可视化**
 
 `src/main/index.ts` 里窗口建好后：
 
@@ -2867,14 +2878,14 @@ window.addEventListener('keydown', (e) => {
 npm run build && npx electron dist/main/index.js
 ```
 Expected：
-1. 按 F9 出现红色身体框，再按消失；框随宠物移动。
+1. Ctrl+Shift+点身体出现红色身体框，再点一次消失；框随宠物移动。（样例写的 F9 走不通，见 Step 1 修正第 1 条）
 2. 打开一个全屏视频（浏览器全屏播放）→ 宠物隐藏；退出全屏 → 宠物恢复。
 3. 宠物自己获得焦点时不隐藏（用面板按钮验证）。
-4. 任务管理器里**没有**多余的 powershell 窗口闪现；退出程序后 `Get-Process powershell` 不再有本项目的残留。
+4. 任务管理器里**没有**多余的 powershell 窗口闪现；退出程序后 `Get-Process powershell` 不再有本项目的残留。（探测子进程已启动与退出不留孤儿这两条已由 e2e 自动验过，这里验的是「不闪窗」）
 
 Run: `npm run test && npm run typecheck && npm run e2e` → Expected: 全绿
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/main/fullscreen.ts src/main/index.ts src/shared/ipc.ts src/preload/index.cjs src/renderer/index.ts test/fullscreen.test.ts
@@ -2915,7 +2926,7 @@ Expected: 打印 `errors` 且明确指出缺哪条必需池，不抛栈、不静
 
 - [ ] **Step 3: 写 README**
 
-必含小节：怎么跑起来（三条命令）、怎么自定义皮肤（目录结构 + manifest 字段表 + 素材合同「首末帧同姿势」）、常见故障（灰底 → 跑体检；面板点不动 → 查穿透租约日志；全屏时被遮住 → F9 看窗口位置）。皮肤说明要能让没读过本计划的人照着做出一个能装载的包。
+必含小节：怎么跑起来（三条命令）、怎么自定义皮肤（目录结构 + manifest 字段表 + 素材合同「周期整除时长」）、常见故障（灰底 → 跑体检；面板点不动 → 查穿透租约日志；全屏时被遮住 → Ctrl+Shift+点身体看命中框）。皮肤说明要能让没读过本计划的人照着做出一个能装载的包。
 
 - [ ] **Step 4: 回写设计文档**
 

@@ -1,5 +1,4 @@
 import {
-  DEBUG_HOTKEY,
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
   PANEL_OFFSET_ABOVE,
@@ -185,6 +184,13 @@ function bootstrap(skin: SkinPayload): void {
   window.addEventListener('pointerdown', (e) => {
     const p = { x: e.clientX, y: e.clientY }
     if (!overBody(p)) return
+    // 命中区可视化用 Ctrl+Shift+点 切换，而不是 F9：这扇窗故意 focusable:false，
+    // 永远收不到键盘事件；改用全局快捷键又会把 F9 从所有应用手里抢走。
+    if (e.ctrlKey && e.shiftKey) {
+      outlineOn = !outlineOn
+      sprite.showOutline(outlineOn ? hitBox() : null)
+      return            // 调试点击不该同时开始拖拽
+    }
     dragging = true
     const pos = stagePos()
     dragOffset = { x: p.x - pos.x, y: p.y - pos.y }
@@ -257,6 +263,6 @@ window.petBridge?.onSkin((payload) => {
 if (!window.petBridge) {
   createSprite(root).showError([
     'preload 没挂上：window.petBridge 不存在。',
-    `检查 dist/preload/index.cjs 是否存在，以及 ${DEBUG_HOTKEY} 调试开关是否被误关。`,
+    '检查 dist/preload/index.cjs 是否存在，以及 BrowserWindow 的 preload 路径是否指向它。',
   ])
 }

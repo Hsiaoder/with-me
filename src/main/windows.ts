@@ -64,6 +64,11 @@ export function createWindowsPlatform(): Platform {
     send(channel, payload) {
       up().webContents.send(channel, payload)
     },
+    windowHandle() {
+      const h = up().getNativeWindowHandle()
+      // 64 位系统句柄是 8 字节；按实际长度读，免得在 32 位上越界抛错
+      return (h.byteLength >= 8 ? h.readBigUInt64LE() : BigInt(h.readUInt32LE(0))).toString()
+    },
     show() {
       up().showInactive()
     },

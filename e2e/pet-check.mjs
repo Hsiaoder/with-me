@@ -9,6 +9,7 @@
  */
 import { _electron as electron } from 'playwright'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -96,8 +97,7 @@ check('命中框 = 舞台位置 + bodyBox 按缩放换算', async () => {
   assert.ok(Math.abs(got.hit.h - manifest.bodyBox.h * SCALE_Y) < 1)
 })
 
-try {
-  const feed = (p) => page.evaluate((pt) => window.__petDebug.cursor(pt), p)
+const feed = (p) => page.evaluate((pt) => window.__petDebug.cursor(pt), p)
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
   pool: window.__petDebug.current.pool,
@@ -160,6 +160,55 @@ check('宠物贴右边缘时面板夹回屏幕内', async () => {
   assert.ok(r.x >= 0, `面板跑到左边外面：${r.x}`)
 })
 
+/** 当前所有 powershell 的 PID。 */
+function psPids() {
+  const out = execFileSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-Command',
+    "Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" | ForEach-Object { $_.ProcessId }",
+  ], { encoding: 'utf8' }).trim()
+  return new Set(out ? out.split(/\r?\n/).map(Number) : [])
+}
+
+/** 当前所有 powershell 的父进程 PID 集合（用来确认它是 electron 的子进程，而不是别处的）。 */
+function psParentPairs() {
+  const out = execFileSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-Command',
+    "Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" | ForEach-Object { \"$($_.ProcessId),$($_.ParentProcessId)\" }",
+  ], { encoding: 'utf8' }).trim()
+  return out ? out.split(/\r?\n/).map((l) => l.split(',').map(Number)) : []
+}
+
+function electronPids() {
+  const out = execFileSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-Command',
+    "Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\" | ForEach-Object { $_.ProcessId }",
+  ], { encoding: 'utf8' }).trim()
+  return new Set(out ? out.split(/\r?\n/).map(Number) : [])
+}
+
+let beforePids = new Set()
+/** 「探测子进程已启动」那条检查记下的 PID，退出后拿它验有没有变孤儿。 */
+let probePids = []
+
+check('Ctrl+Shift+点身体切换命中框', async () => {
+  // F9 走不通：这扇窗 focusable:false，收不到键盘事件。改用带修饰键的点击。
+  const toggle = () => page.evaluate(() => {
+    const h = window.__petDebug.hitBox
+    window.dispatchEvent(new PointerEvent('pointerdown', {
+      clientX: h.x + h.w / 2, clientY: h.y + h.h / 2, ctrlKey: true, shiftKey: true, bubbles: true,
+    }))
+    return document.querySelectorAll('.hit-outline').length
+  })
+  assert.equal(await toggle(), 1, '第一次没有画出命中框')
+  assert.equal(await toggle(), 0, '第二次没有把命中框收掉')
+})
+
+check('让路探测子进程已启动（新出现的 powershell，父进程是 electron）', async () => {
+  const fresh = psParentPairs().filter(([pid, parent]) => !beforePids.has(pid) && electronPids().has(parent))
+  assert.ok(fresh.length >= 1, '没看到探测用的 powershell 子进程，让路功能没起来')
+  probePids = fresh.map(([pid]) => pid)
+})
+
 check('离开身体与面板满 400ms 后面板收起', async () => {
   await feed({ x: 5, y: 5 })
   await page.waitForTimeout(460)
@@ -167,7 +216,9 @@ check('离开身体与面板满 400ms 后面板收起', async () => {
   assert.equal((await dbg()).open, false, '离开了面板还没收')
 })
 
+beforePids = psPids()
 app = await electron.launch({ args: ['.'], cwd: process.cwd() })
+try {
   page = await app.firstWindow()
   page.on('pageerror', (e) => pageErrors.push(String(e)))
   await page.waitForFunction(() => document.querySelectorAll('video').length === 2, null, { timeout: 30_000 })
@@ -182,8 +233,24 @@ app = await electron.launch({ args: ['.'], cwd: process.cwd() })
       console.error(`FAIL  ${name}\n      ${String(e.message).split('\n')[0]}`)
     }
   }
-  console.log(`\ne2e：${checks.length - failed}/${checks.length} 通过`)
+
+  await app.close()
+  await new Promise((r) => setTimeout(r, 800))
+
+  // 设计文档第 10 节「子进程三规」之一：别把探测用的 PowerShell 变成孤儿进程。
+  // 只有被 SIGKILL 时 before-quit 不会跑，所以这里同时验一下正常退出这条路。
+  const alive = [...psPids()]
+  const orphans = probePids.filter((p) => alive.includes(p))
+  if (orphans.length) {
+    failed++
+    console.error(`FAIL  退出后残留探测子进程：${orphans.join(', ')}`)
+  } else {
+    console.log('  ok  退出后没有残留的探测子进程')
+  }
+
+  const total = checks.length + 1
+  console.log(`\ne2e：${total - failed}/${total} 通过`)
   if (failed) process.exitCode = 1
 } finally {
-  await app?.close()
+  await app?.close().catch(() => {})
 }

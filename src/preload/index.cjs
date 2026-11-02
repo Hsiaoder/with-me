@@ -14,8 +14,4 @@ contextBridge.exposeInMainWorld('petBridge', {
   requestGrab: (grab) => ipcRenderer.send('pet:click-through', { grab }),
   /** 面板里有输入框时才临时打开可聚焦，用完关掉。默认窗口不抢键盘焦点。 */
   setFocusable: (on) => ipcRenderer.send('pet:focusable', on),
-  /** F9 命中区可视化。 */
-  setDebugOverlay: (on) => ipcRenderer.send('pet:debug-overlay', on),
-  /** 面板按钮与 e2e 用它点名下播哪条动画。 */
-  playClip: (clip) => ipcRenderer.send('pet:play-clip', clip),
 })
