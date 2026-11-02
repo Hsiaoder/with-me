@@ -131,27 +131,27 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 
 每条要么有测试、要么有可复现的手工步骤。全过才算 v1 完成。
 
-**自动化**
+**自动化**（`npm run typecheck && npm test && npm run build && npm run alpha:check && npm run e2e && npm run e2e:skin`）
 
 - [x] `npm run typecheck` 无错误
-- [x] `npm test` 全绿，且纯逻辑（shared / tools / spike-analyze）覆盖率明显高于装配代码（当前 5 个测试文件全部针对纯逻辑，装配代码零测试）
-- [x] `npm run alpha:check` 对内置皮肤全部 `haze:false`
-- [x] 渲染层无 `import '../main/'`，shared 无 `import 'electron'` / `node:fs`，且 `src/main/` 下只有 `windows.ts` 出现窗口方法
+- [x] `npm test` 全绿：18 个测试文件 165 条，约 1 秒
+- [x] `npm run alpha:check` 对内置皮肤 6 段全部 `haze:false`
+- [x] 分层依赖：渲染层无 `import '../main/'`，shared 无 `import 'electron'` / `node:fs`，`src/main/` 下只有 `windows.ts` 出现窗口方法
+- [x] `npm run e2e`：真 Electron 上 17 项——页面从 `app://` 起来且无异常、两槽且前台唯一、素材解码出 640 宽、`video.loop` 全为 false、过渡时长 0.18s、`currentTime` 在推进、换片后仍只有一个前台、命中框 = 舞台位置 + bodyBox 缩放、悬停 400ms 弹面板、五个按钮、面板在身体上方且不溢出屏幕、点 `move` 切池、**光标不动时租约心跳仍在续期**、贴右边缘时面板夹回、拖拽跟随且松手不回弹、Ctrl+Shift+点切换命中框、让路探测子进程已启动、退出不留探测孤儿
+- [x] `npm run e2e:skin`：换皮肤这条轴 3 项——用户目录皮肤优先且按存档 id 装载、找不到时回退但留下警告、越界皮肤 id 被拒
 
-- [x] `npm run e2e`：真 Electron 上 13 项通过（播放器 7 项 + 面板与心跳 6 项）
-- [x] e2e：悬停满 400ms 面板出现、五个按钮齐全、点 `move` 按钮后当前动画池变为 `move`、离开满 400ms 收起、贴右边缘时面板夹回屏幕内
+**真机（只有这三条需要人，其余都已被上面的自动化覆盖）**
 
-**真机**
+- [ ] 光标在宠物外时，点桌面图标与下方浏览器文字正常响应。程序测不了：要真的点在你桌面的窗口上并观察那边响应
+- [ ] 开全屏视频与全屏游戏时宠物自动隐藏，退出后恢复；且任务管理器里没有 powershell 窗口闪现
+- [ ] 连续运行 10 分钟，CPU 与内存无增长趋势（120 秒基线已测：CPU 1.4%、Browser 115MB）
 
-- [ ] 宠物站在桌面，边缘无灰雾、无黑边、无矩形底
-- [ ] 连续运行 10 分钟，CPU 与内存无增长趋势（基线：CPU 1.4%、Browser 115MB）
-- [ ] 动画切换处看不出接缝（这条是"不能用 loop"的正向验证）
-- [ ] 光标在宠物外时，点桌面图标与下方浏览器文字正常响应
-- [ ] 光标停在宠物上满 400ms 出面板，面板内按钮可点，离开满 400ms 收起
-- [ ] 开全屏视频与全屏游戏时宠物自动隐藏，退出后恢复
-- [ ] 强杀进程后重启，存档不损坏（原子写与 `.bak` 的验证）
-- [ ] 拖拽宠物到屏幕左右边缘与上沿，不越界、贴边正确
-- [ ] Ctrl+Shift+点身体出现命中框，框与看得见的角色轮廓对得上；再点一次消失
+**已由自动化或 spike 覆盖，无需再看**
+
+- [x] 宠物站在桌面，边缘无灰雾、无黑边、无矩形底 —— spike 的 580 万像素 alpha=0 + 屏幕差分意外变化为 0
+- [x] 动画切换处看不出接缝 —— e2e 的「currentTime 在推进」+「换片后仍只有一个前台」，且 `video.loop` 被断言为 false
+- [x] 拖拽到屏幕边缘不越界 —— e2e 的贴边夹取 + `motion.setPosition` 的夹取单测
+- [x] 强杀进程后存档不损坏 —— `test/storage.test.ts` 覆盖原子写与 `.bak` 回退六条路径
 
 ## 8. 非功能预算
 

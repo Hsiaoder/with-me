@@ -1650,7 +1650,7 @@ grep -rn "skin-store" src/renderer/ || echo "renderer 不依赖 main ✔"
 
 Expected: 打印 `renderer 不依赖 main ✔`
 
-- [ ] **Step 5: 用 Playwright 驱动 Electron，验真实 DOM 交换 —— 已整体推到 Task 10**
+- [x] **Step 5: 用 Playwright 驱动 Electron，验真实 DOM 交换 —— 已在 Task 10/12 交付（e2e 17 项覆盖）**
 
 ```ts
 // e2e/video-backend.spec.ts
@@ -2310,6 +2310,10 @@ Expected（逐项确认并截图存档）：
 4. 鼠标停在色块上 400ms：播一次被点动画（面板在 Task 12）。
 5. 拖动色块：位置跟随光标，松手停在原地，不跳回。
 
+> **进度：1、2、4、5 已自动化**（`npm run e2e` 17 项：位置在底部中央由「命中框 = 舞台位置 + bodyBox 缩放」与面板贴边两条覆盖；透明无底由 spike 的 580 万像素 alpha=0 与屏幕差分覆盖；悬停 400ms 弹面板覆盖第 4 项；新增「拖拽跟随光标，松手停在原地不回弹」覆盖第 5 项）。
+> **只剩第 3 项必须人手**：穿透在操作系统层面是否真把点击让给桌面，要人眼看一次图标被选中。程序测不了——它得点在你桌面真实的窗口上并观察那边响应。
+
+
 - [x] **Step 7: 提交**
 
 ```bash
@@ -2903,14 +2907,20 @@ git commit -m "feat: 全屏应用让路探测与命中区调试开关"
 - Consumes: 前面全部任务
 - Produces: 一份验收记录 + 一份「怎么自定义皮肤」说明
 
-- [ ] **Step 1: 跑全部测试并记录数字**
+- [x] **Step 1: 跑全部测试并记录数字**
 
 ```bash
 npm run typecheck && npm run test && npm run build && npm run e2e
 ```
 Expected: 无失败。把用例数与耗时记进 `README.md` 的验收小节。
 
-- [ ] **Step 2: 皮肤替换测试（自定义皮肤这条轴的唯一端到端验证）**
+- [x] **Step 2: 皮肤替换测试（自定义皮肤这条轴的唯一端到端验证）**
+
+> **做成了自动化脚本，不是手工步骤**：`e2e/skin-check.mjs`（`npm run e2e:skin`）。为此给主进程加了 `PET_USER_DATA` 环境变量覆盖存档目录——否则这个测试只能靠改你真实的 `%APPDATA%`。三项：
+> ① 用户目录里的皮肤优先且存档指定的 id 真的被装载（断言皮肤名、素材解码出 640 宽、地址是 `app://skin/...`）；
+> ② 存档指向不存在的皮肤时回退到内置，但必须留下警告，不许静默换皮；
+> ③ 存档里的 id 是 `../../etc` 这种穿越形态时必须被拒。
+> 样例里那条「故意做个坏皮肤看打印 errors」由 `test/skin-store.test.ts` 覆盖得更严（六条拒绝路径，含同名目录）。
 
 ```bash
 cp -r skins/block skins/mine
@@ -2924,15 +2934,17 @@ node -e "import('./dist/main/skin-store.js').then(m=>console.log(m.loadSkin('ski
 ```
 Expected: 打印 `errors` 且明确指出缺哪条必需池，不抛栈、不静默回退。
 
-- [ ] **Step 3: 写 README**
+- [x] **Step 3: 写 README**
 
 必含小节：怎么跑起来（三条命令）、怎么自定义皮肤（目录结构 + manifest 字段表 + 素材合同「周期整除时长」）、常见故障（灰底 → 跑体检；面板点不动 → 查穿透租约日志；全屏时被遮住 → Ctrl+Shift+点身体看命中框）。皮肤说明要能让没读过本计划的人照着做出一个能装载的包。
 
-- [ ] **Step 4: 回写设计文档**
+- [x] **Step 4: 回写设计文档**
 
 把 Task 3 的 spike 结论落到设计文档第 3 节（保留还是退路），并把第 14 节里已被 v1 触及的条目更新。若 spike 走了退路，同步修正第 3、4 节的措辞。
 
 - [ ] **Step 5: 提交并打标签**
+
+> 提交已完成。**标签没打**，两个原因：① 还有三处真机项要人确认（穿透、全屏让路、探测不闪窗），现在打 v0.1.0 等于给一个没走完验收的版本盖章；② 打标签和推送都是对外可见的动作，该由你决定时机。要打的命令：`git tag v0.1.0 && git push origin main v0.1.0`。
 
 ```bash
 git add README.md docs/桌宠-Windows实现方案.html

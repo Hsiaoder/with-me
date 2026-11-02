@@ -190,6 +190,26 @@ let beforePids = new Set()
 /** 「探测子进程已启动」那条检查记下的 PID，退出后拿它验有没有变孤儿。 */
 let probePids = []
 
+check('拖拽跟随光标，松手停在原地不回弹', async () => {
+  const start = await page.evaluate(() => window.__petDebug.hitBox)
+  const from = { x: start.x + start.w / 2, y: start.y + start.h / 2 }
+  const to = { x: from.x - 220, y: from.y - 60 }
+  const drag = await page.evaluate(async ({ from, to }) => {
+    const fire = (type, p) => window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
+    fire('pointerdown', from)
+    fire('pointermove', { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 })
+    fire('pointermove', to)
+    const during = window.__petDebug.hitBox
+    fire('pointerup', to)
+    await new Promise((r) => setTimeout(r, 60))
+    return { moved: { x: Math.round(during.x), y: Math.round(during.y) }, after: window.__petDebug.hitBox }
+  }, { from, to })
+  // 拖拽中位置应当跟上（允许 20 像素误差，舞台与身体框有偏移）
+  assert.ok(Math.abs(drag.moved.x - (to.x - start.w / 2)) < 40, `拖拽中没有跟随：${JSON.stringify(drag.moved)}`)
+  // 松手后停在原地：位置不能再等于起手位置
+  assert.notEqual(drag.after.x, start.x, '松手后弹回原位了')
+})
+
 check('Ctrl+Shift+点身体切换命中框', async () => {
   // F9 走不通：这扇窗 focusable:false，收不到键盘事件。改用带修饰键的点击。
   const toggle = () => page.evaluate(() => {

@@ -14,7 +14,8 @@
     "e2e": "npm run build && node e2e/pet-check.mjs",
     "skin:test": "node tools/make-test-skin.mjs",
     "alpha:check": "node tools/alpha-report.mjs",
-    "progress": "node tools/progress.mjs"
+    "progress": "node tools/progress.mjs",
+    "e2e:skin": "npm run build && node e2e/skin-check.mjs"
   },
   "engines": {
     "node": ">=22"

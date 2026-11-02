@@ -16,6 +16,12 @@ import { createWindowsPlatform } from './windows.js'
 
 const here = dirname(fileURLToPath(import.meta.url))   // 运行时是 dist/main
 
+/**
+ * 存档与用户皮肤的位置。测试要把它挪到临时目录，否则"换皮肤"这条端到端
+ * 只能靠手工改真实 %APPDATA%。只允许显式环境变量指定，不给默认值。
+ */
+if (process.env.PET_USER_DATA) app.setPath('userData', process.env.PET_USER_DATA)
+
 // 协议特权必须在 ready 之前声明，且整个进程只声明一次。
 declareAppScheme()
 // 硬件加速保持开启（全局约束，spike 已验过整屏透明 + 硬件加速成立）。这里只补一条：

@@ -211,6 +211,8 @@ function bootstrap(skin: SkinPayload): void {
 
   /** 人工排查与 e2e 用的钩子；Task 13 把它换成 F9 全局快捷键。 */
   const debug = {
+    /** 当前生效的皮肤名。换皮肤那条端到端验收靠它确认装载的是哪一份。 */
+    skinName: manifest.name,
     /** 喂一个光标位置，走与真实推送完全相同的路径。 */
     cursor: (p: Point): boolean => { handleCursor(p); return true },
     /** 把宠物挪到指定舞台位置，用于验收贴边与面板夹取。 */
