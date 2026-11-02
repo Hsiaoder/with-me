@@ -1,0 +1,13 @@
+# 仓库内统一用 LF，避免 Windows 的 autocrlf 造成行尾反复变动
+* text=auto
+*.ts eol=lf
+*.js eol=lf
+*.mjs eol=lf
+*.cjs eol=lf
+*.json eol=lf
+*.jsonc eol=lf
+*.css eol=lf
+*.html eol=lf
+*.md eol=lf
+*.webm binary
+*.png binary

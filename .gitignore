@@ -1,0 +1,8 @@
+node_modules/
+dist/
+spike/out/
+e2e/artifacts/
+npm-install.log
+.idea/
+*.log
+.DS_Store
