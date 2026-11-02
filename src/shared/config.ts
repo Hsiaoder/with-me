@@ -53,7 +53,17 @@ export const SAVE_FILE = 'save.json'
 // ---- 窗口 ----
 /** 覆盖层的自定义协议前缀。Chromium 禁止 file:// 页面 import ES 模块，素材也必须同源。 */
 export const APP_SCHEME = 'app'
-export const APP_ORIGIN = `${APP_SCHEME}:///`
+/**
+ * 资源根用「主机名」区分，不用路径首段：standard 协议下 Chromium 会把路径首段
+ * 搬进主机位，`app:///renderer/index.html` 到处理器里已经变成 `app://renderer/index.html`，
+ * 按首段找根永远找不到（实测 403）。
+ */
+export const APP_HOST = 'assets'
+export const SKIN_HOST = 'skin'
+/** 页面与模块都从 assets 根走，相对 import 才能留在同一个主机下。 */
+export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}/`
+/** 素材地址由 JS 拼绝对 URL，不走相对解析。 */
+export const SKIN_ORIGIN = `${APP_SCHEME}://${SKIN_HOST}/`
 /** 面板贴在身体上方的偏移；越界时由渲染层夹回屏幕内。 */
 export const PANEL_OFFSET_ABOVE = 40
 

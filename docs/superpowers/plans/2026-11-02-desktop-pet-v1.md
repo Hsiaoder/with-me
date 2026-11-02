@@ -545,7 +545,24 @@ git commit -m "spike: 整屏透明窗与硬件加速四步实测结论"
   - `interface Platform { createWindow(): void; setInteractive(on: boolean): void; sendCursor(p: Point): void; setFocusable(on: boolean): void; show(): void; hide(): void }`
   - `createWindowsPlatform(opts): Platform`
 
-- [ ] **Step 1: 写类型与消息表**
+- [x] **Step 1: 写类型与消息表**
+
+> ### 实现时的修正（已验证，后续任务按这里写，不要按上面的样例）
+>
+> 1. **资源根按主机名区分，不按路径首段。** 实测：`standard: true` 的自定义协议下，Chromium 会把 `app:///renderer/index.html` 规范化成 `app://renderer/index.html` 再交给处理器——路径首段搬进了主机位，`mapAppPath(roots, pathname)` 拿到的 pathname 只剩 `/index.html`，按首段找根必然 403，页面一条资源都取不到。改成 `roots[host]`：
+>    - `APP_HOST = 'assets'` → 根是 `dist`，页面 `app://assets/renderer/index.html`
+>    - `SKIN_HOST = 'skin'` → 根是 `skins/block/animation`，素材 `app://skin/idle/patrol.webm`
+>    - 新增 `SKIN_ORIGIN` 常量；`APP_ORIGIN` 由 `app:///` 改为 `app://assets/`
+>
+>    选 `assets` 这一个主机而不是给 renderer/shared 各开一个，是为了让 `../shared/config.js` 这类**相对 import** 解析后仍在同一主机内（`app://assets/shared/config.js`）。素材一律用绝对 URL，不参与相对解析。
+> 2. **`mapAppPath(roots, url)` 收完整 URL**，内部自己取 host 与 pathname，调用方不再传 `new URL(...).pathname`。
+> 3. **不建 `tools/build-preload.mjs`**：Task 1 的 `tools/copy-static.mjs` 已经在复制 preload 与 html/css，再来一份是重复。
+> 4. **不加 `dev:app` 脚本**：`npm start`（`electron .` + package.json 的 `main`）已覆盖，且 `electron dist/main/index.js` 会把 appPath 变成 `dist/main`，反而更容易拼错路径。
+> 5. **不建 `test/ipc-types.test.ts`**：`test/preload-contract.test.ts` 已经断言通道唯一、带 `pet:` 前缀、且与 preload 内联字符串一致，再开一个文件是重复。
+> 6. **`src/main/index.ts` 暂不接 `loadSkin`**：`skin-store.ts` 是 Task 5 的产物，此处引用会让构建失败。皮肤下发留到 Task 5 接。
+> 7. **不导出 `rectContains`**：Task 6 Step 3 本来就要把它删掉，那一步提前了。
+> 8. `tsconfig.json` 加 `allowJs`（测试要 import `tools/*.mjs` 与 `spike/*.mjs`）；`tsconfig.build.json` 加 `noEmitOnError`，避免类型报错还留下一半 dist。
+> 9. **Step 8 的验收改用 CDP，不靠人眼。** 起 app 时带 `--remote-debugging-port`，验证四件事：页面 URL 是 `app://assets/renderer/index.html`、渲染层模块真的执行（打出画布尺寸）、`app://skin/idle/patrol.webm` 能取到（`loadedmetadata` 报 640x360 / 4.00s）、`window.petBridge` 六个方法齐全。全部通过。
 
 ```ts
 // src/shared/types.ts
@@ -575,7 +592,7 @@ export type ClickThroughPayload = { grab: boolean }
 import type { Point } from './types'
 ```
 
-- [ ] **Step 2: 写一个失败测试，锁住消息表不与 payload 脱节**
+- [x] **Step 2: 写一个失败测试，锁住消息表不与 payload 脱节**
 
 ```ts
 // test/ipc-types.test.ts
@@ -593,7 +610,7 @@ describe('消息表', () => {
 
 Run: `npm run test -- ipc` → Expected: PASS（此测试的作用是防止后续任务私自加散落的字符串频道）
 
-- [ ] **Step 3: 平台层接口**
+- [x] **Step 3: 平台层接口**
 
 ```ts
 // src/main/platform.ts
@@ -694,7 +711,7 @@ export function createClickThroughBridge(
 
 > 注意：`createLease` 在 Task 8 实现。本任务先建 `src/shared/lease.ts` 的**最小可用版本**（见 Step 4），Task 8 再补超时与测试扩展，避免此处出现未定义引用。
 
-- [ ] **Step 4: 建最小 lease.ts 占位（有真实逻辑，可被 Task 8 扩展）**
+- [x] **Step 4: 建最小 lease.ts 占位（有真实逻辑，可被 Task 8 扩展）**
 
 ```ts
 // src/shared/lease.ts
@@ -725,7 +742,7 @@ export function createLease(opts: LeaseOptions) {
 }
 ```
 
-- [ ] **Step 4b: 注册 `app://` 协议（窗口加载和素材取用都靠它）**
+- [x] **Step 4b: 注册 `app://` 协议（窗口加载和素材取用都靠它）**
 
 为什么必须有它：Chromium 不允许 `file://` 页面 `import` ES 模块（同源策略把 file 当不透明源，报 CORS），带 alpha 的 webm 也会被当跨源素材拦。两个参考项目各有一套：qqpet 注册 `app://`，dsh-pet 注册 `dsh-pet-bridge:`。**本项目的等价物是 `src/main/protocol.ts`。**
 
@@ -844,12 +861,12 @@ describe('mapAppPath', () => {
 })
 ```
 
-素材地址从此固定为 `app:///skin/<池>/<名>.webm`（Task 10 的 URL 构造照此写，不要拼 `file:///` 绝对路径——Windows 反斜杠会把它弄坏）。
+素材地址从此固定为 `app://skin/<池>/<名>.webm`（Task 10 的 URL 构造照此写，不要拼 `file:///` 绝对路径——Windows 反斜杠会把它弄坏）。**注意主机名 `skin` 不是路径首段**，见下面 Step 4b 的实测修正。
 
 Run: `npm run test -- protocol`
 Expected: 先 FAIL（模块不存在），实现后 6 passed
 
-- [ ] **Step 5: 主进程装配与 preload**
+- [x] **Step 5: 主进程装配与 preload**
 
 ```ts
 // src/main/index.ts
@@ -914,7 +931,7 @@ contextBridge.exposeInMainWorld('petBridge', {
 
 > preload 打成 `.mjs` 且需要能 import `shared`：`tsconfig.json` 里 `module: NodeNext` 时，preload 用 `.cjs` 输出更稳。改为把 preload 单独用 `esbuild` 之外零依赖方案处理 —— **本任务采用最简做法：preload 内联消息名字符串，并加一条测试断言它与 `shared/ipc.ts` 一致**（见 Step 7）。这是刻意的取舍：preload 是唯一允许重复字符串的地方，因为 `contextBridge` 的限制。
 
-- [ ] **Step 6: 加构建脚本，让 main/preload/renderer 各出产物**
+- [x] **Step 6: 加构建脚本，让 main/preload/renderer 各出产物**
 
 `package.json`：
 
@@ -954,7 +971,7 @@ contextBridge.exposeInMainWorld('petBridge', {
 })
 ```
 
-- [ ] **Step 7: 写锁定 preload 字符串的测试**
+- [x] **Step 7: 写锁定 preload 字符串的测试**
 
 ```ts
 // test/preload-contract.test.ts
@@ -974,7 +991,7 @@ describe('preload 消息名与消息表一致', () => {
 
 Run: `npm run test -- preload` → Expected: PASS
 
-- [ ] **Step 8: 渲染层空壳 + 手工确认窗口能出现**
+- [x] **Step 8: 渲染层空壳 + 手工确认窗口能出现**
 
 ```html
 <!-- src/renderer/index.html -->
@@ -994,7 +1011,7 @@ window.petBridge?.onCursor((p) => { /* Task 10 接线 */ })
 Run: `npm run dev:app`
 Expected: 桌面上没有可见内容（因为还没画宠物），但**鼠标一切正常**——说明整屏窗存在且穿透生效。验证方式：桌面图标仍可单击。此时不要期待任何动画。
 
-- [ ] **Step 9: 提交**
+- [x] **Step 9: 提交**
 
 ```bash
 git add src/ tools/build-preload.mjs package.json
