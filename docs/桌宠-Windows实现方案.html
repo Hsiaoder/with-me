@@ -99,7 +99,7 @@
   <h1>桌宠 · Windows 实现方案与技术架构</h1>
   <p>工作空间 <code>E:\ai-pet</code> ｜ 整理日期 2026-11-02 ｜ 依据：00-项目交接.md + demo-project 两份参考实现的源码调研</p>
   <p>范围：单宠物 ｜ 平台 Windows 先行、预留 macOS ｜ 用户可自定义皮肤 ｜ agent 接入与养成数值推到后续</p>
-  <div class="now"><b>一句话现状：</b>技术栈已确定为 Electron，窗口模型、皮肤包契约、播放器抽象、行为调度四条主线已定；素材管线还差一次真机验证，整屏透明窗配硬件加速的效果需要实测后才能签收。</div>
+  <div class="now"><b>一句话现状：</b>技术栈已确定为 Electron，窗口模型、皮肤包契约、播放器抽象、行为调度四条主线已定；整屏透明窗配硬件加速已在真机验过（第 3 节），架构签收。剩下一条限制：<b>切动画不能靠 <code>loop</code></b>，必须走双播放器预热。真实角色素材的蓝幕管线还没验。</div>
 </div></header>
 
 <nav>
@@ -216,7 +216,7 @@ win.setIgnoreMouseEvents(true)              // 默认整窗鼠标穿透</code></
     <li><b>要有命中区可视化调试开关。</b>按一个键把身体矩形画在屏幕上。上一轮排查那块灰色矩形时最缺的就是这个，第一天就该有。</li>
   </ol>
 
-  <div class="warn"><b>这条架构还没验证，是 v1 的第一件事。</b>整屏透明合成 + <b>保留硬件加速</b><span class="gn">（让显卡参与把各层画面拼成最终屏幕影像，dsh-pet 为了绕开透明窗的 bug 把它关掉了，代价是视频全靠 CPU 解码，占用高）</span>在你这台机器上会不会出黑边、掉帧、穿透不稳，没有先例可引。半天能做完的验证清单：<div class="box" style="margin:.6rem 0">① 开一扇整屏透明窗 → 放一段带 alpha 的 webm → 看边缘有没有灰雾和黑边<br>② 让它持续播 10 分钟 → 看 CPU 占用是否稳定、有没有掉帧<br>③ 在窗上开穿透开关，点桌面图标和下面的浏览器 → 确认穿透正常<br>④ 打开一个全屏视频和一个全屏游戏 → 确认让路逻辑生效<br>验不过就退到「一宠一窗，但窗口一次性按最大尺寸建立、永不改大小」，穿透判定直接搬 dsh-pet 那个纯函数（现成、可单测、坑已踩过）。</div></div>
+  <div class="key"><b>这条架构已验过，2026-11-02 通过。</b>整屏透明合成 + <b>保留硬件加速</b><span class="gn">（让显卡参与把各层画面拼成最终屏幕影像，dsh-pet 为了绕开透明窗的 bug 把它关掉了，代价是视频全靠 CPU 占用高）</span>在 Intel Arc 130T、200% 缩放的机器上实测成立：宠物框之外 580 万个像素里不透明像素为 0，真实屏幕差分在覆盖层范围内意外变化为 0，24fps 一帧不丢，CPU 稳态 1.4%。完整数据与截图见 <code>spike/README.md</code>。<br><br><b>一条硬限制：不能用 <code>&lt;video loop&gt;</code>。</b>实测每次循环回到起点都要重新缓冲一下（70 秒里 17 次，素材正好 17 圈）。切动画必须靠双播放器提前 <code>loadeddata</code> 再换，这就是第 7 节那套 A/B 旋转的存在理由；Task 7 做完要回这里复验切换点无停顿。<br><br>还没验的两项：穿透在操作系统层面是否真的把点击让给桌面（要人手点一下），以及全屏让路（Task 13 的活，本轮预期就是盖住）。</div>
 </section>
 
 <section id="s4">
@@ -360,7 +360,10 @@ win.setIgnoreMouseEvents(true)              // 默认整窗鼠标穿透</code></
   <h2>10. Windows 平台细节清单</h2>
   <table>
     <tr><th>事项</th><th>怎么做</th><th>来源</th></tr>
-    <tr><td>硬件加速</td><td><b>保持开启</b>。dsh-pet 关掉换来透明窗不出黑边，代价是视频全靠 CPU 解码，不划算；先用 spike 验自己的路径</td><td>dsh-pet <code>main.js:113-117</code></td></tr>
+    <tr><td>硬件加速</td><td><b>保持开启</b>。dsh-pet 关掉换来透明窗不出黑边，代价是视频全靠 CPU 解码，不划算；本机的整屏透明 + 硬件加速路径已实测通过</td><td>dsh-pet <code>main.js:113-117</code>；<code>spike/README.md</code></td></tr>
+    <tr><td>主进程入口</td><td><b>不许写顶层 <code>await</code></b>。Electron 要等入口模块求值结束才触发 <code>ready</code>，模块又卡在 <code>await app.whenReady()</code> 上，两边互等，进程挂着不退。写成 <code>async function main(){ await app.whenReady() }</code> 再 <code>void main()</code></td><td>spike 实测死锁</td></tr>
+    <tr><td>IPC 监听时序</td><td><code>ipcMain.on</code> 必须挂在 <code>loadFile</code> <b>之前</b>。挂晚了，渲染层在首帧里发的消息直接丢，而且不报错——排查时看到的全是别处的假象</td><td>spike 实测丢消息</td></tr>
+    <tr><td>动画循环</td><td>不要用 <code>&lt;video loop&gt;</code>：每圈回到起点要重新缓冲一下。切换靠双播放器提前 <code>loadeddata</code>，见第 7 节</td><td>spike 实测 70 秒 17 次</td></tr>
     <tr><td>透明窗</td><td><code>transparent + frame:false + hasShadow:false + resizable:false + movable:false + skipTaskbar</code></td><td>qqpet <code>window.ts:12-29</code></td></tr>
     <tr><td>置顶层级</td><td>Windows 用 <code>screen-saver</code> 级</td><td>dsh-pet <code>topmost-watchdog.js:20</code></td></tr>
     <tr><td>穿透</td><td>轮询推进光标，不依赖 <code>forward</code>；关闭穿透带 500 毫秒超时兜底</td><td>第 4 节</td></tr>
@@ -440,8 +443,7 @@ win.setIgnoreMouseEvents(true)              // 默认整窗鼠标穿透</code></
   <ul>
     <li><b>最终用哪个角色形象。</b>鲸鱼娘形象原作者以「署名 · 非商业 · 相同方式共享」开放二创但禁止商用；「缓存」是你已有完整设定的方案。练手可以用前者，发布的产品必须用后者或自研形象。</li>
     <li><b>第一版动画到底几段、先出哪一段。</b>建议先出待机，因为它是所有其他段对齐的基准。</li>
-    <li><b>蓝幕抠像脚本自己写还是改造。</b>参考项目的脚本是绿幕专用，蓝幕区间和判定阈值要重写。</li>
-    <li><b>spike 结果。</b>整屏覆盖层在你机器上不成立的话，第 3 节要换成「固定大窗 + 搬 dsh-pet 的判定函数」。</li>
+    <li><b>蓝幕抠像脚本自己写还是改造。</b>参考项目的脚本是绿幕专用，蓝幕区间和判定阈值要重写。占位皮肤已经用 ffmpeg 的 <code>colorkey</code> 走通了一条最简管线（<code>tools/make-test-skin.mjs</code>），但那是色块，换成真实角色素材时的容差与溢色处理还没验。</li>
   </ul>
 
   <h3>参考实现文件索引（都在这两个仓库里，可直接读）</h3>

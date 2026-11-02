@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden }
+  #pet { position: absolute }
+  video { display: block; width: 100%; height: 100%; object-fit: contain }
+  #tip { position: absolute; font: 14px/1.4 sans-serif; color: #111;
+         background: rgba(255,255,255,.78); padding: 2px 6px; border-radius: 4px;
+         /* 宽高写死：文字长短会改变盒子大小，而主进程只按首次上报的矩形判定
+            「这块变化是不是预期内的」，尺寸漂移会误报成覆盖层漏色 */
+         width: 560px; height: 26px; box-sizing: border-box; white-space: nowrap; overflow: hidden }
+</style>
+</head>
+<body>
+  <div id="pet"><video autoplay loop muted playsinline></video></div>
+  <div id="tip">光标：—</div>
+  <script>
+    const note = (msg) => window.spike && window.spike.note(msg)
+    const clip = new URLSearchParams(location.search).get('clip')
+
+    // 命中矩形只在这里写一次，DOM 位置由它推导，避免两处不一致
+    const PET = { x: 400, y: 300, w: 320, h: 180 }
+    const pet = document.getElementById('pet')
+    const tip = document.getElementById('tip')
+    const video = pet.querySelector('video')
+    Object.assign(pet.style, { left: PET.x + 'px', top: PET.y + 'px', width: PET.w + 'px', height: PET.h + 'px' })
+    Object.assign(tip.style, { left: PET.x + 'px', top: (PET.y + PET.h + 12) + 'px' })
+
+    // 把实际占用的矩形报给主进程，屏幕差分只在这些框里找变化
+    requestAnimationFrame(() => {
+      const box = (el) => {
+        const b = el.getBoundingClientRect()
+        return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }
+      }
+      note({ kind: 'rects', rects: { pet: box(pet), tip: box(tip) } })
+    })
+
+    if (!clip) note({ kind: 'error', message: 'missing clip query param' })
+    video.src = 'file:///' + String(clip).replace(/\\/g, '/')
+
+    for (const ev of ['loadstart', 'loadeddata', 'playing', 'waiting', 'stalled', 'error']) {
+      video.addEventListener(ev, () => note({
+        kind: ev,
+        message: video.error ? String(video.error.message) : '',
+        readyState: video.readyState,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+      }))
+    }
+
+    // 真在解码吗？数视频帧比看 currentTime 可靠
+    let frames = 0
+    const count = () => { frames++; video.requestVideoFrameCallback(count) }
+    if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(count)
+    setInterval(() => note({ kind: 'tick', frames, currentTime: Number(video.currentTime.toFixed(2)) }), 10_000)
+
+    // 穿透窗收不到 mousemove，光标由主进程推进
+    let inside = false
+    if (window.spike) {
+      window.spike.onCursor((p) => {
+        const hit = p.x >= PET.x && p.x <= PET.x + PET.w && p.y >= PET.y && p.y <= PET.y + PET.h
+        tip.textContent = `光标 ${Math.round(p.x)},${Math.round(p.y)} ${hit ? '在宠物上（接住鼠标）' : '在宠物外（穿透）'}`
+        if (hit === inside) return
+        inside = hit
+        window.spike.grab(hit)
+      })
+    }
+  </script>
+</body>
+</html>

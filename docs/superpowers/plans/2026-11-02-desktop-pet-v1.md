@@ -97,7 +97,7 @@ E:\ai-pet\with-me\
 - Consumes: 无
 - Produces: `npm run test`（vitest run）、`npm run typecheck`（tsc --noEmit）、`src/shared/config.ts` 里所有后续任务要用的常量名。
 
-- [ ] **Step 1: 确认仓库就绪并装依赖**
+- [x] **Step 1: 确认仓库就绪并装依赖**
 
 仓库已初始化（`E:\ai-pet\with-me`，分支 `main`，远程 `origin`），**不要再跑 `git init`**。
 
@@ -124,7 +124,7 @@ npx tsc --init --target ES2022 --module NodeNext --moduleResolution NodeNext --s
 }
 ```
 
-- [ ] **Step 2: 写 .gitignore**
+- [x] **Step 2: 写 .gitignore**
 
 ```
 node_modules/
@@ -134,7 +134,7 @@ spike/out/
 .save.json.bak.tmp
 ```
 
-- [ ] **Step 3: 写 vitest.config.ts，让单测只跑纯逻辑**
+- [x] **Step 3: 写 vitest.config.ts，让单测只跑纯逻辑**
 
 ```ts
 import { defineConfig } from 'vitest/config'
@@ -147,7 +147,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] **Step 4: 写 src/shared/config.ts（全局唯一常量来源）**
+- [x] **Step 4: 写 src/shared/config.ts（全局唯一常量来源）**
 
 设计文档里出现的每个数字都在这一个文件里，后续任务只 import，不再写字面量。
 
@@ -176,7 +176,7 @@ export const SKIN_MANIFEST = 'manifest.json';
 export const REQUIRED_POOLS = ['idle', 'turn', 'move', 'click', 'drag'] as const;
 ```
 
-- [ ] **Step 5: 写第一个测试并让它失败**
+- [x] **Step 5: 写第一个测试并让它失败**
 
 ```ts
 // test/config.test.ts
@@ -196,7 +196,7 @@ describe('素材合同', () => {
 Run: `npm run test`
 Expected: 两个用例 PASS（常量已定义）。这一步的意义是让 `npm run test` 和 `npm run typecheck` 从此可用。
 
-- [ ] **Step 6: 校验并提交**
+- [x] **Step 6: 校验并提交**
 
 ```bash
 npm run typecheck && npm run test
@@ -217,7 +217,7 @@ git commit -m "chore: 初始化 TypeScript + vitest 骨架，并收录设计文�
 - Consumes: `src/shared/config.ts` 的 `CANVAS_W/CANVAS_H`
 - Produces: `skins/block/animation/<pool>/<name>.webm`（6 段真实带 alpha 视频）；`analyzeAlpha(rgba: Uint8Array): AlphaReport`（供 Task 5 皮肤校验调用）
 
-- [ ] **Step 1: 写生成占位动画的脚本**
+- [x] **Step 1: 写生成占位动画的脚本**
 
 关键：用 `colorkey` 滤镜把蓝幕变透明（这就是真实管线的抠像步骤），解码/编码两端都显式写 `libvpx-vp9` + `format=yuva420p`，否则透明通道会被静默丢掉。
 
@@ -270,7 +270,7 @@ CLIPS.forEach(make)
 Run: `node tools/make-test-skin.mjs`
 Expected: 打印 6 行 `ok skins/block/animation/...webm`，每个文件约 30–120 KB。
 
-- [ ] **Step 2: 手写失败测试，定 AlphaReport 的形状**
+- [x] **Step 2: 手写失败测试，定 AlphaReport 的形状**
 
 体检的判据来自设计文档第 5 节：背景区（身体矩形之外）不该有可见残留。
 
@@ -306,7 +306,7 @@ describe('analyzeAlpha', () => {
 Run: `npm run test -- alpha`
 Expected: FAIL —「Cannot find module .../alpha-report.mjs」
 
-- [ ] **Step 3: 实现体检函数**
+- [x] **Step 3: 实现体检函数**
 
 ```js
 // tools/alpha-report.mjs
@@ -335,12 +335,12 @@ export function analyzeAlpha(rgba, w, h, body) {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `npm run test -- alpha`
 Expected: 2 passed
 
-- [ ] **Step 5: 给体检加命令行入口，并用它验真实产物**
+- [x] **Step 5: 给体检加命令行入口，并用它验真实产物**
 
 ```js
 // 追加到 tools/alpha-report.mjs 末尾
@@ -370,7 +370,7 @@ const FFM_BIN = (await import('ffmpeg-static')).default
 Run: `node tools/alpha-report.mjs skins/block/animation/idle/patrol.webm`
 Expected: 打印形如 `{"bgSamples":172800,"bgAlphaMean":< 1,"bgAlphaMax":<8,"haze":false}`，退出码 0。若 `haze:true`，说明 `colorkey` 的容差（0.30）太宽，调小到 0.20 重跑第 1 步。
 
-- [ ] **Step 6: 写皮肤占位 manifest，让 Task 5 有东西可装载**
+- [x] **Step 6: 写皮肤占位 manifest，让 Task 5 有东西可装载**
 
 ```json
 {
@@ -388,7 +388,7 @@ Expected: 打印形如 `{"bgSamples":172800,"bgAlphaMean":< 1,"bgAlphaMax":<8,"h
 }
 ```
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add tools/ skins/
@@ -409,7 +409,12 @@ git commit -m "feat: 蓝幕抠像生成占位动画，并加入透明通道残�
 - Consumes: `skins/block/animation/idle/patrol.webm`、npm 已装的 `electron`
 - Produces: 结论记录（无代码接口）
 
-- [ ] **Step 1: 写 spike 主进程（刻意不调 disableHardwareAcceleration）**
+- [x] **Step 1: 写 spike 主进程（刻意不调 disableHardwareAcceleration）**
+
+> **实现时的三处偏离**（结论已记进 `spike/README.md`，下面的样例代码保留原样但**别照抄**）：
+> ① `await app.whenReady()` 写在 ESM 入口顶层会死锁，实际实现包成 `async function main()`；
+> ② preload 用 `spike/preload.cjs` 而不是 `.mjs`，和生产代码保持一致，也避开 ESM preload 的求值时机问题；
+> ③ 素材地址经 `loadFile(..., { query: { clip } })` 传绝对路径，光标由主进程**推送**而不是渲染层 `invoke` 拉取，和生产第 4 节的模型一致。
 
 ```js
 // spike/main.mjs
@@ -473,7 +478,7 @@ contextBridge.exposeInMainWorld('spike', { grab: (on) => ipcRenderer.send('spike
 </body></html>
 ```
 
-- [ ] **Step 2: 补上光标推进这条通道（spike 里最简版）**
+- [x] **Step 2: 补上光标推进这条通道（spike 里最简版）**
 
 `preload.mjs` 加：
 
@@ -494,6 +499,8 @@ ipcMain.handle('spike:cursor', () => {
 
 - [ ] **Step 3: 跑起来，按设计文档第 3 节的四步逐项观察**
 
+**进度：① 边缘、② 流畅已自动出数并通过；③ 穿透的软件链路已通、系统层点击待人工确认；④ 让路本轮未测。** 人工清单在 `spike/README.md` 末尾，跑 `SPIKE_HOLD=1 npx electron spike/main.mjs` 完成。
+
 ```bash
 npx electron spike/main.mjs
 ```
@@ -504,11 +511,11 @@ npx electron spike/main.mjs
 3. **穿透**：光标在宠物外时点击桌面图标能正常打开；移到色块上时面板文字变「接住」，此时点击落到宠物区域内不穿透。
 4. **让路**：开一个全屏视频和一个全屏游戏，看宠物是否盖在上面（这一步现在还没实现让路，**预期结果就是盖住**，记录下来供 Task 13 验证修复）。
 
-- [ ] **Step 4: 把结论写进 spike/README.md，并回写设计文档**
+- [x] **Step 4: 把结论写进 spike/README.md，并回写设计文档**
 
 `spike/README.md` 必须包含：日期、机器与系统版本、GPU 型号、四步各自的实测结果、CPU/内存数字、结论三选一（**通过 / 需带限制通过 / 不通过走退路**）。不通过时退路内容写清楚：改成「一宠一窗、窗口一次性按最大尺寸建立、永不改大小」，命中判定改搬 `demo-project/dsh-pet/dsh-pet/runtime/electron-helper/pointer-target.js` 的三态函数。
 
-- [ ] **Step 5: 提交（spike 允许提交，但目录名已隔离）**
+- [x] **Step 5: 提交（spike 允许提交，但目录名已隔离）**
 
 ```bash
 git add spike/ docs/桌宠-Windows实现方案.html
