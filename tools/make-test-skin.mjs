@@ -27,14 +27,17 @@ const BASE_X = DEFAULT_BODY_BOX.x + (DEFAULT_BODY_BOX.w - BOX_W) / 2
 const BASE_Y = DEFAULT_BODY_BOX.y + BOB
 const BOX_H = FEET_Y - BASE_Y - BOB
 
-/** 池 / 名字 / 色块颜色 / 横向表达式 / 纵向表达式（overlay 的 eval=frame 支持 t）。 */
+/**
+ * 池 / 名字 / 色块颜色 / 横向表达式 / 纵向表达式（overlay 的 eval=frame 支持 t）。
+ * 周期必须整除 DUR，否则末帧回不到首帧那个姿势，接缝会跳（素材合同，见皮肤包契约 spec 第 4.1 节）。
+ */
 const CLIPS = [
-  ['idle', 'patrol', GREEN, `${BASE_X}`, `${BASE_Y}+${BOB}*sin(2*PI*t/1.6)`],
-  ['idle', 'patrol2', GREEN, `${BASE_X}`, `${BASE_Y}+${BOB}*cos(2*PI*t/2.4)`],
-  ['turn', 'left', '0xE6A32C', `${BASE_X}+20*sin(2*PI*t/1.2)`, `${BASE_Y}`],
-  ['move', 'step', GREEN, `${BASE_X}+20*sin(2*PI*t/0.8)`, `${BASE_Y}+${BOB}*sin(2*PI*t/0.4)`],
+  ['idle', 'patrol', GREEN, `${BASE_X}`, `${BASE_Y}+${BOB}*sin(2*PI*t/2)`],
+  ['idle', 'patrol2', GREEN, `${BASE_X}`, `${BASE_Y}+${BOB}*cos(2*PI*t/4)`],
+  ['turn', 'left', '0xE6A32C', `${BASE_X}+20*sin(2*PI*t/1)`, `${BASE_Y}`],
+  ['move', 'step', GREEN, `${BASE_X}+20*sin(2*PI*t/2)`, `${BASE_Y}+${BOB}*sin(2*PI*t/0.5)`],
   ['click', 'tapped', '0xE6572C', `${BASE_X}`, `${BASE_Y}`],
-  ['drag', 'pulled', '0xE62CA8', `${BASE_X}`, `${BASE_Y}+${BOB}*sin(2*PI*t/0.6)`],
+  ['drag', 'pulled', '0xE62CA8', `${BASE_X}`, `${BASE_Y}+${BOB}*sin(2*PI*t/1)`],
 ]
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
