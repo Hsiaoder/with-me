@@ -8,19 +8,23 @@
 
 **Tech Stack:** Node 22+、TypeScript 5.5、Electron、vitest（纯逻辑单测）、Playwright 的 Electron 驱动（集成测试）、ffmpeg-static（仅开发期生成占位素材与体检）。
 
-**Spec:** `docs/桌宠-Windows实现方案.html`（仓库内副本；`E:\ai-pet\桌宠-Windows实现方案.html` 是同一份的原件。本计划实现它的第一版范围）
+**Spec:** [`docs/superpowers/specs/2026-11-02-desktop-pet-v1.md`](../specs/2026-11-02-desktop-pet-v1.md)（生效中的功能规格：交付范围、不可协商约束、验收标准）。设计理由见 `docs/桌宠-Windows实现方案.html`，皮肤契约见 [`specs/2026-11-02-skin-pack-contract.md`](../specs/2026-11-02-skin-pack-contract.md)。**规格与本文冲突时以规格的第 4 节（约束）和第 7 节（验收）为准**——那两节是实测过的，本文有几处写在它们之前。
 
 ## Global Constraints
 
 每个任务的隐含要求，逐条来自设计文档：
 
 - 平台：Windows 10/11 x64 先交付；macOS 只允许出现在 `src/main/platform.ts` 的接口形状里，业务代码不许出现 `if (process.platform === ...)`。
-- **禁止调用 `app.disableHardwareAcceleration()`**。本项目的核心赌注是保留硬件加速 + 整屏透明窗（设计文档第 3、10 节）。Task 3 的 spike 负责证伪或证实。
+- **禁止调用 `app.disableHardwareAcceleration()`**。本项目的核心赌注是保留硬件加速 + 整屏透明窗，**Task 3 的 spike 已验证成立**（证据见 `spike/README.md` 与规格第 3 节）。
+- **不能用 `<video loop>`**：spike 实测每次循环回到起点都要重新缓冲（70 秒 17 次）。切动画必须靠双播放器提前 `loadeddata`。Task 7 的实现与测试要覆盖这条。
+- **主进程 ESM 入口不许写顶层 `await`**：会与 `app.whenReady()` 互等死锁。包成 `async function main()` 再 `void main()`。
+- **`ipcMain.on` 必须早于 `loadFile`**：渲染层首帧就发消息，挂晚了静默丢失且不报错。
+- **素材 URL 固定为 `app://skin/<池>/<名>.webm`**（主机名 `skin`，不是路径首段）。Task 4 已把资源根改成按主机名区分，Task 10 拼地址时照此写，不要写 `app:///skin/...`。
 - 不使用 React/Vue/Svelte、不使用游戏引擎、不使用 Tauri/Qt。界面用手写 DOM + TypeScript。
 - 运行期依赖白名单：`electron`（dev）。发布期依赖（`electron-builder`）不在本计划内。生产代码零第三方运行时依赖。
 - 开发依赖白名单：`typescript`、`vitest`、`playwright`、`ffmpeg-static`、`@types/node`。
 - 素材规格：画布 640×360，脚底基准线 y=330，VP9 + alpha 的 `.webm`，蓝幕 `#0000FF` 抠像，`-crf 8 -b:v 0 -auto-alt-ref 0`。
-- 每段动画的首帧与末帧必须是同一标准正面姿势（素材合同）。
+- 素材合同：**动画周期必须整除素材时长**，每段从标准正面姿势起步并回到该姿势；不要把首帧复制成末帧。准确表述与理由见皮肤契约 spec 第 4.1 节。
 - 动画一律按**名字**寻址，禁止数组下标寻址（`ordinal` 反模式）。
 - 一个常量/决策只活在一个地方。所有时间参数集中在 `src/shared/config.ts`，禁止散落字面量。
 - 存档目录走 `platformDataDir()` 函数，禁止硬编码 `%APPDATA%`。
@@ -29,7 +33,7 @@
 - **所有相对 import 必须带 `.js` 后缀**（`import { x } from './config.js'`），包括测试文件里 import 源码。项目是 Node ESM（`"type": "module"` + `moduleResolution: NodeNext`），无后缀的相对路径在运行时直接报错。本文档各代码片段为节省篇幅偶有省略，落地时必须补上，`npm run typecheck` 会把漏掉的抓出来。
 - 仓库根：`E:\ai-pet\with-me`（Git 仓库已初始化，分支 `main`，远程 `origin` = https://github.com/Hsiaoder/with-me.git，私有）。
 - 参考项目在 `E:\ai-pet\demo-project\`，**在仓库之外**，只读；任何任务都不许修改它，也不要把它提交进仓库。
-- 设计与计划文档的仓库内路径：`docs/桌宠-Windows实现方案.html`、`docs/superpowers/plans/2026-11-02-desktop-pet-v1.md`，Task 1 的首个提交把它们收进版本历史。
+- 文档：设计理由 `docs/桌宠-Windows实现方案.html` · 结构总纲 `docs/架构大纲.md` · 功能规格 `docs/superpowers/specs/2026-11-02-desktop-pet-v1.md` · 皮肤契约 `docs/superpowers/specs/2026-11-02-skin-pack-contract.md` · 本计划。都在仓库内，已随 Task 1 的首批提交进版本历史。
 
 ---
 
@@ -1088,13 +1092,18 @@ import { REQUIRED_POOLS, CANVAS_W, CANVAS_H } from './config'
 import type { Box } from './types'
 
 export type PoolName = (typeof REQUIRED_POOLS)[number] | string
-export type AnimationMeta = { loop: boolean; mirrorable: boolean; bodyBox?: Box }
+/** 作者写的原始元数据，三个字段都可省略；校验时按池名补默认值。 */
+export type AnimationMeta = { loop?: boolean; mirrorable?: boolean; bodyBox?: Box }
 export type SkinManifest = {
   formatVersion: number
   name: string
+  /** 纯展示，不参与任何判断 */
+  author?: string
   canvas: { w: number; h: number; feetY: number }
   bodyBox: Box
   pools: Record<string, string[]>
+  /** 可选：池级权重，只用于自主走动选池；同池内多条动画均匀随机。缺省全 1 */
+  weights?: Record<string, number>
   /** 可选：每条动画覆盖循环性与镜像性；缺省 = 池 idle/turn/move 循环，其余一次性 */
   animationMeta?: Record<string, AnimationMeta>
   /** 可选：热点（v2 用），v1 只透传不解释 */
