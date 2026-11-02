@@ -1705,7 +1705,9 @@ Task 4 建了最小租约，本任务补齐「停留 400ms 弹面板 / 离开 40
   - `createHoverTimer(now: () => number)` → `{ onPoint(p: Point, overBody: boolean, overPanel: boolean): HoverEvent }`，`HoverEvent = 'open' | 'close' | 'none'`
   - `Lease.renew(want: boolean): boolean`（改名保留 tick 兼容）
 
-- [ ] **Step 1: 写悬停的失败测试**
+- [x] **Step 1: 写悬停的失败测试**
+
+> **一处偏离**：Interfaces 里的 `Lease.renew(want)`（改名保留 tick 兼容）不做。`tick` 已经是「每次请求过一次状态机」的准确说法，再挂一个 `renew` 别名只是让同一个动作有两个名字，调用方还得猜该用哪个。要改名就一次改干净，不留兼容层。
 
 ```ts
 // test/hover.test.ts
@@ -1760,7 +1762,7 @@ describe('悬停计时', () => {
 
 Run: `npm run test -- hover` → Expected: FAIL
 
-- [ ] **Step 2: 实现悬停计时**
+- [x] **Step 2: 实现悬停计时**
 
 ```ts
 // src/shared/hover.ts
@@ -1811,11 +1813,11 @@ export function createHoverTimer(now: () => number) {
 }
 ```
 
-- [ ] **Step 3: 跑测试确认通过**
+- [x] **Step 3: 跑测试确认通过**
 
 Run: `npm run test -- hover` → Expected: 5 passed
 
-- [ ] **Step 4: 补齐租约测试（超时兜底路径）**
+- [x] **Step 4: 补齐租约测试（超时兜底路径）**
 
 ```ts
 // test/lease.test.ts
@@ -1857,7 +1859,7 @@ describe('穿透租约', () => {
 
 Run: `npm run test -- lease` → Expected: 4 passed（Task 4 的实现已满足；此处是把行为钉死）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/shared/hover.ts src/shared/lease.ts test/hover.test.ts test/lease.test.ts
