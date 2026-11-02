@@ -1270,7 +1270,9 @@ git commit -m "feat: 皮肤 manifest 契约、动画名安全校验与装载"
   - `unionOf(rects: Rect[]): Rect[]`（原样返回，判定用 `anyContains`，不做几何合并 — 避免过早复杂化）
   - `anyContains(rects: Rect[], p: Point): boolean`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
+
+> **两处偏离**：① `unionOf(rects)` 不实现——它按 Interfaces 的定义就是「原样返回」，一个没有行为的函数，而且 `anyContains` 已经覆盖判定需求，留着只会让人以为它做了合并。② Step 3 的「消除 `rectContains` 重复」已经是既成事实：Task 4 就没往 `types.ts` 加过这个函数，只在 `geometry.ts` 一处定义（`grep` 已确认），所以那一步只做检查不做改动。
 
 ```ts
 // test/geometry.test.ts
@@ -1312,7 +1314,7 @@ describe('anyContains', () => {
 
 Run: `npm run test -- geometry` → Expected: FAIL（模块不存在）
 
-- [ ] **Step 2: 实现**
+- [x] **Step 2: 实现**
 
 ```ts
 // src/shared/geometry.ts
@@ -1353,13 +1355,13 @@ export function anyContains(rects: Rect[], p: Point): boolean {
 
 > `rectContains` 在 `types.ts` 与 `geometry.ts` 中重复了。Step 3 消掉它。
 
-- [ ] **Step 3: 消除重复：types.ts 不导出 rectContains，只留类型**
+- [x] **Step 3: 消除重复：types.ts 不导出 rectContains，只留类型**
 
 把 `src/shared/types.ts` 里的 `rectContains` 函数删除（类型保留），确认 `grep -rn "rectContains" src/` 只在 `geometry.ts` 有一处定义。
 
 Run: `npm run typecheck && npm run test -- geometry` → Expected: PASS
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add src/shared/geometry.ts src/shared/types.ts test/geometry.test.ts
