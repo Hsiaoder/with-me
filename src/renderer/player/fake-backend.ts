@@ -1,4 +1,5 @@
-import type { ClipPlayer, ClipRef, PlayResult } from './clip-player.js'
+import type { ClipPlayer, PlayResult } from './clip-player.js'
+import type { ClipRef } from '../../shared/types.js'
 
 /**
  * 测试替身：play 不自动结束，由 advance() 模拟播完、cancel() 模拟被打断。

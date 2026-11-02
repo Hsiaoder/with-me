@@ -1,9 +1,12 @@
 /**
  * 「播一段动画」的抽象。业务只说播哪个池的哪条，不知道底下是 video、图片序列还是别的。
  * 设计文档第 7 节。四条铁律由 test/clip-player.test.ts 与后端实现共同守住。
+ *
+ * ClipRef 用 shared/types.ts 那一份：行为层（shared）和播放器（renderer）都要引用它，
+ * 定义两份迟早分叉，而且 shared 反过来 import renderer 会破坏分层方向。
  */
+import type { ClipRef } from '../../shared/types.js'
 
-export type ClipRef = { pool: string; name: string }
 export type PlayResult = 'ended' | 'cancelled'
 
 export interface ClipPlayer {

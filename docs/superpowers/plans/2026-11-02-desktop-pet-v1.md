@@ -1879,7 +1879,15 @@ git commit -m "feat: 悬停 400ms 停留与释放计时、穿透租约超时兜�
   - `createPicker(rng: () => number)` → `pick(skin, current: {pool,name} | null): ClipRef`
   - `createRuleEngine(now: () => number)` → `feed(ev: RuleEvent): PoolName`，`RuleEvent = 'tick' | 'interacted' | 'dragged' | 'idle-long'`
 
-- [ ] **Step 1: 写随机层失败测试（固定种子，可重复）**
+- [x] **Step 1: 写随机层失败测试（固定种子，可重复）**
+
+> ### 实现时的修正
+>
+> 1. **`shared/behavior.ts` 不 import renderer**：样例第一行 `import type { ClipRef } from '../renderer/player/clip-player'` 把分层方向倒过来了（shared 是最底层）。`ClipRef` 本来就在 `shared/types.ts`，已让 `clip-player.ts` 和两个后端改为引用那一份，不留 re-export 别名。
+> 2. **去掉 `idle-long` 事件**：「久无人理」由引擎按注入时钟自己算，再开一个外部事件就是同一个判断放两处，迟早对不上。`RuleEvent = 'interacted' | 'dragged' | 'tick'`。
+> 3. **`pickWeightedPool(skin, pools[], weights[], current)` 换成 `pickAmbient(skin, current)`**：样例那个双数组签名允许调用方传进长度不一致的两个数组，而且候选池由外部传入意味着可能把 `click`/`drag` 也交给自主随机——宠物会没事干抖一下被点的反应。现在候选池固定取 `config.ts` 的 `AMBIENT_POOLS`（`idle/move/turn`），权重从 `skin.weights` 读，缺省 1。
+> 4. 归位那一拍不顺便自主走动（样例已有此行为，补了测试钉住）：刚互动完就自己跑开很怪。
+
 
 ```ts
 // test/behavior.test.ts
@@ -1924,7 +1932,7 @@ describe('createPicker', () => {
 
 Run: `npm run test -- behavior` → Expected: FAIL
 
-- [ ] **Step 2: 实现随机层**
+- [x] **Step 2: 实现随机层**
 
 ```ts
 // src/shared/behavior.ts
@@ -1963,7 +1971,7 @@ export function createPicker(rng: () => number) {
 }
 ```
 
-- [ ] **Step 3: 实现规则层（确定性，注入时钟）**
+- [x] **Step 3: 实现规则层（确定性，注入时钟）**
 
 ```ts
 // src/shared/rules.ts
@@ -1991,7 +1999,7 @@ export function createRuleEngine(now: () => number, idleLongMs: number) {
 }
 ```
 
-- [ ] **Step 4: 写规则层测试**
+- [x] **Step 4: 写规则层测试**
 
 ```ts
 // test/rules.test.ts
@@ -2024,7 +2032,7 @@ describe('规则层', () => {
 
 Run: `npm run test -- rules` → Expected: 3 passed
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/shared/behavior.ts src/shared/rules.ts test/behavior.test.ts test/rules.test.ts

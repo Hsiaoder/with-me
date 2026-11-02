@@ -38,6 +38,8 @@ export const ANIMATION_EXT = '.webm'
 export const REQUIRED_POOLS = ['idle', 'turn', 'move', 'click', 'drag'] as const
 /** 缺省按池名决定是否循环：状态性动作要能一直挂着，反应性动作播完就回待机。皮肤契约 3.1。 */
 export const LOOPING_POOLS = ['idle', 'turn', 'move'] as const
+/** 无人交互时允许自主挑选的池。反应池（click/drag）不在其中——宠物不该没事干抖一下被点的反应。 */
+export const AMBIENT_POOLS = ['idle', 'move', 'turn'] as const
 /** 面板上的动作按钮，顺序即显示顺序。 */
 export const PANEL_POOLS = ['idle', 'move', 'turn', 'click', 'drag'] as const
 export const PANEL_LABELS: Record<string, string> = {

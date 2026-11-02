@@ -1,4 +1,5 @@
-import type { ClipPlayer, ClipRef, PlayResult } from './clip-player.js'
+import type { ClipPlayer, PlayResult } from './clip-player.js'
+import type { ClipRef } from '../../shared/types.js'
 
 /**
  * 两个 <video> 轮流当前台。四条铁律逐条落在代码上：
