@@ -36,6 +36,8 @@ export const SKIN_ANIMATION_DIR = 'animation'
 export const ANIMATION_EXT = '.webm'
 /** 缺任何一条就拒绝装载该皮肤。 */
 export const REQUIRED_POOLS = ['idle', 'turn', 'move', 'click', 'drag'] as const
+/** 缺省按池名决定是否循环：状态性动作要能一直挂着，反应性动作播完就回待机。皮肤契约 3.1。 */
+export const LOOPING_POOLS = ['idle', 'turn', 'move'] as const
 /** 面板上的动作按钮，顺序即显示顺序。 */
 export const PANEL_POOLS = ['idle', 'move', 'turn', 'click', 'drag'] as const
 export const PANEL_LABELS: Record<string, string> = {

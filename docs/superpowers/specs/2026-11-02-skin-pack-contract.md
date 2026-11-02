@@ -146,37 +146,52 @@ ffmpeg -y -i 输入.mov -vf "colorkey=0x0000FF:0.30:0.05,format=yuva420p" \
 
 ## 5. 透明通道体检
 
-装载器会抽帧检查：把 `bodyBox` 之外的区域当作背景，统计这些像素的 alpha。
+体检**由命令行工具在交付前跑，装载时不跑**。原因：体检要调 ffmpeg 解码，而 `ffmpeg-static` 是开发依赖，生产代码不许依赖它，更不该为了体检让用户多背几十 MB。所以这一关是发布闸门，不是运行时保险。
+
+判据：把 `bodyBox` 之外的区域当作背景，统计这些像素的 alpha。
 
 | 判据 | 阈值 |
 |---|---|
-| 背景区 alpha 最大值 | ≤ **8** 才算干净；超过即判定为"灰雾残留"，拒绝装载 |
-| 抽帧步长 | 每 12 帧取一帧（24fps 素材约覆盖 0.5 秒一帧） |
+| 背景区 alpha 最大值 | ≤ **8** 才算干净；超过即判定为"灰雾残留" |
+| 抽帧步长 | 每 12 帧取一帧（24fps 素材约每 0.5 秒一帧） |
 
-**为什么抽多帧而不是只看首帧**：角色在动画里平移时，首帧常常刚好落在 `bodyBox` 内，后面的帧才越界，只查首帧会给假阴性。这条也是实测踩出来的。
+**为什么抽多帧而不是只看首帧**：角色在动画里平移时，首帧常常刚好落在 `bodyBox` 内，后面的帧才越界，只查首帧会给假阴性。这条是实测踩出来的。
 
-自查命令（需要仓库环境，作者可要求程序维护者代跑）：
+命令（皮肤作者需要仓库环境，或请程序维护者代跑）：
 
 ```bash
-npm run alpha:check skins/<id>/animation/idle/patrol.webm
+npm run alpha:check                              # 体检内置皮肤的全部动画
+npm run alpha:check skins/mine/animation/idle/patrol.webm
 # 输出：{"frames":8,"bgSamples":162000,"bgAlphaMean":0,"bgAlphaMax":0,"haze":false}
 # haze:true 时退出码 1，说明抠像容差太宽，调小 colorkey 的 similarity 重导
 ```
 
+**注意这个工具分不清两种情况**：背景没抠干净（有灰底），和角色跑出了 `bodyBox`（命中框漏判）。两者都表现为"框外有可见像素"，所以报 `haze:true` 时两种都要排查。
+
 ## 6. 校验会拒绝什么
 
-装载失败时程序**逐条列出中文错误**，并且不会回退到默认皮肤——静默换皮会让用户以为皮肤加载成功了，然后来问"为什么我的宠物有块灰底"。
+装载失败时程序**一次列出全部错误**（不是改一个报一个），并且不会回退到默认皮肤——静默换皮会让用户以为皮肤加载成功了，然后来问"为什么我的宠物有块灰底"。
 
-| 错误信息（示例） | 触发条件 |
+下面这些是实际输出的字符串，来自 `src/shared/skin.ts` 与 `src/main/skin-store.ts`：
+
+| 错误信息 | 触发条件 |
 |---|---|
-| `不支持的皮肤格式版本 2，本程序支持 1` | `formatVersion` 超出范围 |
-| `缺少必需动画池：turn, drag` | 必需池缺失（内部叫 `core_gaps`） |
-| `画布尺寸必须是 640x360，实际 512x512` | `canvas` 不符 |
-| `动画名 "Jump Once" 不合法：只允许小写字母、数字、下划线和短横线` | 违反命名规则 |
+| `不支持的皮肤格式版本 formatVersion=2，本程序支持 1` | `formatVersion` 超出支持范围 |
+| `画布尺寸必须是 640x360，实际 512x512` | `canvas.w/h` 不符 |
+| `canvas.feetY 必须是 1 到 359 的整数，脚底要真的落在画面内` | `feetY` 越界 |
+| `bodyBox 越出 640x360 画布` | 默认身体框出画布 |
+| `池名「睡 觉」不合法：只允许小写字母开头的 a-z0-9_-，最长 32` | 违反命名规则 |
+| `pools.idle 含非法动画名 "Jump Once"：…，最长 40` | 违反命名规则 |
+| `pools.turn 是空池` | 池存在但一条动画都没有 |
+| `weights.sleeping 指向 pools 里不存在的池` | 权重表与池表不一致 |
 | `animationMeta.jumped 在 pools 里找不到对应动画` | 元数据指向不存在的动画 |
-| `找不到素材文件：animation/turn/right.webm` | manifest 写了名字但文件不存在 |
-| `patrol.webm 背景有 alpha 残留（最大值 47 > 8）` | 体检不通过 |
-| `patrol.webm 第 3 帧的角色越出 bodyBox` | 内容超出命中框 |
+| `找不到皮肤清单：…manifest.json` | 目录里没有 manifest |
+| `皮肤清单不是合法 JSON：…` | JSON 语法错误 |
+| `缺少必需动画池：turn、drag` | 必需池缺失 |
+| `找不到素材文件：animation/turn/left.webm` | manifest 写了名字但文件不存在 |
+| `必需池里没有一条素材真正存在：drag` | 必需池的素材全被上一条剔光了 |
+
+透明通道相关的判定不在这张表里——它由第 5 节的命令行工具给出，不在装载时执行。
 
 ## 7. 作者自查清单
 
@@ -208,7 +223,7 @@ npm run alpha:check skins/<id>/animation/idle/patrol.webm
 | 第 3 节字段规则 | `validateManifest(raw) → {ok:true, manifest} \| {ok:false, errors[]}`，纯函数，输入是 `unknown`（JSON 解析结果），所以类型收窄要自己做 |
 | 第 6 节的 `core_gaps` | `missingRequiredPools(manifest) → string[]` |
 | 第 4.2 节的地址规则 | `clipPath(skin, pool, name) → string`，只按名字拼，禁止下标 |
-| 第 5 节体检 | 复用 `tools/alpha-report.mjs` 的 `analyzeAlpha`；装载时只查首帧还是抽帧要与本文一致 |
+| 第 5 节体检 | **不进装载器**。留在 `tools/alpha-report.mjs`，作为交付前闸门；生产代码不许依赖 `ffmpeg-static` |
 | 素材文件是否真存在 | `loadSkin(dir)` 里做，需要 `node:fs`，所以它在 `src/main/`，不在 `src/shared/` |
 
 注意第 5 条：`src/shared/**` 不许 import `node:fs`（分层铁律），所以"读目录"留在主进程，"校验结构"留在 shared，两层各自可测。

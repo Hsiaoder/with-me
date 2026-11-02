@@ -1039,7 +1039,23 @@ git commit -m "feat: 整屏覆盖窗、平台层四动作与消息表"
   - `clipPath(skin: LoadedSkin, pool: string, name: string): string`
   - `missingRequiredPools(manifest: SkinManifest): string[]`
 
-- [ ] **Step 1: 写 manifest 类型与校验（失败测试先行）**
+- [x] **Step 1: 写 manifest 类型与校验（失败测试先行）**
+
+> ### 实现时的修正（按皮肤契约 spec 落地，样例代码保留原样但别照抄）
+>
+> 样例代码与刚定稿的契约有七处对不上，全部以契约为准：
+>
+> 1. **`isLooping` 的缺省规则**：样例按「池内只有一条→循环」，契约 3.1 定为按**池名**（`idle/turn/move` 循环，`click/drag` 与自定义池一次性）。前者会让只有一条动画的 `click` 一直循环，明显不对。
+> 2. **`isLooping` 签名多了 name**：循环性是单条动画的属性，签名改成 `isLooping(manifest, pool, name)`，显式覆盖查 `animationMeta[name].loop`。样例查的是 `animationMeta[pool]`，键类型就错了。
+> 3. **`isMirrorable` 缺省 false**：样例是 `?? true`。擅自镜像等于替作者改了动作朝向，必须默认不镜像。
+> 4. **命名规则收紧**：样例只挡 `./\:*?"<>|`，大写、空格、中文、下划线开头都能过。契约 3.3 要 `[a-z][a-z0-9_-]{0,39}`，池名同理且 ≤32。
+> 5. **补了样例没有的校验**：`weights`（正数 + 必须是已知池）、`animationMeta` 孤儿键、`hotspots` 形状、`bodyBox` 与 `animationMeta.bodyBox` 必须落在画布内、`feetY` 必须严格在画面内。
+> 6. **缺素材文件从「静默剔掉」改成「拒绝」**：样例注释写着「缺失的会被剔掉，不报错」，违反「出错要大声」。现在缺一个文件就报一条，且必需池被剔空后额外报「没有一条素材真正存在」。
+> 7. **透明通道体检不进装载器**：样例的 Consumes 写了 `analyzeAlpha`，但体检要调 ffmpeg，而 `ffmpeg-static` 是开发依赖，生产代码不许依赖它。体检留在 `npm run alpha:check`，作为交付前闸门。契约第 5 节已同步改写。
+>
+> 命名与形状：`LoadedSkin` 的字段叫 `pools` 不叫 `clips`（与 Interfaces 段一致即可，代码里两处写法不同）；地址拆成两个函数——`clipFile(skinDir,pool,name)` 给主进程查存在，`clipUrl(pool,name)` 给渲染层拼 `app://skin/<池>/<名>.webm`（放在 `shared/skin.ts`，纯字符串）。
+>
+> 另外：`skins/block/manifest.json` 不需要改，它本来就符合契约；`author`/`weights` 都是可选字段。
 
 ```ts
 // test/skin.test.ts
@@ -1084,7 +1100,7 @@ describe('validateManifest', () => {
 
 Run: `npm run test -- skin` → Expected: FAIL（模块不存在）
 
-- [ ] **Step 2: 实现校验**
+- [x] **Step 2: 实现校验**
 
 ```ts
 // src/shared/skin.ts
@@ -1165,11 +1181,11 @@ export function isMirrorable(manifest: SkinManifest, name: string): boolean {
 }
 ```
 
-- [ ] **Step 3: 跑测试确认全通过**
+- [x] **Step 3: 跑测试确认全通过**
 
 Run: `npm run test -- skin` → Expected: 5 passed
 
-- [ ] **Step 4: 装载器：读目录、校验结构、再校验素材文件存在**
+- [x] **Step 4: 装载器：读目录、校验结构、再校验素材文件存在**
 
 ```ts
 // src/main/skin-store.ts
@@ -1211,7 +1227,7 @@ export function clipFile(dir: string, pool: string, name: string): string {
 }
 ```
 
-- [ ] **Step 5: 装载内置皮肤，确认无错误**
+- [x] **Step 5: 装载内置皮肤，确认无错误**
 
 ```ts
 // test/skin-store.test.ts
@@ -1230,7 +1246,7 @@ describe('内置色块皮肤', () => {
 
 Run: `npm run test -- skin-store` → Expected: PASS（依赖 Task 2 已生成 6 个 webm；若失败，先跑 `node tools/make-test-skin.mjs`）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/shared/skin.ts src/main/skin-store.ts test/skin.test.ts test/skin-store.test.ts skins/block/manifest.json
