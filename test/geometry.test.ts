@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, stageRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, panelAnchor, stageRect } from '../src/shared/geometry.js'
 import { CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -44,6 +44,35 @@ describe('bodyRect', () => {
   })
 })
 
+describe('panelAnchor', () => {
+  const screen = { x: 0, y: 0, w: 1600, h: 952 }
+  const size = { w: 300, h: 40 }
+  const body = { x: 500, y: 400, w: 120, h: 142 }
+
+  it('默认摆在身体上方，留出一条 gap', () => {
+    expect(panelAnchor(body, size, screen, 40)).toEqual({ x: 500, y: 320 })
+  })
+
+  it('顶边放不下就翻到身体下方', () => {
+    const low = { ...body, y: 30 }
+    expect(panelAnchor(low, size, screen, 40).y).toBe(30 + 142 + 40)
+  })
+
+  it('身体靠近右边缘时横向夹回屏幕内，不让按钮溢出到看不见的地方', () => {
+    const right = { ...body, x: 1500 }
+    expect(panelAnchor(right, size, screen, 40).x).toBe(1600 - 300)
+  })
+
+  it('身体靠近左边缘时不出现负坐标', () => {
+    expect(panelAnchor({ ...body, x: -50 }, size, screen, 40).x).toBe(0)
+  })
+
+  it('上下都放不下时夹在屏幕底边', () => {
+    const tight = { x: 0, y: 0, w: 1600, h: 952 }
+    const p = panelAnchor({ x: 10, y: 20, w: 100, h: 930 }, size, tight, 40)
+    expect(p.y).toBe(952 - 40)
+  })
+})
 describe('anyContains', () => {
   const rects = [{ x: 0, y: 0, w: 10, h: 10 }, { x: 100, y: 100, w: 50, h: 20 }]
 

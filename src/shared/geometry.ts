@@ -41,3 +41,21 @@ export function bodyRect(manifest: { bodyBox: Box }, petPos: Point, override?: B
 export function anyContains(rects: Rect[], p: Point): boolean {
   return rects.some((r) => rectContains(r, p))
 }
+
+/**
+ * 面板该摆在身体框上方的哪个位置（覆盖层 CSS 坐标）。
+ *
+ * 优先贴在身体上方；顶边放不下就翻到身体下方；最后整体夹回屏幕内。
+ * 夹取是必须的——覆盖层虽然铺满屏幕，面板自己不能溢出到看不见的地方，
+ * 否则用户会以为按钮"消失了"。
+ */
+export function panelAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Point {
+  const above = body.y - size.h - gap
+  const y0 = above >= screen.y ? above : body.y + body.h + gap
+  const x = Math.min(
+    Math.max(body.x, screen.x),
+    Math.max(screen.x, screen.x + screen.w - size.w),
+  )
+  const y = Math.min(Math.max(y0, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
+  return { x, y }
+}

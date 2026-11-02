@@ -2545,7 +2545,20 @@ git commit -m "feat: 存档读写（原子写 + .bak 回退 + 版本迁移）与
   - `createPanel(root: HTMLElement, actions: PanelAction[])` → `{ rect(): Rect | null; show(at: Point): void; hide(): void }`
   - `type PanelAction = { id: string; label: string; pool: string }`
 
-- [ ] **Step 1: 写面板动作定义的失败测试（用 jsdom 环境）**
+- [x] **Step 1: 写面板动作定义的失败测试（用 jsdom 环境）**
+
+> ### 实现时的修正
+>
+> 1. **样例测试在 jsdom 下必然失败**：jsdom 没有排版引擎，`offsetWidth/offsetHeight` 恒为 0，而 `expect(r.w).toBeGreaterThan(0)` 正是本次要测的东西。在测试里给 `HTMLElement.prototype` 打了一对固定值的 getter，并写明真实尺寸由 e2e 在 Chromium 里验。
+> 2. **`defaultActions()` 不重复写标签**：`config.ts` 已有 `PANEL_POOLS` 与 `PANEL_LABELS`，样例又把五个池和五个中文名抄了一遍——两处会分叉。改成从 config 映射。
+> 3. **面板位置不是 `b.y - 40` 就完了**：样例只夹了顶边。身体靠近右边缘时面板会整块溢出到看不见的地方，用户会觉得"按钮消失了"。抽成纯函数 `panelAnchor(body, size, screen, gap)`（`shared/geometry.ts`），优先上方、放不下翻到下方、最后整体夹回屏幕，五条测试覆盖。面板宽度要渲染出来才量得到，所以 `placePanel()` 是先摆一次量尺寸、再按尺寸重摆。
+> 4. **Step 3 的接线用 `requestClip(a.pool)`**：样例写 `player.play(ref, { once: true })`，而 Task 7 之后 `play()` 已经没有 `once` 参数了；而且绕开行为链直接 play 会让链子和按钮抢播放器。
+> 5. **身体框用当前动画的覆盖框**：样例是 `bodyRect(skin.manifest, ...)`，忽略了 `animationMeta[name].bodyBox`。改用 `hitBox()` 统一走 `bodyBoxOf`。
+> 6. **【重要】Step 4 诊断对了问题，但药开错了地方**。它说"渲染层只想放开时会被 sweep 反复判定成状态变化"——实际不会：`sweep()` 只在 `held && 超时` 时才动作，`tick(false)` 之后 held 已是 false，永远不会触发。真正存在的 bug 是另一个方向：**`requestGrab` 只在光标移动时发**，用户把手停在面板上不动，500ms 后租约到期、鼠标被放开给桌面，下一次点击就穿下去了。修法是渲染层加心跳（`GRAB_HEARTBEAT_MS = 250`，`config.test.ts` 钉住它必须明显小于超时），`lease.ts` 一行不改。e2e 里加了「光标不动 1.4 秒内仍发出 ≥3 次续期」这条回归测试。
+> 7. **心跳不能每帧都发**：第一版实现让不接鼠标时也以 60 次/秒刷 IPC。改成「值变了立刻发，值没变但还想接住时按节拍发」。
+> 8. **悬停不再自动播"被点"动画**：Task 10 的验收里那条是面板还没做时的替代验证。现在弹出面板本身就是反馈，每次路过都抖一下"被点"反应反而吵。
+> 9. **e2e 不用 `win.mouse.move`**：Playwright 的鼠标事件走 CDP，不会移动操作系统光标，而我们的悬停读的是主进程轮询到的真实光标——喂不进去。改成 `__petDebug.cursor(p)` 直接喂同一个 `handleCursor`，路径与真实推送完全一致；操作系统光标那一段由 spike 的 506 次采样实测过。
+
 
 ```ts
 // test/panel-dom.test.ts
@@ -2589,7 +2602,7 @@ describe('createPanel', () => {
 
 Run: `npm run test -- panel` → Expected: FAIL
 
-- [ ] **Step 2: 实现面板**
+- [x] **Step 2: 实现面板**
 
 ```ts
 // src/renderer/panel.ts
@@ -2657,7 +2670,7 @@ export function createPanel(root: HTMLElement, actions: PanelAction[], onClick: 
 
 > 注意 `opacity` 过渡会让 `offsetWidth` 在刚显示时为真实值（因为元素已参与布局），控件矩形上报不会拿到 0。
 
-- [ ] **Step 3: 接线：面板参与命中，且打开期间持续续期**
+- [x] **Step 3: 接线：面板参与命中，且打开期间持续续期**
 
 `src/renderer/index.ts` 里把光标回调换成：
 
@@ -2683,7 +2696,7 @@ window.petBridge?.onCursor((p) => {
 })
 ```
 
-- [ ] **Step 4: 主进程加租约心跳（渲染层每帧请求，主进程每 33ms sweep）**
+- [x] **Step 4: 主进程加租约心跳（渲染层每帧请求，主进程每 33ms sweep）**
 
 `src/main/index.ts` 的 sweep 定时器已存在（Task 4）。补一条：`requestGrab(false)` 之外**也要更新 lastSeen**，否则渲染层只想放开时会被 sweep 反复判定为状态变化。修改 `clickthrough.ts`：
 
@@ -2698,7 +2711,7 @@ request(grab: boolean): boolean {
 
 Run: `npm run test -- lease` → Expected: 4 passed（若有用例失败，说明实现与上面的语义描述不一致，以实现为准回读本段并改正其中一方，不要改断言凑绿）
 
-- [ ] **Step 5: 取消 e2e 的 skip 并跑**
+- [x] **Step 5: 取消 e2e 的 skip 并跑**
 
 ```ts
 // e2e/panel.spec.ts
@@ -2730,7 +2743,7 @@ test('悬停满 400ms 出现面板，点按钮切换动画', async () => {
 
 Run: `npm run build && npx playwright test e2e` → Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/renderer/panel.ts src/renderer/index.ts src/renderer/style.css test/panel-dom.test.ts e2e/panel.spec.ts package.json package-lock.json

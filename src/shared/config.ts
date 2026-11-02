@@ -25,6 +25,11 @@ export const HOVER_DWELL_MS = 400
 export const HOVER_RELEASE_MS = 400
 /** 渲染层超过这么久没续期就强制恢复穿透，防止整块屏幕点不动。 */
 export const LEASE_TIMEOUT_MS = 500
+/**
+ * 渲染层主动接住鼠标时的续期心跳。必须明显小于 LEASE_TIMEOUT_MS：
+ * requestGrab 原本只在光标移动时发，手停在面板上不动就会让租约悄悄过期、鼠标被放开。
+ */
+export const GRAB_HEARTBEAT_MS = 250
 
 // ---- 行为 ----
 /** 连续无人交互满这么久，规则层允许宠物自主走动。 */

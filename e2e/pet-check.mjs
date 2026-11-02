@@ -97,7 +97,77 @@ check('命中框 = 舞台位置 + bodyBox 按缩放换算', async () => {
 })
 
 try {
-  app = await electron.launch({ args: ['.'], cwd: process.cwd() })
+  const feed = (p) => page.evaluate((pt) => window.__petDebug.cursor(pt), p)
+const dbg = () => page.evaluate(() => ({
+  open: window.__petDebug.panelOpen,
+  pool: window.__petDebug.current.pool,
+  sends: window.__petDebug.grabSends,
+  hit: window.__petDebug.hitBox,
+  inner: { w: window.innerWidth, h: window.innerHeight },
+}))
+
+check('悬停满 400ms 出现面板，五个按钮齐全', async () => {
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+  await feed(center)
+  assert.equal((await dbg()).open, false, '刚进去就弹出了，停留计时没生效')
+  await page.waitForTimeout(460)
+  await feed(center)
+  assert.equal((await dbg()).open, true, '停留满 400ms 后仍没弹出')
+  assert.equal(await page.locator('.pet-panel button').count(), 5)
+})
+
+check('面板出现在身体上方且不溢出屏幕', async () => {
+  const s = await dbg()
+  const r = await page.evaluate(() => {
+    const b = document.querySelector('.pet-panel').getBoundingClientRect()
+    return { x: b.x, y: b.y, w: b.width }
+  })
+  assert.ok(r.y < s.hit.y, `面板该在身体上方：panel.y=${r.y} body.y=${s.hit.y}`)
+  assert.ok(r.x >= 0 && r.x + r.w <= s.inner.w, `横向溢出：${r.x}+${r.w} vs ${s.inner.w}`)
+  assert.ok(r.y >= 0, `顶部溢出：${r.y}`)
+})
+
+check('点 move 按钮切到 move 池', async () => {
+  await page.click('.pet-panel button[data-pool="move"]')
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'move', null, { timeout: 5000 })
+  assert.equal((await dbg()).pool, 'move')
+})
+
+check('心跳：光标不动时仍在持续续期租约', async () => {
+  // 这条测的是刚修掉的 bug：requestGrab 原本只在光标移动时发，手停在面板上不动，
+  // 500ms 后租约过期、鼠标被放开给桌面，下一次点击就穿到下面的窗口去了。
+  const before = (await dbg()).sends
+  await page.waitForTimeout(1400)
+  const after = (await dbg()).sends
+  assert.ok(after - before >= 3, `1.4 秒里只发了 ${after - before} 次续期，心跳没生效`)
+  assert.equal((await dbg()).open, true, '等待期间面板自己收了，说明 wantGrab 掉了')
+})
+
+check('宠物贴右边缘时面板夹回屏幕内', async () => {
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: inner.w - 40, y: inner.h - 300 })
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+  await feed(center)
+  await page.waitForTimeout(460)
+  await feed(center)
+  const r = await page.evaluate(() => {
+    const b = document.querySelector('.pet-panel').getBoundingClientRect()
+    return { x: b.x, y: b.y, w: b.width }
+  })
+  assert.ok(r.x + r.w <= inner.w, `面板溢出右边缘：${r.x}+${r.w} > ${inner.w}`)
+  assert.ok(r.x >= 0, `面板跑到左边外面：${r.x}`)
+})
+
+check('离开身体与面板满 400ms 后面板收起', async () => {
+  await feed({ x: 5, y: 5 })
+  await page.waitForTimeout(460)
+  await feed({ x: 5, y: 5 })
+  assert.equal((await dbg()).open, false, '离开了面板还没收')
+})
+
+app = await electron.launch({ args: ['.'], cwd: process.cwd() })
   page = await app.firstWindow()
   page.on('pageerror', (e) => pageErrors.push(String(e)))
   await page.waitForFunction(() => document.querySelectorAll('video').length === 2, null, { timeout: 30_000 })

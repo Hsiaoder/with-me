@@ -51,6 +51,41 @@ body {
   transform: scaleX(-1);
 }
 
+/* 悬停面板。不写 pointer-events:none——面板就是要能点。
+   它挂在 #root 下而不是 .pet-sprite 里，所以不受舞台那层穿透影响。 */
+.pet-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  font: 12px "Microsoft YaHei UI", sans-serif;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  will-change: transform;
+}
+
+.pet-panel:not([hidden]) {
+  opacity: 1;
+}
+
+.pet-panel button {
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.pet-panel button:hover {
+  background: #eef6f4;
+}
+
 /* F9 命中区可视化 */
 .hit-outline {
   position: absolute;
