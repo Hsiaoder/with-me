@@ -132,10 +132,11 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 
 **自动化**
 
-- [ ] `npm run typecheck` 无错误
-- [ ] `npm test` 全绿，且纯逻辑（shared / tools / spike-analyze）覆盖率明显高于装配代码
-- [ ] `npm run alpha:check` 对内置皮肤全部 `haze:false`
-- [ ] 渲染层无 `import '../main/'`，shared 无 `import 'electron'`（计划里有对应检查命令）
+- [x] `npm run typecheck` 无错误
+- [x] `npm test` 全绿，且纯逻辑（shared / tools / spike-analyze）覆盖率明显高于装配代码（当前 5 个测试文件全部针对纯逻辑，装配代码零测试）
+- [x] `npm run alpha:check` 对内置皮肤全部 `haze:false`
+- [x] 渲染层无 `import '../main/'`，shared 无 `import 'electron'` / `node:fs`，且 `src/main/` 下只有 `windows.ts` 出现窗口方法
+
 - [ ] e2e：面板出现、五个按钮齐全、点 `move` 按钮后当前动画池变为 `move`
 
 **真机**
