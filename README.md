@@ -147,7 +147,7 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 
 ## 架构与文档
 
-四份文档，各司其职，冲突时以功能规格的约束节和验收节为准：
+几份文档各司其职，冲突时以功能规格的约束节和验收节为准：
 
 | 文档 | 回答什么 |
 |---|---|
@@ -157,6 +157,10 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 | [`docs/superpowers/plans/2026-11-02-desktop-pet-v1.md`](docs/superpowers/plans/2026-11-02-desktop-pet-v1.md) | 14 个任务、83 个步骤的施工单 |
 | [`docs/实现进度.md`](docs/实现进度.md) | 现在做到哪了（由脚本生成，别手改） |
 | [`spike/README.md`](spike/README.md) | 整屏透明窗 + 硬件加速的真机实测数据 |
+| [`problem/`](problem/README.md) | 开发中真实踩到的坑：症状、根因、修法、怎么验、教训 |
+
+`docs/` 与 `codex-review/` 按决定不入库（只在本地），所以克隆下来的人看不到上面那几行链接；
+`problem/` 和 `spike/` 是入库的。
 
 一句话架构：Electron 双进程 + 一个共享纯逻辑层。主进程只做建窗、穿透开关、光标推进、
 焦点切换四件事（全部收在 `Platform` 接口后面），皮肤校验、命中判定、悬停计时、
