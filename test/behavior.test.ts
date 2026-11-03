@@ -51,27 +51,31 @@ describe('pickFrom', () => {
 })
 
 describe('pickAmbient', () => {
+  it('自主池里没有 move：宠物不再自己平行走动', () => {
+    expect(AMBIENT_POOLS).not.toContain('move')
+  })
+
   it('权重高的池被选中的比例明显更高', () => {
     const p = createPicker(seeded(7))
-    const weighted = { pools: { idle: ['a'], move: ['m'] }, weights: { idle: 1, move: 3 } }
-    const counts = { idle: 0, move: 0 }
+    const weighted = { pools: { idle: ['a'], turn: ['t'] }, weights: { idle: 1, turn: 3 } }
+    const counts = { idle: 0, turn: 0 }
     for (let i = 0; i < 3000; i++) {
       const r = p.pickAmbient(weighted, null)
-      if (r) counts[r.pool as 'idle' | 'move']++
+      if (r) counts[r.pool as 'idle' | 'turn']++
     }
-    expect(counts.move).toBeGreaterThan(counts.idle * 2)
+    expect(counts.turn).toBeGreaterThan(counts.idle * 2)
   })
 
   it('没写 weights 时按均匀处理', () => {
     const p = createPicker(seeded(11))
-    const even = { pools: { idle: ['a'], move: ['m'] } }
-    const counts = { idle: 0, move: 0 }
+    const even = { pools: { idle: ['a'], turn: ['t'] } }
+    const counts = { idle: 0, turn: 0 }
     for (let i = 0; i < 3000; i++) {
       const r = p.pickAmbient(even, null)
-      if (r) counts[r.pool as 'idle' | 'move']++
+      if (r) counts[r.pool as 'idle' | 'turn']++
     }
     expect(counts.idle).toBeGreaterThan(1000)
-    expect(counts.move).toBeGreaterThan(1000)
+    expect(counts.turn).toBeGreaterThan(1000)
   })
 
   it('反应池不会被自主选中，哪怕权重给得极高', () => {
@@ -117,7 +121,7 @@ describe('nextClip', () => {
     expect(n).toEqual({ kind: 'play', ref: { pool: 'turn', name: 'left' } })
   })
 
-  it('权重全给 move 时自主走动（走动是权重里的一个选项，不是规则层的命令）', () => {
+  it('move 拿不到自主决策权：权重全给它也不会走动', () => {
     const src = { pools: { idle: ['patrol'], turn: ['left'], move: ['step'] }, weights: { idle: 0, turn: 0, move: 100 } }
     const n = nextClip({
       rules: ambientRules(),
@@ -126,7 +130,9 @@ describe('nextClip', () => {
       loops,
       ref: { pool: 'idle', name: 'patrol' },
     })
-    expect(n).toEqual({ kind: 'play', ref: { pool: 'move', name: 'step' } })
+    expect(n.ref.pool).not.toBe('move')
+    // 只剩 idle/turn 且权重都是 0，走的是「权重和为 0 也要给出动画」那条兜底
+    expect(n.ref.pool).toBe('idle')
   })
 
   it('权重抽到当前这条循环动画时走无缝续播，不产生接缝', () => {

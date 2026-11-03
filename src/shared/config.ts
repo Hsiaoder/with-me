@@ -65,8 +65,14 @@ export const ANIMATION_EXT = '.webm'
 export const REQUIRED_POOLS = ['idle', 'turn', 'move', 'click', 'drag'] as const
 /** 缺省按池名决定是否循环：状态性动作要能一直挂着，反应性动作播完就回待机。皮肤契约 3.1。 */
 export const LOOPING_POOLS = ['idle', 'turn', 'move'] as const
-/** 无人交互时允许自主挑选的池。反应池（click/drag）不在其中——宠物不该没事干抖一下被点的反应。 */
-export const AMBIENT_POOLS = ['idle', 'move', 'turn'] as const
+/**
+ * 无人交互时允许自主挑选的池。反应池（click/drag）不在其中——宠物不该没事干抖一下被点的反应。
+ *
+ * `move` 也暂时不在其中：平行走动会让宠物整段离开原位、还容易贴着屏幕边站着，
+ * 现在这版形象更适合待在原地做小动作。走动那套素材与 `move` 池照旧是契约的一部分，
+ * 想放回来只要把名字加回这个数组。
+ */
+export const AMBIENT_POOLS = ['idle', 'turn'] as const
 /**
  * 面板上的功能按钮，顺序即显示顺序。
  * 业务功能（喂食扣饥饿值、小游戏、状态面板）还没接，`pool` 只决定按下之后

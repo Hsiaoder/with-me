@@ -380,14 +380,17 @@ check('面板收起后真的移出布局：不吃点击、不改光标形状', a
   assert.notEqual(at.cursor, 'pointer', `看不见的按钮还在改光标形状：${JSON.stringify(at)}`)
 })
 
-check('久无人理后由皮肤权重自主选池：turn 进得了运行链路', async () => {
+check('久无人理后由皮肤权重自主选池：turn 进得了运行链路，move 不再被自主选中', async () => {
   // 复审 #2 的 P1-2：pickAmbient 单测全绿但渲染层从来没调用它，
   // 于是 weights 和 turn 全死在链路外。这条只认运行时那份 manifest 与规则层。
-  const toTurn = await page.evaluate(() => window.__petDebug.ambientNext(0.99))
-  assert.equal(toTurn.kind, 'play', `该换新的一条，却拿到 ${toTurn.kind}`)
-  assert.equal(toTurn.ref.pool, 'turn', `rng=0.99 三个环境池等权应抽到 turn，实际 ${toTurn.ref.pool}`)
-  const toMove = await page.evaluate(() => window.__petDebug.ambientNext(0.5))
-  assert.equal(toMove.ref.pool, 'move', `rng=0.5 应抽到 move，实际 ${toMove.ref.pool}`)
+  const picks = []
+  for (const rng of [0, 0.5, 0.99]) {
+    picks.push(await page.evaluate((x) => window.__petDebug.ambientNext(x), rng))
+  }
+  assert.equal(picks[2].kind, 'play', `该换新的一条，却拿到 ${picks[2].kind}`)
+  assert.equal(picks[2].ref.pool, 'turn', `rng=0.99 该抽到 turn，实际 ${picks[2].ref.pool}`)
+  assert.ok(!picks.some((p) => p.ref.pool === 'move'),
+    `宠物不该再自己平行走动：${JSON.stringify(picks.map((p) => p.ref))}`)
 })
 
 check('同一个 userData 的第二个实例被单实例锁挡掉', async () => {
