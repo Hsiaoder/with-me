@@ -116,6 +116,7 @@ const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
   pool: window.__petDebug.current.pool,
   sends: window.__petDebug.grabSends,
+  grab: window.__petDebug.grabRequested,
   hit: window.__petDebug.hitBox,
   inner: { w: window.innerWidth, h: window.innerHeight },
 }))
@@ -257,6 +258,23 @@ check('离开身体与面板满 400ms 后面板自动收起', async () => {
   // 只喂这一次离开坐标：静止时光标不会再产生新事件，收起也得计时自己完成
   await page.waitForTimeout(460)
   assert.equal((await dbg()).open, false, '光标静止离开后没收起')
+})
+
+check('光标离开身体与面板后立刻放开鼠标，不等面板收起', async () => {
+  // 整窗粒度的穿透：只要还「接住」，整块屏幕的点击都被透明层吞掉。
+  // 面板的 400ms 收起延时只管可见性，不该顺手把鼠标也扣住 400ms——
+  // 真机上就是这个症状：从宠物移出去点别处，那一下要点两次才灵。
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  await page.waitForTimeout(460)
+  const open = await dbg()
+  assert.equal(open.open, true, '前置条件：面板该开着')
+  assert.equal(open.grab, true, '前置条件：光标在身上，该接住鼠标')
+
+  await feed({ x: 4, y: 4 })
+  const after = await page.evaluate(() => ({ grab: window.__petDebug.grabRequested, open: window.__petDebug.panelOpen }))
+  assert.equal(after.grab, false, '光标已经离开身体和面板，鼠标却没放开')
+  assert.equal(after.open, true, '面板该还开着（400ms 收起延时是可见性，不是扣鼠标）')
 })
 
 check('久无人理后由皮肤权重自主选池：turn 进得了运行链路', async () => {

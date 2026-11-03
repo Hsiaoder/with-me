@@ -204,7 +204,10 @@ function bootstrap(skin: SkinPayload): void {
     const ev = hover.onPoint(p, over || dragging, overPanel)
     if (ev === 'open') placePanel()
     if (ev === 'close') panel.hide()
-    wantGrab = over || overPanel || dragging || panel.isOpen
+    // 「面板还开着」不参与判定：穿透是整窗粒度，多扣一秒鼠标就多吞一秒全桌点击。
+    // 面板的 400ms 收起延时只管可见性。光标要回来点按钮时，进到面板矩形里
+    // 下一拍（≤33ms）就把鼠标接住，人手从移到位到按下远不止这点时间。
+    wantGrab = over || overPanel || dragging
     sendGrab()
     scheduleHover()
   }
