@@ -14,4 +14,8 @@ contextBridge.exposeInMainWorld('petBridge', {
   requestGrab: (grab) => ipcRenderer.send('pet:click-through', { grab }),
   /** 面板里有输入框时才临时打开可聚焦，用完关掉。默认窗口不抢键盘焦点。 */
   setFocusable: (on) => ipcRenderer.send('pet:focusable', on),
+  /** 可见性设置。主进程收到后立刻落盘并按新值重新判断该不该显示。 */
+  setSettings: (s) => ipcRenderer.send('pet:settings', s),
+  /** 开局把存档里的可见性设置推过来，面板的选中态要用它。 */
+  onSettings: (cb) => ipcRenderer.on('pet:settings-loaded', (_e, s) => cb(s)),
 })

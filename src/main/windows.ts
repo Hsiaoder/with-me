@@ -69,13 +69,13 @@ export function createWindowsPlatform(): Platform {
     send(channel, payload) {
       up().webContents.send(channel, payload)
     },
-    windowHandle() {
-      const h = up().getNativeWindowHandle()
-      // 64 位系统句柄是 8 字节；按实际长度读，免得在 32 位上越界抛错
-      return (h.byteLength >= 8 ? h.readBigUInt64LE() : BigInt(h.readUInt32LE(0))).toString()
-    },
     show() {
-      up().showInactive()
+      const w = up()
+      w.showInactive()
+      // hide() 之后重新显示会把窗口重新插进 z 序：WS_EX_TOPMOST 的样式位还在，
+      // 但排位可能落回普通带，于是宠物被普通窗口盖住。实测过一次，之后一直不复现，
+      // 所以这条是便宜的兜底而不是已证实的病因解药——重新声明一次置顶，幂等。
+      w.setAlwaysOnTop(true, 'screen-saver')
     },
     hide() {
       up().hide()

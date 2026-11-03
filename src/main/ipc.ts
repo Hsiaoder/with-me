@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC, type ClickThroughPayload } from '../shared/ipc.js'
+import { isVisibility, type Settings } from '../shared/visibility.js'
 import type { Platform } from './platform.js'
 import type { ClickThroughBridge } from './clickthrough.js'
 
@@ -21,10 +22,33 @@ export function toBool(v: unknown): boolean {
   return v === true
 }
 
-export function registerIpc(platform: Platform, bridge: ClickThroughBridge): void {
+/**
+ * 把送来的设置收敛成合法形状：只保留认得的那几项，一项都不认得就返回 null。
+ * 返回 Partial 而不是整包——缺的那一项要由调用方按当前存档补齐，
+ * 替用户「补」成默认值等于悄悄改掉他另一项设置。
+ */
+export function toSettings(raw: unknown): Partial<Settings> | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  const out: Partial<Settings> = {}
+  for (const key of ['onFullscreen', 'onPresentation'] as const) {
+    if (isVisibility(r[key])) out[key] = r[key]
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+export function registerIpc(
+  platform: Platform,
+  bridge: ClickThroughBridge,
+  onSettings: (patch: Partial<Settings>) => void,
+): void {
   ipcMain.on(IPC.clickThroughRequest, (_e, p: unknown) => {
     const grab = toBool((p as ClickThroughPayload | null | undefined)?.grab)
     bridge.request(grab)
   })
   ipcMain.on(IPC.focusable, (_e, on: unknown) => platform.setFocusable(toBool(on)))
+  ipcMain.on(IPC.settings, (_e, s: unknown) => {
+    const next = toSettings(s)
+    if (next !== null) onSettings(next)
+  })
 }

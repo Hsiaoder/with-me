@@ -114,6 +114,32 @@ body {
   background: #eef6f4;
 }
 
+/* 设置视图：两行开关竖排。动作视图保持横排不动。 */
+.pet-panel.is-settings {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.pet-setting {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pet-setting > span {
+  flex: 0 0 auto;
+  min-width: 46px;
+  color: rgba(0, 0, 0, 0.62);
+}
+
+/* 当前生效的那一项。不靠颜色单独表意，同时加粗。 */
+.pet-panel button.on {
+  background: #dcefe9;
+  border-color: rgba(0, 0, 0, 0.34);
+  font-weight: 600;
+}
+
 /* F9 命中区可视化 */
 .hit-outline {
   position: absolute;

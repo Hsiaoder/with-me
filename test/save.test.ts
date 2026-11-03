@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyCare, defaultSave, migrate, toSaveFile } from '../src/shared/save.js'
+import { applyCare, applySettings, defaultSave, migrate, toSaveFile } from '../src/shared/save.js'
 import { SAVE_VERSION } from '../src/shared/config.js'
 
 const NOW = 1_762_000_000_000
@@ -93,8 +93,39 @@ describe('applyCare', () => {
 describe('toSaveFile', () => {
   it('去掉 warnings，它属于本次读档的诊断而不是持久数据', () => {
     const file = toSaveFile(migrate({ version: 99 }, NOW))
-    expect(file).toEqual({ version: SAVE_VERSION, skin: 'block', stats: defaultSave(NOW).stats, lastSeenAt: NOW })
+    expect(file).toEqual({
+      version: SAVE_VERSION, skin: 'block', stats: defaultSave(NOW).stats,
+      settings: defaultSave(NOW).settings, lastSeenAt: NOW,
+    })
     expect('warnings' in file).toBe(false)
     expect('fromFuture' in file).toBe(false)
+  })
+})
+
+describe('settings', () => {
+  it('旧档没有 settings 时补默认值：两档都陪我', () => {
+    const s = migrate({ version: 1, skin: 'block', stats: {} }, NOW)
+    expect(s.settings).toEqual({ onFullscreen: 'show', onPresentation: 'show' })
+  })
+
+  it('认得的值保留，认不出的回默认并说清是哪一项', () => {
+    const s = migrate({ version: 1, settings: { onFullscreen: 'hide', onPresentation: '也许' } }, NOW)
+    expect(s.settings.onFullscreen).toBe('hide')
+    expect(s.settings.onPresentation).toBe('show')
+    expect(s.warnings.join()).toContain('onPresentation')
+  })
+
+  it('settings 是垃圾也不炸', () => {
+    for (const v of [null, 1, 'x', [], true]) {
+      expect(() => migrate({ version: 1, settings: v }, NOW)).not.toThrow()
+    }
+  })
+
+  it('applySettings 只改提到的那一项，且返回新对象', () => {
+    const base = defaultSave(NOW)
+    const next = applySettings(base, { onFullscreen: 'hide' })
+    expect(next.settings).toEqual({ onFullscreen: 'hide', onPresentation: 'show' })
+    expect(base.settings.onFullscreen).toBe('show')
+    expect(applySettings(base, { onFullscreen: '也许' as never }).settings).toEqual(base.settings)
   })
 })

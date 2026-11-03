@@ -1,5 +1,6 @@
 import type { Point } from './types.js'
 import type { SkinErrorPayload, SkinPayload } from './skin.js'
+import type { Settings } from './visibility.js'
 
 /**
  * IPC 通道名的唯一来源。加一条通道只能改这里，并在 main/ipc.ts 注册、preload 内联、
@@ -10,6 +11,8 @@ export const IPC = {
   skinLoaded: 'pet:skin-loaded',         // main → renderer，LoadedSkin 或 { errors }
   clickThroughRequest: 'pet:click-through', // renderer → main，{ grab }
   focusable: 'pet:focusable',            // renderer → main，boolean
+  settings: 'pet:settings',              // renderer → main，Partial<Settings>（改完立刻落盘）
+  settingsLoaded: 'pet:settings-loaded', // main → renderer，Settings（开局把存档里的值推过去）
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
@@ -19,6 +22,8 @@ export type ClickThroughPayload = { grab: boolean }
 /** 装载成功给皮肤，失败给逐条错误——两条路都走同一个通道，渲染层不必猜。 */
 export type SkinLoadedPayload = SkinPayload | SkinErrorPayload
 export type FocusablePayload = boolean
+export type SettingsPayload = Settings
+export type SettingsPatchPayload = Partial<Settings>
 
 /** 所有已知通道，供测试穷举核对。 */
 export const ALL_CHANNELS: readonly IpcChannel[] = Object.values(IPC)

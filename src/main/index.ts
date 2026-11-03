@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url'
 import { APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shared/config.js'
 import { IPC } from '../shared/ipc.js'
 import { toSkinPayload } from '../shared/skin.js'
+import { applySettings } from '../shared/save.js'
 import { loadFrom, saveTo } from './storage.js'
 import { FALLBACK_SKIN, findSkinDir, platformDataDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
-import { startFullscreenWatch } from './fullscreen.js'
+import { startVisibilityWatch } from './visibility.js'
 import { startCursorPolling } from './cursor.js'
 import { registerIpc } from './ipc.js'
 import { attachAppHandler, declareAppScheme } from './protocol.js'
@@ -68,28 +69,42 @@ void app.whenReady().then(() => {
   const platform = createWindowsPlatform()
   const bridge = createClickThroughBridge(platform, Date.now)
   // 监听必须早于建窗：渲染层首帧就会发消息。
-  registerIpc(platform, bridge)
+  registerIpc(platform, bridge, (patch) => {
+    // 改设置要当场落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查
+    save.settings = applySettings(save, patch).settings
+    watch.setSettings(save.settings)
+    if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
+  })
   platform.createWindow()
 
   // 装载失败也要发过去：渲染层会把错误摊在屏幕上，而不是静默换一只默认宠物。
   // 挂在 createWindow 之后——onPageReady 要碰 webContents；同一段同步代码里订阅，
   // 不会漏掉 did-finish-load。
   const payload = loaded.ok ? toSkinPayload(loaded.skin, warnings) : { errors: loaded.errors, warnings }
-  platform.onPageReady(() => platform.send(IPC.skinLoaded, payload))
+  platform.onPageReady(() => {
+    platform.send(IPC.skinLoaded, payload)
+    platform.send(IPC.settingsLoaded, save.settings)
+  })
+
+  // 可见性策略。探测是个常驻 PowerShell 子进程，必须跟着退出收掉。
+  // 只能排在建窗之后：句柄要问窗口要，而 createWindow 之前 up() 会抛。
+  const watch = startVisibilityWatch(platform, save.settings)
 
   // 覆盖层与主屏工作区重合且永不移动，所以原点取一次即可。
   const { x: originX, y: originY } = screen.getPrimaryDisplay().workArea
-  const stopPolling = startCursorPolling(() => {
-    const c = screen.getCursorScreenPoint()
-    return { x: c.x - originX, y: c.y - originY }
-  }, (p) => platform.sendCursor(p))
+  // e2e 可以冻住操作系统光标的影响：只要有人在动鼠标，注入给渲染层的坐标下一拍就被顶掉，
+  // 「光标静止满 400ms 自动弹面板」这类检查实际上是在赌这台机器没人碰鼠标。
+  // 冻住的只是数据来源，`__petDebug.cursor` 走的还是同一个 handleCursor，逻辑一点没绕开。
+  const stopPolling = process.env.PET_FREEZE_CURSOR === '1'
+    ? () => {}
+    : startCursorPolling(() => {
+      const c = screen.getCursorScreenPoint()
+      return { x: c.x - originX, y: c.y - originY }
+    }, (p) => platform.sendCursor(p))
 
   // 兜底心跳：渲染层卡死时由主进程把穿透放开。
   const sweeper = setInterval(() => bridge.sweep(), CURSOR_POLL_MS)
   sweeper.unref()
-
-  // 全屏应用让路。探测是个常驻 PowerShell 子进程，必须跟着退出收掉。
-  const stopWatch = startFullscreenWatch(platform, platform.windowHandle())
 
   // 退出前收掉定时器与子进程并落盘。落盘放最后：saveTo 会刷新 lastSeenAt。
   let closing = false
@@ -98,7 +113,7 @@ void app.whenReady().then(() => {
     closing = true
     stopPolling()
     clearInterval(sweeper)
-    stopWatch()
+    watch.stop()
     try {
       if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过退出写回')
     } catch (e) {

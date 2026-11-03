@@ -24,6 +24,11 @@ export interface HoverTimer {
    * 「悬停 400ms 弹面板」才是计时到点自动发生，而不是靠用户再动一下鼠标。
    */
   pendingMs(now: number): number | null
+  /**
+   * 换收起延时。设置视图需要更宽裕的时间挑选项（见 SETTING_HIDE_MS），
+   * 回动作视图时换回来。只影响收起，不影响弹出的停留门槛。
+   */
+  setHideMs(ms: number): void
   /** 皮肤切换、宠物被拖走等场景要重置，否则面板挂在旧位置。 */
   reset(): void
 }
@@ -32,6 +37,7 @@ export function createHoverTimer(now: () => number): HoverTimer {
   let enteredAt: number | null = null
   let leftAt: number | null = null
   let open = false
+  let hideMs = PANEL_HIDE_MS
 
   return {
     get isOpen() {
@@ -52,7 +58,7 @@ export function createHoverTimer(now: () => number): HoverTimer {
       enteredAt = null
       if (!open) return 'none'
       leftAt ??= now()
-      if (now() - leftAt < PANEL_HIDE_MS) return 'none'
+      if (now() - leftAt < hideMs) return 'none'
       open = false
       leftAt = null
       return 'close'
@@ -61,10 +67,15 @@ export function createHoverTimer(now: () => number): HoverTimer {
       enteredAt = null
       leftAt = null
       open = false
+      // 面板都收掉了，视图也回到动作视图，延时跟着回默认值
+      hideMs = PANEL_HIDE_MS
+    },
+    setHideMs(ms: number): void {
+      hideMs = ms
     },
     pendingMs(now: number): number | null {
       if (!open && enteredAt !== null) return Math.max(0, HOVER_DWELL_MS - (now - enteredAt))
-      if (open && leftAt !== null) return Math.max(0, PANEL_HIDE_MS - (now - leftAt))
+      if (open && leftAt !== null) return Math.max(0, hideMs - (now - leftAt))
       return null
     },
   }

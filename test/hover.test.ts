@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createHoverTimer } from '../src/shared/hover.js'
-import { HOVER_DWELL_MS, PANEL_HIDE_MS } from '../src/shared/config.js'
+import { HOVER_DWELL_MS, PANEL_HIDE_MS, SETTING_HIDE_MS } from '../src/shared/config.js'
 
 const on = { x: 1, y: 1 }
 const off = { x: 9, y: 9 }
@@ -172,5 +172,46 @@ describe('静止光标的待转换计时', () => {
     expect(h.pendingMs(c.now())).not.toBeNull()
     h.reset()
     expect(h.pendingMs(c.now())).toBeNull()
+  })
+})
+
+describe('收起延时可切换', () => {
+  /** 打开面板 → 离开，停在「已经过了 PANEL_HIDE_MS、还没过设置视图的宽裕时间」这一点上。 */
+  const openedThenLeft = (c: ReturnType<typeof clock>) => {
+    const h = createHoverTimer(c.now)
+    h.onPoint(on, true, false)
+    c.set(900)
+    h.onPoint(on, true, false)
+    c.set(901)
+    h.onPoint(off, false, false)
+    return h
+  }
+
+  it('换过延时后按新值收起，默认值不受影响', () => {
+    const c = clock()
+    const h = openedThenLeft(c)
+    expect(h.onPoint(off, false, false)).toBe('none')
+    h.setHideMs(SETTING_HIDE_MS)
+    c.set(901 + PANEL_HIDE_MS)
+    expect(h.onPoint(off, false, false)).toBe('none')
+    c.set(901 + SETTING_HIDE_MS)
+    expect(h.onPoint(off, false, false)).toBe('close')
+  })
+
+  it('pendingMs 报的是当前生效的延时，不然自动收起的定时器会按旧值催', () => {
+    const c = clock()
+    const h = openedThenLeft(c)
+    expect(h.pendingMs(c.now())).toBe(PANEL_HIDE_MS)
+    h.setHideMs(SETTING_HIDE_MS)
+    expect(h.pendingMs(c.now())).toBe(SETTING_HIDE_MS)
+  })
+
+  it('换回 PANEL_HIDE_MS 就恢复原行为', () => {
+    const c = clock()
+    const h = openedThenLeft(c)
+    h.setHideMs(SETTING_HIDE_MS)
+    h.setHideMs(PANEL_HIDE_MS)
+    c.set(901 + PANEL_HIDE_MS)
+    expect(h.onPoint(off, false, false)).toBe('close')
   })
 })

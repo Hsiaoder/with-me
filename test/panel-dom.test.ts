@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { createPanel, defaultActions } from '../src/renderer/panel.js'
+import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
 import { PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
 
 /**
@@ -16,7 +17,8 @@ beforeAll(() => {
 const mount = (onClick = vi.fn()) => {
   const root = document.createElement('div')
   document.body.replaceChildren(root)
-  return { panel: createPanel(root, defaultActions(), onClick), root, onClick }
+  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn() })
+  return { panel, root, onClick }
 }
 
 afterEach(() => { document.body.replaceChildren() })
@@ -92,6 +94,82 @@ describe('createPanel', () => {
     panel.show({ x: 0, y: 0 })
     panel.show({ x: 10, y: 10 })
     expect(root.querySelectorAll('.pet-panel')).toHaveLength(1)
-    expect(root.querySelectorAll('button')).toHaveLength(PANEL_BUTTONS.length)
+    // 三个动作按钮 + 一个固定的「设置」入口
+    expect(root.querySelectorAll('button')).toHaveLength(PANEL_BUTTONS.length + 1)
+  })
+})
+
+describe('设置视图', () => {
+  /** 带设置的面板：动作视图多一个「设置」按钮，点它切到设置视图。 */
+  const mountWithSettings = (settings: Settings = { ...DEFAULT_SETTINGS }) => {
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const action = vi.fn()
+    const set = vi.fn()
+    const view = vi.fn()
+    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view })
+    panel.show({ x: 0, y: 0 })
+    return { panel, root, action, set, view }
+  }
+
+  it('动作视图多一个设置按钮，它不带 pool', () => {
+    const { panel } = mountWithSettings()
+    const labels = [...panel.el.querySelectorAll('button')].map((b) => b.textContent)
+    expect(labels).toEqual(['喂食', '小游戏', '状态', '设置'])
+    expect(panel.view).toBe('actions')
+  })
+
+  it('点设置切成两行开关，并通知调用方换收起延时', () => {
+    const { panel, view } = mountWithSettings()
+    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    expect(panel.view).toBe('settings')
+    expect(view).toHaveBeenCalledWith('settings')
+    const rows = panel.el.querySelectorAll('.pet-setting')
+    expect(rows).toHaveLength(2)
+    expect([...rows[0]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['陪我', '隐藏'])
+  })
+
+  it('点「隐藏」只报被点的那一项，不整包覆盖', () => {
+    const { panel, set } = mountWithSettings()
+    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-key="onFullscreen"][data-value="hide"]')!.click()
+    expect(set).toHaveBeenCalledWith({ onFullscreen: 'hide' })
+  })
+
+  it('选中态跟着 setSettings 重绘，当前项标出来', () => {
+    const { panel } = mountWithSettings()
+    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    const on = () => [...panel.el.querySelectorAll('.pet-setting')]
+      .map((r) => r.querySelector('button.on')?.getAttribute('data-value'))
+    expect(on()).toEqual(['show', 'show'])
+    panel.setSettings({ onFullscreen: 'hide', onPresentation: 'show' })
+    expect(on()).toEqual(['hide', 'show'])
+  })
+
+  it('返回切回动作视图，延时通知回一次', () => {
+    const { panel, view } = mountWithSettings()
+    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-view="actions"]')!.click()
+    expect(panel.view).toBe('actions')
+    expect(view).toHaveBeenLastCalledWith('actions')
+    expect(panel.el.querySelectorAll('.pet-setting')).toHaveLength(0)
+  })
+
+  it('收起面板就回到动作视图，并通知调用方换回延时', () => {
+    const { panel, view } = mountWithSettings()
+    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    view.mockClear()
+    panel.hide()
+    expect(panel.view).toBe('actions')
+    expect(view).toHaveBeenCalledWith('actions')
+  })
+
+  it('切视图不重新挂载面板：根节点还在原位，data-hit 不丢', () => {
+    const { panel, root } = mountWithSettings()
+    const el = panel.el
+    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    expect(panel.el).toBe(el)
+    expect(root.lastElementChild).toBe(el)
+    expect(el.dataset.hit).toBe('')
   })
 })

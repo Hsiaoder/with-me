@@ -17,12 +17,6 @@ export interface Platform {
   onPageReady(cb: () => void): void
   /** 向渲染层发一条消息。业务语义在调用方，这里只负责搬运。 */
   send(channel: string, payload: unknown): void
-  /**
-   * 窗口在本机的句柄（Windows 是 HWND 的十进制字符串）。
-   * 全屏让路探测要拿它判断「前台那个窗口是不是宠物自己」——宠物窗铺满整屏，
-   * 不区分的话它自己就会被当成有人在全屏。
-   */
-  windowHandle(): string
   show(): void
   hide(): void
 }

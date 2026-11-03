@@ -2,6 +2,8 @@ import {
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
   PANEL_GAP,
+  PANEL_HIDE_MS,
+  SETTING_HIDE_MS,
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
@@ -11,6 +13,7 @@ import { createHoverTimer } from '../shared/hover.js'
 import { createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
+import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
@@ -101,9 +104,35 @@ function bootstrap(skin: SkinPayload): void {
     startChain()
   }
 
-  const panel = createPanel(root, defaultActions(), (a) => {
-    rules.feed('interacted')
-    requestClip(a.pool)
+  /**
+   * 可见性设置的本地副本。开局由主进程把存档里的值推一次（onSettings），
+   * 之后每次点选项先本地反馈、再上报——等主进程回灌会有肉眼可见的延迟。
+   */
+  let settings: Settings = { ...DEFAULT_SETTINGS }
+
+  const panel = createPanel(root, defaultActions(), settings, {
+    action: (a) => {
+      rules.feed('interacted')
+      requestClip(a.pool)
+    },
+    setting: (patch) => {
+      settings = { ...settings, ...patch }
+      panel.setSettings(settings)
+      window.petBridge?.setSettings(settings)
+      // 选中态换了类，面板高度可能变，重新夹一次位置免得溢出屏幕
+      if (panel.isOpen) placePanel()
+    },
+    view: (v) => {
+      // 设置视图要连点两行开关，1500ms 的收起延时不够用，换宽裕的值并重挂自动收起的定时器
+      hover.setHideMs(v === 'settings' ? SETTING_HIDE_MS : PANEL_HIDE_MS)
+      scheduleHover()
+      if (panel.isOpen) placePanel()
+    },
+  })
+
+  window.petBridge?.onSettings((s) => {
+    settings = s
+    panel.setSettings(s)
   })
 
   /** 身体、面板、拖拽三者之一成立就要接住鼠标。 */

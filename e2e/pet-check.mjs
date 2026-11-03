@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CLIP_FADE_MS } from '../src/shared/config.ts'
+import { CLIP_FADE_MS, PANEL_HIDE_MS, SETTING_HIDE_MS } from '../src/shared/config.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -176,7 +176,7 @@ const dbg = () => page.evaluate(() => ({
   inner: { w: window.innerWidth, h: window.innerHeight },
 }))
 
-check('悬停满 400ms 自动出现面板，三个功能按钮齐全', async () => {
+check('悬停满 400ms 自动出现面板，四个按钮齐全', async () => {
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
   await feed(center)
@@ -185,7 +185,7 @@ check('悬停满 400ms 自动出现面板，三个功能按钮齐全', async () 
   // 再喂一次等于把「计时到点自己开」这条链路绕过掉——上一版就是这么假通过的。
   await page.waitForTimeout(460)
   assert.equal((await dbg()).open, true, '光标静止满 400ms 后仍没弹出')
-  assert.deepEqual(await page.locator('.pet-panel button').allTextContents(), ['喂食', '小游戏', '状态'])
+  assert.deepEqual(await page.locator('.pet-panel button').allTextContents(), ['喂食', '小游戏', '状态', '设置'])
 })
 
 check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢出屏幕', async () => {
@@ -309,10 +309,53 @@ check('Ctrl+Shift+点身体切换命中框', async () => {
   assert.equal(await toggle(), 0, '第二次没有把命中框收掉')
 })
 
-check('让路探测子进程已启动（新出现的 powershell，父进程是 electron）', async () => {
+check('可见性探测子进程已启动（新出现的 powershell，父进程是 electron）', async () => {
   const fresh = psParentPairs().filter(([pid, parent]) => !beforePids.has(pid) && electronPids().has(parent))
-  assert.ok(fresh.length >= 1, '没看到探测用的 powershell 子进程，让路功能没起来')
+  assert.ok(fresh.length >= 1, '没看到场景探测用的 powershell 子进程，可见性功能没起来')
   probePids = fresh.map(([pid]) => pid)
+})
+
+check('设置视图：切视图、改一项、当场落盘、收起延时更宽裕', async () => {
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-view="settings"]')
+  await page.waitForSelector('.pet-panel .pet-setting')
+  const selected = () => page.locator('.pet-setting').evaluateAll((rows) =>
+    rows.map((r) => r.querySelector('button.on')?.dataset.value))
+
+  assert.equal(await page.locator('.pet-setting').count(), 2, '两档场景该有两行')
+  assert.deepEqual(await selected(), ['show', 'show'], '默认值必须是「都陪我」')
+
+  await page.click('.pet-panel button[data-key="onFullscreen"][data-value="hide"]')
+  assert.deepEqual(await selected(), ['hide', 'show'], '只该被点的那一项变选中态')
+
+  // 立刻落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查。
+  // 轮询而不是睡一下：IPC 到写盘是异步的，读早了会误报成「没落盘」。
+  const file = join(userData, 'save.json')
+  const want = JSON.stringify({ onFullscreen: 'hide', onPresentation: 'show' })
+  let saved = null
+  for (let i = 0; i < 30; i++) {
+    try {
+      saved = JSON.parse(readFileSync(file, 'utf8')).settings
+      if (JSON.stringify(saved) === want) break
+    } catch {
+      /* 还没写出来 */
+    }
+    await page.waitForTimeout(100)
+  }
+  assert.equal(JSON.stringify(saved), want, `设置没在 3 秒内落盘：${JSON.stringify(saved)}`)
+
+  // 设置视图里挑选项要的时间更长：过了动作视图的 1500ms 还不能收
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h + 400 })
+  await page.waitForTimeout(PANEL_HIDE_MS + 300)
+  assert.equal((await dbg()).open, true, `设置视图在 ${PANEL_HIDE_MS}ms 后就收了，SETTING_HIDE_MS 没生效`)
+  await page.waitForTimeout(SETTING_HIDE_MS)
+  assert.equal((await dbg()).open, false, '设置视图最终也没收，收起逻辑被绕过了')
+
+  // 收起后回动作视图；重新打开时看到的应该是按钮而不是设置页
+  assert.ok(await openOnBody(), '前置：面板叫不回来')
+  assert.equal(await page.locator('.pet-panel .pet-setting').count(), 0, '收起再开还停在设置视图')
+  assert.deepEqual(await page.locator('.pet-panel button').allTextContents(), ['喂食', '小游戏', '状态', '设置'])
 })
 
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {
@@ -416,7 +459,7 @@ const userData = mkdtempSync(join(tmpdir(), 'pet-e2e-'))
 app = await electron.launch({
   args: ['.'],
   cwd: process.cwd(),
-  env: { ...process.env, PET_USER_DATA: userData },
+  env: { ...process.env, PET_USER_DATA: userData, PET_FREEZE_CURSOR: '1' },
 })
 try {
   page = await app.firstWindow()

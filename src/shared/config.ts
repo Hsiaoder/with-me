@@ -27,6 +27,12 @@ export const HOVER_DWELL_MS = 400
  * 不该把面板收掉；而收得太快会让用户觉得按钮自己跑了。
  */
 export const PANEL_HIDE_MS = 1500
+/**
+ * 设置视图的收起延时。面板 1500ms 无操作就收，这个时间在动作视图里够用，
+ * 但设置视图要连点两行开关（每行两个选项），1500ms 不够挑完，
+ * 面板半路收掉等于把用户刚看到一半的选项藏起来。
+ */
+export const SETTING_HIDE_MS = 5000
 /** 渲染层超过这么久没续期就强制恢复穿透，防止整块屏幕点不动。 */
 export const LEASE_TIMEOUT_MS = 500
 /**

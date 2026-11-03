@@ -1,4 +1,5 @@
 import { SAVE_VERSION } from './config.js'
+import { DEFAULT_SETTINGS, isVisibility, type Settings } from './visibility.js'
 
 /**
  * 存档的迁移与默认值。规则：**永远不抛异常**——坏档就回退默认值，并把原因记进
@@ -10,7 +11,13 @@ import { SAVE_VERSION } from './config.js'
 export type Stats = { hunger: number; mind: number; clean: number; mood: number }
 
 /** 落盘形状。`warnings` 是本次读档的诊断，不属于持久数据。 */
-export type SaveFile = { version: number; skin: string; stats: Stats; lastSeenAt: number }
+export type SaveFile = {
+  version: number
+  skin: string
+  stats: Stats
+  settings: Settings
+  lastSeenAt: number
+}
 
 export type SaveData = SaveFile & {
   warnings: string[]
@@ -29,6 +36,7 @@ export function defaultSave(now: number): SaveData {
     version: SAVE_VERSION,
     skin: 'block',
     stats: { ...DEFAULT_STATS },
+    settings: { ...DEFAULT_SETTINGS },
     lastSeenAt: now,
     warnings: [],
     fromFuture: false,
@@ -46,6 +54,37 @@ export function applyCare(save: SaveData, delta: Partial<Stats>): SaveData {
     if (typeof d === 'number' && Number.isFinite(d)) stats[key] = clamp(save.stats[key] + d)
   }
   return { ...save, stats }
+}
+
+/** 设置写入的唯一入口：只认 'show'/'hide'，其余静默丢弃（调用方是自家渲染层，不值得为它炸）。 */
+export function applySettings(save: SaveData, patch: Partial<Settings>): SaveData {
+  const settings: Settings = { ...save.settings }
+  for (const key of ['onFullscreen', 'onPresentation'] as const) {
+    const v = patch[key]
+    if (isVisibility(v)) settings[key] = v
+  }
+  return { ...save, settings }
+}
+
+/** 旧档没有这一项就安静用默认值；有但值认不出才记 warning。 */
+function migrateSettings(r: Record<string, unknown>, warnings: string[]): Settings {
+  const settings: Settings = { ...DEFAULT_SETTINGS }
+  if (r.settings === undefined) return settings
+  if (r.settings === null || typeof r.settings !== 'object' || Array.isArray(r.settings)) {
+    warnings.push('存档的 settings 读不出来，已用默认值')
+    return settings
+  }
+  const s = r.settings as Record<string, unknown>
+  for (const key of ['onFullscreen', 'onPresentation'] as const) {
+    const v = s[key]
+    if (v === undefined) continue
+    if (isVisibility(v)) settings[key] = v
+    else {
+      settings[key] = DEFAULT_SETTINGS[key]
+      warnings.push(`settings.${key}「${String(v)}」不认识，已用默认值`)
+    }
+  }
+  return settings
 }
 
 /**
@@ -76,6 +115,7 @@ export function migrate(raw: unknown, now: number): SaveData {
       clean: num(st.clean, DEFAULT_STATS.clean),
       mood: num(st.mood, DEFAULT_STATS.mood),
     },
+    settings: migrateSettings(r, warnings),
     lastSeenAt: num(r.lastSeenAt, base.lastSeenAt),
     warnings,
     fromFuture: false,
@@ -84,5 +124,11 @@ export function migrate(raw: unknown, now: number): SaveData {
 
 /** 去掉诊断字段，得到可以写盘的形状。 */
 export function toSaveFile(save: SaveData): SaveFile {
-  return { version: save.version, skin: save.skin, stats: save.stats, lastSeenAt: save.lastSeenAt }
+  return {
+    version: save.version,
+    skin: save.skin,
+    stats: save.stats,
+    settings: save.settings,
+    lastSeenAt: save.lastSeenAt,
+  }
 }
