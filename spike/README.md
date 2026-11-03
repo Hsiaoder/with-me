@@ -212,19 +212,29 @@ e2e 有一条断言报「收起后面板还在布局里：`display=flex`」，�
 
 ## 追加：dsh-pet 素材试穿（spike，产物全在 %TEMP%，不进仓库）
 
-`blackkey-measure.mjs` → `blackkey-try.mjs` → `dsh-skin-build.mjs` → `dsh-skin-rebox.mjs` → `dsh-verify.mjs`。
+走过的路：`blackkey-measure.mjs` → `blackkey-try.mjs` → `dsh-skin-build.mjs` →
+`dsh-skin-rebox.mjs` → `fringe-try.mjs`（全是弯路）→ **`dsh-asar-extract.mjs` → `dsh-verify.mjs`**（正解）。
 
 结论：
 
-- 本地那批素材（328 个 webm，抽 120 个）**全是 `yuv420p`，没有 alpha**，背景是不透明纯黑。
-  直接导入不可能——我们的契约要 VP9+alpha。
-- **黑幕抠像可用**：`colorkey=0x000000:0.12:0.04` 之后，深蓝头发、暗色裙子都没被抠穿
-  （贴洋红底肉眼确认）。代价是轮廓上有一圈毛刺。
+- **正解：不用抠像。** 打包版 `E:/localwork/dsh-pet-0.3.8-win-x64/resources/app.asar` 里
+  `/assets/webm` 发的 106 段是**已经带 alpha 的 VP9**（`yuva420p`，实测背景 82.8% 像素 alpha<5、
+  轮廓贴洋红底干净无毛刺）。纯字节切片即可，不重编码。
+- 之前那句「本地那批 328 个 webm 全是 yuv420p 没 alpha」没错，但**拿错了源**：
+  `E:/localwork/pet-animations/` 是抠像**前**的中间产物，黑底。拿它抠就必然留一圈暗色毛刺。
+- 抠像这条路本身也救不回来：`colorkey=0x000000:0.12:0.04` 的毛刺，加大 blend 会啃穿细发丝，
+  加 1px 腐蚀（`alphaextract,erosion,alphamerge`）会把**角色内部**也啃出洞——
+  深蓝头发和黑裙子本身就是近黑色，抠像分不清它和背景。
+- 素材语义也**对得上**契约（先前那句「对不上」同样是中间产物子集造成的误判）：
+  `待机呼吸休闲`（可循环待机）、`东张西望`（turn）、`原地漂浮踏步`（move）、
+  `点击回应-元气挥手`（click）、`被鼠标拖拽悬空反馈`（drag）——五个必需池各有真段落，不用占位复制。
+- asar 读法：`readUInt32LE(12)` 是头 JSON 长度，数据段起点 `16+头长`；
+  **条目 offset 整体差 1 字节**，别写死，在附近搜 EBML magic `1A 45 DF A3` 对齐再切。
 - 体检第一次报 `haze:true`，`bgAlphaMax=255`——**不是抠像脏，是 bodyBox 算错**：
-  按单帧量的框，角色在别的帧伸出手就出框了。改成跨 7 帧取并集 + 12px 余量后五段全 `haze:false`。
+  按单帧量的框，角色在别的帧伸出手就出框了。改成跨 7 帧取并集 + 余量后五段全 `haze:false`。
   和 `problem/03` 里 3.2 是同一类错误，这次错在我的量框脚本而不是素材。
 - 另一个坑：读带 alpha 的 webm 必须 `-c:v libvpx-vp9` 指定解码器，
   ffmpeg 自带的 vp9 解码器会**丢掉 alpha 块**，于是整帧被当成不透明、量出满屏假框。
-- 素材语义对不上契约：这批是 10 秒一段的**独立动作**（random 89 段），没有"待机"这种可循环条，
-  也**没有 `drag`（被抓）**，而它是必需池。试穿包里 turn/drag 是拿别的段占位复制的。
+  同理数透明像素要按 `alpha<5` 而不是 `alpha===0`——VP9 的透明底给的是 1，
+  按 0 数会量出「只有 0.6% 透明」这种反直觉的假数。
 - 这批是 QQ 宠形象系素材，要上直播带打赏的话授权是另一码事，所以只落 %TEMP% 不入库。
