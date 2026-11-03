@@ -101,3 +101,29 @@ CPU（各进程相加，单核百分比）：`1.73, 2.2, 1.41, 1.42, 1.45, 1.41,
 修法只有一处：`wantGrab = over || overPanel || dragging`。光标回到面板矩形里下一拍
 （≤33ms）就重新接住，人手从移到位到按下远不止这点时间。
 回归保护在 `e2e/pet-check.mjs` 的「光标离开身体与面板后立刻放开鼠标，不等面板收起」。
+
+## 追加：那个点归谁，决定下面的应用能不能画出手型
+
+真机症状：点了宠物再把鼠标移到 Qoder 界面上停住，手型光标不出来，要再点一下才出现。
+
+`setFocusable` 渲染层从来没调用过，所以不是抢焦点。真正机制是**整窗命中测试**：
+穿透关着时这扇全屏窗就是光标下面的窗口，下面的应用收不到 `WM_SETCURSOR`，
+既画不出手型，那一下点击也是落在透明层上。
+
+`spike/focus-probe.mjs` 用真光标（`SetCursorPos`，CDP 合成事件走的是另一条路，测不到这件事）
+加 `WindowFromPoint` 量到的事实：
+
+| 位置 | 那个点归谁 |
+|---|---|
+| 没碰宠物，停在观察点 | `Chrome_RenderWidgetHostHWND` / proc=Qoder CN |
+| 光标在宠物上（grab=true） | `Chrome_RenderWidgetHostHWND` / proc=**electron** ← 我们的透明层 |
+| 离开宠物一步（约 120ms）后 | 回到 Qoder CN，之后一直停在 Qoder |
+
+配合上一节 `grab-probe` 的量数（离开宠物后放开鼠标：修前 407ms、修后 2ms），
+「要点一下才出手指」就是那 400ms 被扣住的直接后果：修前你移出去停住，
+这段时间里那个点还是我们的，Qoder 不知道光标进来了。
+
+注意 `spike/hold-probe.mjs` 的局限：它每次查岗都要起一个 PowerShell 并 `Add-Type` 编译 C#，
+单次约 1 秒，比 400ms 的窗口还粗，所以它只能给出「修后 50ms 已经归 Qoder」这种下限结论，
+**不能**用来做 400ms 的 A/B（我试了，两边都读成 false，是探针慢，不是修复无效）。
+要卡毫秒级时间线就用 `grab-probe`（页面内轮询，毫秒粒度）。
