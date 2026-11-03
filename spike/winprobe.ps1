@@ -38,6 +38,7 @@ public static class Win {
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
   [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vk);
@@ -93,33 +94,53 @@ public static class Win {
 
   // GetCursorInfo reports the calling thread, so attach to the thread owning the point
   // to read the shape that is actually on screen.
-  // Mouse capture: while a window holds it, EVERY mouse message (move, click, wheel)
-  // is delivered to it no matter where the pointer is. Chromium calls SetCapture on
-  // mouse-down and releases on mouse-up; if the up never reaches it, capture leaks.
-  // Capture is per-thread, so ask the GUI info of the threads we care about.
+  // Capture and keyboard focus are both PER THREAD, and GetGUIThreadInfo only fills in for
+  // a thread attached to the caller - reading a foreign thread without attaching silently
+  // returns nothing (that exact mistake hid the answer once already).
+  // Capture matters because while a window holds it, EVERY mouse message - move, click and
+  // wheel - goes to it no matter where the pointer is. Chromium calls SetCapture on
+  // mouse-down and releases on mouse-up; if the up never arrives, the capture leaks.
+  public static string ThreadInfo(IntPtr window) {
+    uint p; uint tid = GetWindowThreadProcessId(window, out p);
+    uint self = GetCurrentThreadId();
+    AttachThreadInput(self, tid, true);
+    GUITHREADINFO g = new GUITHREADINFO();
+    g.cbSize = (uint)Marshal.SizeOf(typeof(GUITHREADINFO));
+    bool ok = GetGUIThreadInfo(tid, out g);
+    AttachThreadInput(self, tid, false);
+    if (!ok) return "unreadable";
+    return "active=" + Owns(g.hwndActive) + " kbFocus=" + Owns(g.hwndFocus) + " capture=" + Owns(g.hwndCapture) + " (tid " + tid + ")";
+  }
+  public static string Owns(IntPtr h) {
+    if (h == IntPtr.Zero) return "none";
+    return Proc(GetPid(h)) + "[" + Class(h) + "]";
+  }
+
   public static string Capture(string label, IntPtr window) {
     if (window == IntPtr.Zero) return "";
     uint p; uint tid = GetWindowThreadProcessId(window, out p);
+    uint self = GetCurrentThreadId();
+    AttachThreadInput(self, tid, true);
     GUITHREADINFO g = new GUITHREADINFO();
     g.cbSize = (uint)Marshal.SizeOf(typeof(GUITHREADINFO));
-    if (!GetGUIThreadInfo(tid, out g)) return "";
-    if (g.hwndCapture == IntPtr.Zero) return "";
-    return "  " + label + "=0x" + g.hwndCapture.ToInt64().ToString("x")
-      + "[" + Class(g.hwndCapture) + "]";
+    bool ok = GetGUIThreadInfo(tid, out g);
+    AttachThreadInput(self, tid, false);
+    if (!ok || g.hwndCapture == IntPtr.Zero) return "";
+    return "  " + label + "=holding-capture:" + Owns(g.hwndCapture);
   }
 
-  // The wheel goes to the FOCUSED window, and "focused" is per-thread: the foreground
-  // top-level can be app X while X's thread focuses some child, or nothing at all.
-  // That is the only place left once capture and activation are ruled out.
   public static string FocusOf(string label, IntPtr window) {
     if (window == IntPtr.Zero) return "";
-    uint p; uint tid = GetWindowThreadProcessId(window, out p);
-    GUITHREADINFO g = new GUITHREADINFO();
-    g.cbSize = (uint)Marshal.SizeOf(typeof(GUITHREADINFO));
-    if (!GetGUIThreadInfo(tid, out g)) return "";
-    if (g.hwndFocus == IntPtr.Zero) return "  " + label + "=NONE";
-    uint fp; GetWindowThreadProcessId(g.hwndFocus, out fp);
-    return "  " + label + "=" + Proc(fp) + "[" + Class(g.hwndFocus) + "]";
+    return "  " + label + "=" + ThreadInfo(window);
+  }
+
+
+  public static uint GetPid(IntPtr h) { uint p; GetWindowThreadProcessId(h, out p); return p; }
+
+  public static void KeyPress(byte vk) {
+    keybd_event(vk, 0, 0, UIntPtr.Zero);
+    System.Threading.Thread.Sleep(40);
+    keybd_event(vk, 0, 2, UIntPtr.Zero);
   }
 
   public static string Shape(int x, int y) {
@@ -151,6 +172,17 @@ switch ($Action) {
   'point' {
     $p = Get-Here
     [Win]::State($p.X, $p.Y) + '  cursor=' + [Win]::Shape($p.X, $p.Y)
+  }
+  'focus' {
+    # Where keys and the wheel actually go, per thread - and whether anyone holds capture.
+    'fg-thread: ' + [Win]::ThreadInfo([Win]::GetForegroundWindow())
+    $h = [Win]::FindPet()
+    if ($h -eq [IntPtr]::Zero) { 'pet: not running' } else { 'pet-thread: ' + [Win]::ThreadInfo($h) }
+  }
+  'key' {
+    # -X is the virtual-key code in decimal. F13 (0x7C) is bound by almost nothing,
+    # so probing with it cannot type into someone's document or trigger an action.
+    [Win]::KeyPress([byte]$X)
   }
   'move' {
     [void][Win]::SetCursorPos($X, $Y)
