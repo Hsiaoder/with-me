@@ -17,6 +17,15 @@ import { createWindowsPlatform } from './windows.js'
 const here = dirname(fileURLToPath(import.meta.url))   // 运行时是 dist/main
 
 /**
+ * 存档与用户皮肤的位置。测试要把它挪到临时目录，否则"换皮肤"这条端到端
+ * 只能靠手工改真实 %APPDATA%。只允许显式环境变量指定，不给默认值。
+ *
+ * 必须排在单实例锁之前：锁是按 userData 目录分的，先申请锁就等于
+ * 所有测试实例共用一把锁，不同临时目录也照样互相顶掉（复审 #2 实测复现）。
+ */
+if (process.env.PET_USER_DATA) app.setPath('userData', process.env.PET_USER_DATA)
+
+/**
  * 只允许一个实例。桌宠跑起两份就是屏幕上叠两只宠物，而且都是整屏透明窗，
  * 第二份还会抢着接住鼠标——排查起来非常费劲（开发期真的踩过：调试残留了 9 个实例）。
  * 拿不到锁就退出，并说明原因，不要出现"看起来没启动但桌面上多了一只"。
@@ -26,12 +35,6 @@ if (!gotInstanceLock) {
   console.log('[pet] 已经有一只宠物在跑了，这个实例退出')
   app.quit()
 }
-
-/**
- * 存档与用户皮肤的位置。测试要把它挪到临时目录，否则"换皮肤"这条端到端
- * 只能靠手工改真实 %APPDATA%。只允许显式环境变量指定，不给默认值。
- */
-if (process.env.PET_USER_DATA) app.setPath('userData', process.env.PET_USER_DATA)
 
 // 协议特权必须在 ready 之前声明，且整个进程只声明一次。
 declareAppScheme()
@@ -97,7 +100,7 @@ void app.whenReady().then(() => {
     clearInterval(sweeper)
     stopWatch()
     try {
-      saveTo(dataDir, save)
+      if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过退出写回')
     } catch (e) {
       // 存档写不进去不该拦住退出，但必须留痕
       console.error('[save] 退出落盘失败：', e)

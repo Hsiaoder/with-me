@@ -28,6 +28,19 @@ describe('saveTo', () => {
     expect(JSON.parse(readFileSync(main(), 'utf8'))).not.toHaveProperty('warnings')
   })
 
+  it('未来版本的档：读出来能跑，但一个字节都不写回', () => {
+    // 新版本存的档被旧程序打开时，旧程序不认识字段。以前这里照样在退出时
+    // 覆写主文件并生成 .bak，等于用一份降级档把用户的新档埋了。
+    const future = { version: 99, skin: 'future', stats: { hunger: 1, mind: 2, clean: 3, mood: 4 }, lastSeenAt: NOW }
+    writeFileSync(main(), JSON.stringify(future), 'utf8')
+    const loaded = loadFrom(dir, NOW)
+    expect(loaded.fromFuture).toBe(true)
+
+    expect(saveTo(dir, loaded, NOW + 10_000)).toBe(false)
+    expect(JSON.parse(readFileSync(main(), 'utf8'))).toEqual(future)
+    expect(existsSync(bak())).toBe(false)
+  })
+
   it('第二次写入留下上一版的 .bak', () => {
     saveTo(dir, { ...defaultSave(NOW), skin: 'a' }, NOW)
     saveTo(dir, { ...defaultSave(NOW), skin: 'b' }, NOW + 1)

@@ -82,6 +82,14 @@ export function startFullscreenWatch(platform: Platform, petHandle: string): () 
   }
   // 探测失败不影响宠物存在：PowerShell 被安全策略拦住时这里留个痕就好
   child.on('error', (e) => console.error('[fullscreen] 探测进程出错：', e.message))
+  // 半路死掉时宠物可能正藏着：再也没有下一行输出把状态翻回来，它会一直隐到应用重启。
+  // 不是主动 stop 的退出就当场恢复显示，让路失效至少比宠物消失好。
+  child.on('close', () => {
+    if (dying || !hiding) return
+    hiding = false
+    platform.show()
+    console.error('[fullscreen] 探测进程退出，宠物已恢复显示，本轮不再让路')
+  })
 
   const stop = (): void => {
     if (dying) return

@@ -12,7 +12,15 @@ export type Stats = { hunger: number; mind: number; clean: number; mood: number 
 /** 落盘形状。`warnings` 是本次读档的诊断，不属于持久数据。 */
 export type SaveFile = { version: number; skin: string; stats: Stats; lastSeenAt: number }
 
-export type SaveData = SaveFile & { warnings: string[] }
+export type SaveData = SaveFile & {
+  warnings: string[]
+  /**
+   * 文件版本比本程序新。这种档只能读来跑一场，**不能写回去**：
+   * 我们不认识它的字段，写回就等于把用户在新版本里存的东西降级覆盖掉。
+   * 诊断字段，和 warnings 一样不落盘。
+   */
+  fromFuture: boolean
+}
 
 const DEFAULT_STATS: Stats = { hunger: 80, mind: 80, clean: 80, mood: 80 }
 
@@ -23,6 +31,7 @@ export function defaultSave(now: number): SaveData {
     stats: { ...DEFAULT_STATS },
     lastSeenAt: now,
     warnings: [],
+    fromFuture: false,
   }
 }
 
@@ -49,10 +58,14 @@ export function migrate(raw: unknown, now: number): SaveData {
     return { ...base, warnings: ['存档无法识别，已用默认值'] }
   }
   const r = raw as Record<string, unknown>
-  const warnings: string[] = []
   if (typeof r.version === 'number' && r.version > SAVE_VERSION) {
-    warnings.push(`存档版本 ${r.version} 高于本程序支持的 ${SAVE_VERSION}，按默认值处理`)
+    return {
+      ...base,
+      warnings: [`存档版本 ${r.version} 高于本程序支持的 ${SAVE_VERSION}，按默认值继续且不回写`],
+      fromFuture: true,
+    }
   }
+  const warnings: string[] = []
   const st = (r.stats !== null && typeof r.stats === 'object' ? r.stats : {}) as Record<string, unknown>
   return {
     version: SAVE_VERSION,
@@ -65,6 +78,7 @@ export function migrate(raw: unknown, now: number): SaveData {
     },
     lastSeenAt: num(r.lastSeenAt, base.lastSeenAt),
     warnings,
+    fromFuture: false,
   }
 }
 

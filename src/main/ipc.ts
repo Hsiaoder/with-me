@@ -11,12 +11,20 @@ import type { ClickThroughBridge } from './clickthrough.js'
  * 点歌由渲染层直接调播放器——它们都不需要过 IPC，所以对应的通道没有加：
  * 留一条没人发的通道，比少一条通道更糟。
  */
+/**
+ * 渲染层送来的值当外部输入看：只认真布尔 `true`，其余一律算关。
+ *
+ * 不用 `Boolean(x)`：那样字符串 `"false"`、非零数字、任何对象都会变成 true，
+ * 一条畸形消息就能把整块屏幕的鼠标接走。
+ */
+export function toBool(v: unknown): boolean {
+  return v === true
+}
+
 export function registerIpc(platform: Platform, bridge: ClickThroughBridge): void {
-  // 渲染层送来的值当外部输入看：先转成真布尔再驱动窗口。
-  // 一个畸形值不该决定整块屏幕能不能点。
   ipcMain.on(IPC.clickThroughRequest, (_e, p: unknown) => {
-    const grab = Boolean((p as ClickThroughPayload | null | undefined)?.grab)
+    const grab = toBool((p as ClickThroughPayload | null | undefined)?.grab)
     bridge.request(grab)
   })
-  ipcMain.on(IPC.focusable, (_e, on: unknown) => platform.setFocusable(Boolean(on)))
+  ipcMain.on(IPC.focusable, (_e, on: unknown) => platform.setFocusable(toBool(on)))
 }

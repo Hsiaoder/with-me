@@ -33,6 +33,19 @@ describe('migrate', () => {
     const s = migrate({ version: 99, skin: 'future', stats: { hunger: 1 } }, NOW)
     expect(s.version).toBe(SAVE_VERSION)
     expect(s.warnings.join()).toContain('99')
+    // 「按默认值处理」得是真的按默认值：未来版本的字段含义我不认识，
+    // 只记 warning 却照抄字段，等于一边声明不猜一边猜。
+    expect(s.skin).toBe(defaultSave(NOW).skin)
+    expect(s.stats).toEqual(defaultSave(NOW).stats)
+    expect(s.lastSeenAt).toBe(NOW)
+    expect(s.fromFuture).toBe(true)
+  })
+
+  it('当前版本与更旧版本正常取值，且不背禁止写盘的标记', () => {
+    const s = migrate({ version: SAVE_VERSION, skin: 'block', stats: { hunger: 1 } }, NOW)
+    expect(s.skin).toBe('block')
+    expect(s.stats.hunger).toBe(1)
+    expect(s.fromFuture).toBe(false)
   })
 
   it('垃圾输入一律不抛异常', () => {
@@ -82,5 +95,6 @@ describe('toSaveFile', () => {
     const file = toSaveFile(migrate({ version: 99 }, NOW))
     expect(file).toEqual({ version: SAVE_VERSION, skin: 'block', stats: defaultSave(NOW).stats, lastSeenAt: NOW })
     expect('warnings' in file).toBe(false)
+    expect('fromFuture' in file).toBe(false)
   })
 })
