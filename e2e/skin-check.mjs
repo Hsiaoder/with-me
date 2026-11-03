@@ -47,7 +47,13 @@ async function run(label, prepare) {
     const page = await app.firstWindow()
     const warnings = []
     page.on('console', (m) => { if (m.type() === 'warning') warnings.push(m.text()) })
-    await page.waitForFunction(() => !!window.__petDebug, null, { timeout: 30_000 })
+    // 只等 __petDebug 出现不够——那只代表装配跑完了，首帧可能还没解码出来，
+    // 紧接着断言 videoWidth 就会偶发拿到 0。等前台真的解出画面。
+    await page.waitForFunction(
+      () => !!window.__petDebug && (document.querySelector('video.is-front')?.videoWidth ?? 0) > 0,
+      null,
+      { timeout: 30_000 },
+    )
     const got = await page.evaluate(() => ({
       skinName: window.__petDebug.skinName,
       src: document.querySelector('video.is-front')?.currentSrc ?? '',

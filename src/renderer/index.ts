@@ -146,15 +146,21 @@ function bootstrap(skin: SkinPayload): void {
   }
 
   let lastFrame = Date.now()
+  let frameCount = 0
   const frame = (): void => {
+    frameCount++
     const now = Date.now()
     if (current.pool === 'move' && !dragging) motion.step(now - lastFrame)
     lastFrame = now
     paint()
-    sendGrab()
     requestAnimationFrame(frame)
   }
   requestAnimationFrame(frame)
+
+  // 心跳必须是定时器，不能挂在 requestAnimationFrame 上：整屏覆盖层没有焦点时
+  // Chromium 会把 rAF 节流到 1 帧/秒左右（实测 1.4 秒只跑了 2 帧），
+  // 那样 250ms 的节拍根本兑现不了，租约照旧超时。
+  setInterval(sendGrab, GRAB_HEARTBEAT_MS / 2)
 
   // 不需要额外的「定时问一次规则层」：播放器从不设置 video.loop，每条动画都会真的播完，
   // 行为链在每次播完时已经问过规则层了（最快 4 秒一拍，足够接住 idleLongMs）。
@@ -212,6 +218,10 @@ function bootstrap(skin: SkinPayload): void {
   const debug = {
     /** 当前生效的皮肤名。换皮肤那条端到端验收靠它确认装载的是哪一份。 */
     skinName: manifest.name,
+    /** rAF 跑了多少帧。覆盖层没焦点时 Chromium 会节流渲染，走路就会一卡一卡——用它测出来。 */
+    get frames(): number {
+      return frameCount
+    },
     /** 喂一个光标位置，走与真实推送完全相同的路径。 */
     cursor: (p: Point): boolean => { handleCursor(p); return true },
     /** 把宠物挪到指定舞台位置，用于验收贴边与面板夹取。 */

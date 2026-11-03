@@ -10,7 +10,8 @@
 import { _electron as electron } from 'playwright'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const manifest = JSON.parse(readFileSync(join(process.cwd(), 'skins/block/manifest.json'), 'utf8'))
@@ -28,6 +29,16 @@ check('页面从 app:// 起来，装配没有抛错', async () => {
   assert.match(page.url(), /^app:\/\/assets\/renderer\/index\.html/)
   await page.waitForTimeout(1500)
   assert.deepEqual(pageErrors, [], `渲染层抛了异常：${pageErrors.join('\n')}`)
+})
+
+check('覆盖层没有焦点时 rAF 不被节流到走一步卡一下', async () => {
+  // 这扇窗是 focusable:false 的，常态就是"没有焦点"。若 Chromium 因此节流渲染，
+  // 走路会变成一秒跳一下，心跳也会失准（就是这么发现问题的）。
+  const a = await page.evaluate(() => window.__petDebug.frames)
+  await page.waitForTimeout(1000)
+  const b = await page.evaluate(() => window.__petDebug.frames)
+  const fps = b - a
+  assert.ok(fps >= 30, `rAF 只有约 ${fps} 帧/秒，覆盖层被后台节流了`)
 })
 
 check('两个 video 槽，前台恰好一个，且已解码在播', async () => {
@@ -237,7 +248,14 @@ check('离开身体与面板满 400ms 后面板收起', async () => {
 })
 
 beforePids = psPids()
-app = await electron.launch({ args: ['.'], cwd: process.cwd() })
+// 单实例锁是按 userData 分开的，测试必须用自己的临时目录：
+// 否则你桌面上正跑着一只宠物时，e2e 起的实例会被锁挡掉，firstWindow 直接挂住。
+const userData = mkdtempSync(join(tmpdir(), 'pet-e2e-'))
+app = await electron.launch({
+  args: ['.'],
+  cwd: process.cwd(),
+  env: { ...process.env, PET_USER_DATA: userData },
+})
 try {
   page = await app.firstWindow()
   page.on('pageerror', (e) => pageErrors.push(String(e)))
@@ -273,4 +291,10 @@ try {
   if (failed) process.exitCode = 1
 } finally {
   await app?.close().catch(() => {})
+  // Windows 上刚退出的进程可能还攥着文件句柄，rmSync 会抛 EBUSY；清不掉就算了
+  try {
+    rmSync(userData, { recursive: true, force: true })
+  } catch {
+    /* 忽略 */
+  }
 }
