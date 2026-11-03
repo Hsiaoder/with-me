@@ -103,3 +103,74 @@ describe('悬停关闭', () => {
     expect(h.onPoint(off, false, false)).toBe('none')
   })
 })
+
+/**
+ * 静止光标。主进程对相同坐标去重（cursor.ts），所以真的把手停住不动时
+ * 不会再有任何 onPoint 进来——延时只能靠调用方的定时器催。
+ * pendingMs 就是这个催债句：还剩多久该自动开/关，没挂起返回 null。
+ */
+describe('静止光标的待转换计时', () => {
+  it('刚进入身体：还有 HOVER_DWELL_MS 要等', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.onPoint(on, true, false)
+    expect(h.pendingMs(c.now())).toBe(HOVER_DWELL_MS)
+  })
+
+  it('停留中途：剩余时间跟着时钟递减', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.onPoint(on, true, false)
+    c.set(250)
+    expect(h.pendingMs(c.now())).toBe(HOVER_DWELL_MS - 250)
+  })
+
+  it('定时器把它催到点：不需要新光标事件就能 open', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.onPoint(on, true, false)
+    c.set(HOVER_DWELL_MS)
+    expect(h.pendingMs(c.now())).toBe(0)
+    expect(h.onPoint(on, true, false)).toBe('open')
+    expect(h.pendingMs(c.now())).toBeNull()
+  })
+
+  it('已经开着：没有挂起转换', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.onPoint(on, true, false)
+    c.set(500)
+    h.onPoint(on, true, false)
+    expect(h.pendingMs(c.now())).toBeNull()
+  })
+
+  it('离开后：还要 HOVER_RELEASE_MS 才收，静止不动也得自己收掉', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.onPoint(on, true, false)
+    c.set(500)
+    h.onPoint(on, true, false)
+    c.set(600)
+    h.onPoint(off, false, false)
+    expect(h.pendingMs(c.now())).toBe(HOVER_RELEASE_MS)
+    c.set(600 + HOVER_RELEASE_MS)
+    expect(h.onPoint(off, false, false)).toBe('close')
+    expect(h.pendingMs(c.now())).toBeNull()
+  })
+
+  it('没进过身体：没有挂起转换', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.onPoint(off, false, false)
+    expect(h.pendingMs(c.now())).toBeNull()
+  })
+
+  it('reset 清掉挂起的计时', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.onPoint(on, true, false)
+    expect(h.pendingMs(c.now())).not.toBeNull()
+    h.reset()
+    expect(h.pendingMs(c.now())).toBeNull()
+  })
+})

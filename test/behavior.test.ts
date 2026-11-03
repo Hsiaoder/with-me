@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { createPicker } from '../src/shared/behavior.js'
+import { createPicker, nextClip } from '../src/shared/behavior.js'
+import { createRuleEngine } from '../src/shared/rules.js'
+import type { ClipRef } from '../src/shared/types.js'
 import { AMBIENT_POOLS } from '../src/shared/config.js'
 
 /** 线性同余：同种子必得同序列，等价于 Java 单测里 new Random(42)。 */
@@ -88,5 +90,91 @@ describe('pickAmbient', () => {
   it('权重全为 0 时仍能给出动画，不会卡住行为链', () => {
     const r = createPicker(() => 0).pickAmbient({ pools: { idle: ['a'] }, weights: { idle: 0 } }, null)
     expect(r).toEqual({ pool: 'idle', name: 'a' })
+  })
+})
+
+/**
+ * 行为链的「播完这一条之后播什么」。
+ *
+ * 单独抽出来测，是因为这类问题在渲染层里测不到：pickAmbient 之前有单测、
+ * 但没人调用它，皮肤权重全死在链路外（复审 #2 的 P1-2）。
+ */
+describe('nextClip', () => {
+  /** 已过 IDLE_LONG_MS：规则层交出决策权。构造时把 lastInteraction 记在 0 点。 */
+  const ambientRules = () => { let t = 0; const r = createRuleEngine(() => t, 1000); t = 1500; return r }
+
+  const loops = (ref: ClipRef): boolean => ref.pool === 'idle' || ref.pool === 'turn' || ref.pool === 'move'
+
+  it('规则层交出决策权后按权重选池，turn 能自主出现', () => {
+    const src = { pools: { idle: ['patrol'], turn: ['left'], move: ['step'] }, weights: { idle: 0.0001, move: 0, turn: 100 } }
+    const n = nextClip({
+      rules: ambientRules(),
+      picker: createPicker(() => 0.99),
+      source: src,
+      loops,
+      ref: { pool: 'idle', name: 'patrol' },
+    })
+    expect(n).toEqual({ kind: 'play', ref: { pool: 'turn', name: 'left' } })
+  })
+
+  it('权重全给 move 时自主走动（走动是权重里的一个选项，不是规则层的命令）', () => {
+    const src = { pools: { idle: ['patrol'], turn: ['left'], move: ['step'] }, weights: { idle: 0, turn: 0, move: 100 } }
+    const n = nextClip({
+      rules: ambientRules(),
+      picker: createPicker(() => 0.99),
+      source: src,
+      loops,
+      ref: { pool: 'idle', name: 'patrol' },
+    })
+    expect(n).toEqual({ kind: 'play', ref: { pool: 'move', name: 'step' } })
+  })
+
+  it('权重抽到当前这条循环动画时走无缝续播，不产生接缝', () => {
+    const src = { pools: { idle: ['patrol'], click: ['tapped'] } }
+    const n = nextClip({
+      rules: ambientRules(),
+      picker: createPicker(() => 0),
+      source: src,
+      loops,
+      ref: { pool: 'idle', name: 'patrol' },
+    })
+    expect(n).toEqual({ kind: 'loop', ref: { pool: 'idle', name: 'patrol' } })
+  })
+
+  it('刚互动完那一拍给 idle，当前正循环 idle 就继续挂着', () => {
+    const rules = createRuleEngine(() => 0, 60_000)
+    rules.feed('interacted')
+    const n = nextClip({
+      rules,
+      picker: createPicker(() => 0),
+      source: { pools: { idle: ['patrol', 'patrol2'], click: ['tapped'] } },
+      loops,
+      ref: { pool: 'idle', name: 'patrol' },
+    })
+    expect(n).toEqual({ kind: 'loop', ref: { pool: 'idle', name: 'patrol' } })
+  })
+
+  it('反应动画播完归位到待机：换成 idle 池的动画', () => {
+    const rules = createRuleEngine(() => 0, 60_000)
+    rules.feed('interacted')
+    const n = nextClip({
+      rules,
+      picker: createPicker(() => 0),
+      source: { pools: { idle: ['patrol'], click: ['tapped'] } },
+      loops,
+      ref: { pool: 'click', name: 'tapped' },
+    })
+    expect(n).toEqual({ kind: 'play', ref: { pool: 'idle', name: 'patrol' } })
+  })
+
+  it('环境池全空时原地重播，行为链不会断', () => {
+    const n = nextClip({
+      rules: ambientRules(),
+      picker: createPicker(() => 0),
+      source: { pools: { click: ['tapped'] } },
+      loops,
+      ref: { pool: 'click', name: 'tapped' },
+    })
+    expect(n).toEqual({ kind: 'play', ref: { pool: 'click', name: 'tapped' } })
   })
 })

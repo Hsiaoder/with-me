@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createRuleEngine } from '../src/shared/rules.js'
+import { AMBIENT_POOL } from '../src/shared/config.js'
 
 function engine(idleLongMs: number) {
   let t = 0
@@ -21,19 +22,19 @@ describe('规则层', () => {
     expect(r.feed('tick')).toBe('idle')
   })
 
-  it('超过 idleLongMs 无人交互，tick 落到 move', () => {
+  it('超过 idleLongMs 无人交互，规则层交出决策权而不是指定 move', () => {
     const { r, set } = engine(1000)
     expect(r.feed('tick')).toBe('idle')
     set(1500)
-    expect(r.feed('tick')).toBe('move')
+    expect(r.feed('tick')).toBe(AMBIENT_POOL)
   })
 
-  it('归位那一拍不顺便自主走动：刚互动完就自己跑开很怪', () => {
+  it('归位那一拍不顺便自主活动：刚互动完就自己跑开很怪', () => {
     const { r, set } = engine(1000)
     r.feed('interacted')
     set(1500)
-    expect(r.feed('tick')).toBe('idle')     // 先归位
-    expect(r.feed('tick')).toBe('move')     // 再下一拍才走
+    expect(r.feed('tick')).toBe('idle')           // 先归位
+    expect(r.feed('tick')).toBe(AMBIENT_POOL)     // 再下一拍才交出决策权
   })
 
   it('拖拽之后计时被重置，不会立刻判定久无人理', () => {
@@ -45,7 +46,7 @@ describe('规则层', () => {
     set(1400)
     expect(r.feed('tick')).toBe('idle')     // 距拖拽只过了 500ms
     set(1600)
-    expect(r.feed('tick')).toBe('move')
+    expect(r.feed('tick')).toBe(AMBIENT_POOL)
   })
 
   it('连续被点每次都回 click，不会累积状态', () => {
@@ -55,11 +56,13 @@ describe('规则层', () => {
     expect(r.state).toBe('respond')
   })
 
-  it('move 之后没人理会一直 move', () => {
+  it('交出决策权后每拍都继续交，规则层不再钦定具体池', () => {
+    // 早先这里断言「一直 move」：那样皮肤的 weights 永远用不上，turn 也永远不会
+    // 自主出现，宠物会走到天荒地老。走动只是权重里的一个选项，不是规则层的命令。
     const { r, set } = engine(1000)
     set(1500)
-    expect(r.feed('tick')).toBe('move')
+    expect(r.feed('tick')).toBe(AMBIENT_POOL)
     set(2500)
-    expect(r.feed('tick')).toBe('move')
+    expect(r.feed('tick')).toBe(AMBIENT_POOL)
   })
 })

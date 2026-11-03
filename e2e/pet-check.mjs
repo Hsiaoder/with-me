@@ -9,10 +9,13 @@
  */
 import { _electron as electron } from 'playwright'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+const require = createRequire(import.meta.url)
 
 const manifest = JSON.parse(readFileSync(join(process.cwd(), 'skins/block/manifest.json'), 'utf8'))
 const SCALE_X = 320 / manifest.canvas.w
@@ -117,14 +120,15 @@ const dbg = () => page.evaluate(() => ({
   inner: { w: window.innerWidth, h: window.innerHeight },
 }))
 
-check('悬停满 400ms 出现面板，五个按钮齐全', async () => {
+check('悬停满 400ms 自动出现面板，五个按钮齐全', async () => {
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
   await feed(center)
   assert.equal((await dbg()).open, false, '刚进去就弹出了，停留计时没生效')
+  // 只喂这一次。真机上光标停住不动时主进程不会重复发同坐标（cursor.ts 去重），
+  // 再喂一次等于把「计时到点自己开」这条链路绕过掉——上一版就是这么假通过的。
   await page.waitForTimeout(460)
-  await feed(center)
-  assert.equal((await dbg()).open, true, '停留满 400ms 后仍没弹出')
+  assert.equal((await dbg()).open, true, '光标静止满 400ms 后仍没弹出')
   assert.equal(await page.locator('.pet-panel button').count(), 5)
 })
 
@@ -162,7 +166,7 @@ check('宠物贴右边缘时面板夹回屏幕内', async () => {
   const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
   await feed(center)
   await page.waitForTimeout(460)
-  await feed(center)
+  assert.equal((await dbg()).open, true, '面板没开，量到的矩形是 0，夹取断言会假通过')
   const r = await page.evaluate(() => {
     const b = document.querySelector('.pet-panel').getBoundingClientRect()
     return { x: b.x, y: b.y, w: b.width }
@@ -242,11 +246,43 @@ check('让路探测子进程已启动（新出现的 powershell，父进程是 e
   probePids = fresh.map(([pid]) => pid)
 })
 
-check('离开身体与面板满 400ms 后面板收起', async () => {
-  await feed({ x: 5, y: 5 })
+check('离开身体与面板满 400ms 后面板自动收起', async () => {
+  // 上一版这里直接喂离开坐标然后断言「收了」——可那时候面板已经被拖拽测试关掉了，
+  // 断言的是「本来就没开」，什么都没测到。先把面板叫起来，再验它自己收回去。
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
   await page.waitForTimeout(460)
+  assert.equal((await dbg()).open, true, '前置条件：静止悬停满 400ms 该弹出面板')
   await feed({ x: 5, y: 5 })
-  assert.equal((await dbg()).open, false, '离开了面板还没收')
+  // 只喂这一次离开坐标：静止时光标不会再产生新事件，收起也得计时自己完成
+  await page.waitForTimeout(460)
+  assert.equal((await dbg()).open, false, '光标静止离开后没收起')
+})
+
+check('久无人理后由皮肤权重自主选池：turn 进得了运行链路', async () => {
+  // 复审 #2 的 P1-2：pickAmbient 单测全绿但渲染层从来没调用它，
+  // 于是 weights 和 turn 全死在链路外。这条只认运行时那份 manifest 与规则层。
+  const toTurn = await page.evaluate(() => window.__petDebug.ambientNext(0.99))
+  assert.equal(toTurn.kind, 'play', `该换新的一条，却拿到 ${toTurn.kind}`)
+  assert.equal(toTurn.ref.pool, 'turn', `rng=0.99 三个环境池等权应抽到 turn，实际 ${toTurn.ref.pool}`)
+  const toMove = await page.evaluate(() => window.__petDebug.ambientNext(0.5))
+  assert.equal(toMove.ref.pool, 'move', `rng=0.5 应抽到 move，实际 ${toMove.ref.pool}`)
+})
+
+check('同一个 userData 的第二个实例被单实例锁挡掉', async () => {
+  // 锁是按 userData 目录分的，PET_USER_DATA 必须先设到位再申请锁，否则
+  // 所有测试实例共用真实 %APPDATA% 那把锁，桌面上跑着一只宠物时 e2e 直接起不来。
+  // 另一半（不同目录可以并行）没法自动验：那会在屏幕上真放出第二只宠物。
+  const bin = require('electron')
+  const r = spawnSync(bin, ['.'], {
+    cwd: process.cwd(),
+    env: { ...process.env, PET_USER_DATA: userData },
+    encoding: 'utf8',
+    timeout: 20_000,
+  })
+  assert.ok(!r.error, `第二个实例没能在 20 秒内自行退出，锁没起作用：${String(r.error)}`)
+  assert.equal(r.status, 0, `第二实例退出码 ${r.status}，输出：${r.stdout?.slice(0, 200)}`)
+  assert.match(r.stdout ?? '', /已经有一只宠物在跑了/, '第二实例退出了但没说明原因')
 })
 
 beforePids = psPids()

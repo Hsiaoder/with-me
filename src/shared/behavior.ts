@@ -1,4 +1,5 @@
-import { AMBIENT_POOLS } from './config.js'
+import { AMBIENT_POOL, AMBIENT_POOLS } from './config.js'
+import type { RuleEngine } from './rules.js'
 import type { ClipRef } from './types.js'
 
 /**
@@ -54,4 +55,41 @@ export function createPicker(rng: () => number): Picker {
   }
 
   return { pickFrom, pickAmbient }
+}
+
+/**
+ * 播完一条之后该干什么：`loop` = 同一条无缝续挂，`play` = 换这条。
+ */
+export type NextClip = { readonly kind: 'loop'; readonly ref: ClipRef } | { readonly kind: 'play'; readonly ref: ClipRef }
+
+export interface NextClipDeps {
+  rules: RuleEngine
+  picker: Picker
+  source: PoolSource
+  /** 循环性来自皮肤 manifest，由调用方给判定，随机层不认识具体皮肤。 */
+  loops: (ref: ClipRef) => boolean
+  /** 刚播完的那条。 */
+  ref: ClipRef
+}
+
+/**
+ * 规则层 + 随机层的接缝，整条行为链的决策都在这里。
+ *
+ * 单独成一个函数是为了能在装配之外测它：`pickAmbient` 之前有完整单测却没人调用，
+ * 于是皮肤的池权重和自主 turn 全死在链路外——「逻辑测到了、产品没接上」是
+ * 这一层最容易犯的错，把接缝本身变成被测对象才防得住。
+ */
+export function nextClip(deps: NextClipDeps): NextClip {
+  const { rules, picker, source, loops, ref } = deps
+  const decision = rules.feed('tick')
+
+  if (decision === AMBIENT_POOL) {
+    const amb = picker.pickAmbient(source, ref)
+    if (!amb) return { kind: 'play', ref }              // 环境池全空：原地重播，链子不断
+    if (amb.pool === ref.pool && amb.name === ref.name && loops(amb)) return { kind: 'loop', ref: amb }
+    return { kind: 'play', ref: amb }
+  }
+
+  if (decision === ref.pool && loops(ref)) return { kind: 'loop', ref }
+  return { kind: 'play', ref: picker.pickFrom(source, decision, ref) ?? ref }
 }

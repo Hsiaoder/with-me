@@ -5,7 +5,7 @@ import {
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
-import { createPicker, type PoolSource } from '../shared/behavior.js'
+import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
 import { anyContains, bodyRect, panelAnchor } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { createMotion, feetOffsetOf } from '../shared/motion.js'
@@ -42,7 +42,10 @@ function bootstrap(skin: SkinPayload): void {
     ? { pools: skin.pools, weights: manifest.weights }
     : { pools: skin.pools }
   const picker = createPicker(Math.random)
-  const rules = createRuleEngine(Date.now, IDLE_LONG_MS)
+  // 时钟偏移只给测试钩子用：规格第 8 节把时钟定成注入项，为的就是能不改代码
+  // 就把规则层拧到「久无人理」那一档去验接线。正式路径永远是 0。
+  let clockOffset = 0
+  const rules = createRuleEngine(() => Date.now() + clockOffset, IDLE_LONG_MS)
   const hover = createHoverTimer(Date.now)
   const motion = createMotion({
     bounds: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight },
@@ -62,6 +65,7 @@ function bootstrap(skin: SkinPayload): void {
   const stagePos = (): Point => motion.pos()
   const hitBox = (): Rect => bodyRect({ bodyBox: bodyBoxOf(manifest, current.name) }, stagePos())
   const overBody = (p: Point): boolean => anyContains([hitBox()], p)
+  const loopsOf = (r: ClipRef): boolean => isLooping(manifest, r.pool, r.name)
 
   function startChain(): void {
     const myToken = ++chainToken
@@ -75,14 +79,13 @@ function bootstrap(skin: SkinPayload): void {
           console.error('[pet] 行为链停住：播放未开始', ref)
           return
         }
-        const pool = rules.feed('tick')
-        if (pool === ref.pool && isLooping(manifest, ref.pool, ref.name)) {
+        const nxt = nextClip({ rules, picker, source, loops: loopsOf, ref })
+        if (nxt.kind === 'loop') {
           // 循环 = 再点一次同一条。播放器不碰 video.loop，所以这里立刻把这条塞进后台槽，
           // 下一轮 play 直接拿到已解码的首帧，接缝看不出来。
-          player.prepare(ref)
+          player.prepare(nxt.ref)
         } else {
-          const next = picker.pickFrom(source, pool, ref)
-          if (next) current = next
+          current = nxt.ref
         }
       }
     })()
@@ -172,7 +175,26 @@ function bootstrap(skin: SkinPayload): void {
    * 抽成具名函数是为了 e2e 能直接喂坐标——Playwright 的 mouse.move 走 CDP，
    * 不会动到操作系统光标，喂不进这条链路。
    */
+  let lastCursor: Point | null = null
+  let hoverDeadline: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * 主进程对相同坐标去重，所以手真的停在宠物上不动时不会再有第二次事件进来。
+   * 悬停延时得自己催：还有挂起的转换就按剩余时间设一个定时器，到点用最后
+   * 那个坐标重喂一次（顺便重算命中框——宠物在走动，是它走过来撞上的光标）。
+   */
+  function scheduleHover(): void {
+    if (hoverDeadline !== null) clearTimeout(hoverDeadline)
+    hoverDeadline = null
+    if (lastCursor === null) return
+    const left = hover.pendingMs(Date.now())
+    if (left === null) return
+    const p = lastCursor
+    hoverDeadline = setTimeout(() => handleCursor(p), left)
+  }
+
   function handleCursor(p: Point): void {
+    lastCursor = p
     const over = overBody(p)
     const pr = panel.rect()
     const overPanel = pr !== null && anyContains([pr], p)
@@ -181,6 +203,7 @@ function bootstrap(skin: SkinPayload): void {
     if (ev === 'close') panel.hide()
     wantGrab = over || overPanel || dragging || panel.isOpen
     sendGrab()
+    scheduleHover()
   }
 
   window.petBridge?.onCursor(handleCursor)
@@ -200,6 +223,11 @@ function bootstrap(skin: SkinPayload): void {
     const pos = stagePos()
     dragOffset = { x: p.x - pos.x, y: p.y - pos.y }
     hover.reset()
+    // 拖拽期间不该弹面板：挂在途中的悬停定时器要一起撤掉，否则它会在按住的时候到点
+    if (hoverDeadline !== null) {
+      clearTimeout(hoverDeadline)
+      hoverDeadline = null
+    }
     panel.hide()        // 面板锚在旧位置，宠物一动就飘；拖完靠悬停重新叫出来
   })
   window.addEventListener('pointermove', (e) => {
@@ -228,6 +256,26 @@ function bootstrap(skin: SkinPayload): void {
     cursor: (p: Point): boolean => { handleCursor(p); return true },
     /** 把宠物挪到指定舞台位置，用于验收贴边与面板夹取。 */
     moveTo: (p: Point): Point => motion.setPosition(p),
+    /**
+     * 用给定随机数走一遍真实的「播完下一条播什么」接缝：规则层、皮肤权重、
+     * manifest 的循环性全用运行时那一份，只是把时钟临时拧过 IDLE_LONG_MS、
+     * 随机数换成可控值，叫完就把偏移还原，不打扰正在跑的行为链。
+     *
+     * 存在的理由：pickAmbient 曾经单测全绿却没人调用（复审 #2 的 P1-2）。
+     * 接线必须由运行链路自己证明，不能只看零件。
+     */
+    ambientNext(rng: number): NextClip {
+      const saved = clockOffset
+      clockOffset = IDLE_LONG_MS * 2
+      try {
+        // 刚被点完/拖完那一拍是「归位」，规则层必定回 idle。这条钩子要验的是交出
+        // 决策权之后的接缝，所以先把那一拍让掉——正式链路下一拍本来也会这么走。
+        if (rules.state !== 'active') rules.feed('tick')
+        return nextClip({ rules, picker: createPicker(() => rng), source, loops: loopsOf, ref: current })
+      } finally {
+        clockOffset = saved
+      }
+    },
     outline(on: boolean): boolean {
       outlineOn = on
       if (!on) sprite.showOutline(null)

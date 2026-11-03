@@ -32,7 +32,14 @@ export const LEASE_TIMEOUT_MS = 500
 export const GRAB_HEARTBEAT_MS = 250
 
 // ---- 行为 ----
-/** 连续无人交互满这么久，规则层允许宠物自主走动。 */
+/**
+ * 规则层对「这一拍该干什么」没有池倾向的答复：进入自主活动，让随机层按权重抽。
+ *
+ * 用 `*` 是因为池名正则 `^[a-z][a-z0-9_-]` 不接受它（皮肤契约的命名规则），
+ * 所以任何合法皮肤都不会把这个哨兵当成真的池名。
+ */
+export const AMBIENT_POOL = '*'
+/** 连续无人交互满这么久，规则层交出决策权，由权重在 idle/move/turn 里自主挑。 */
 export const IDLE_LONG_MS = 20000
 /** 自主走动的速度（CSS 像素/秒）。 */
 export const WALK_SPEED_PX_PER_SEC = 40

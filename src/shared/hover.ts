@@ -16,6 +16,14 @@ export interface HoverTimer {
   readonly isOpen: boolean
   /** 每次光标移动调用一次（主进程 33ms 推进来）。 */
   onPoint(p: Point, overBody: boolean, overPanel: boolean): HoverEvent
+  /**
+   * 离下一次自动开/关还剩多少毫秒；没有挂起的转换返回 null。
+   *
+   * 主进程对相同坐标去重，手真的停住不动时不会再有 onPoint 进来。
+   * 调用方拿这个值挂一个 setTimeout，到点用最后那个坐标再喂一次 onPoint，
+   * 「悬停 400ms 弹面板」才是计时到点自动发生，而不是靠用户再动一下鼠标。
+   */
+  pendingMs(now: number): number | null
   /** 皮肤切换、宠物被拖走等场景要重置，否则面板挂在旧位置。 */
   reset(): void
 }
@@ -53,6 +61,11 @@ export function createHoverTimer(now: () => number): HoverTimer {
       enteredAt = null
       leftAt = null
       open = false
+    },
+    pendingMs(now: number): number | null {
+      if (!open && enteredAt !== null) return Math.max(0, HOVER_DWELL_MS - (now - enteredAt))
+      if (open && leftAt !== null) return Math.max(0, HOVER_RELEASE_MS - (now - leftAt))
+      return null
     },
   }
 }
