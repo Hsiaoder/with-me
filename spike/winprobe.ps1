@@ -165,7 +165,28 @@ switch ($Action) {
     }
     'clicks seen: ' + $n
   }
+  'follow' {
+    # Edge-triggered and endless: a scrolling timer dump is hard to read, but "the line
+    # only appears when something actually changed" is readable while you work.
+    #   hit    = which window a click here would land on
+    #   focus  = which window gets keys and the mouse wheel
+    #   pet    = GRAB (overlay holds the whole screen's mouse) / PASSTHROUGH
+    #   cursor = the shape on screen at that point (arrow / hand / other)
+    $prev = ''
+    while ($true) {
+      $p = Get-Here
+      $full = [Win]::State($p.X, $p.Y) + '  cursor=' + [Win]::Shape($p.X, $p.Y)
+      # State() starts with "@x,y"; drop that part when deciding whether anything changed,
+      # otherwise every mouse move counts as a change and the window just scrolls.
+      $key = $full.Substring($full.IndexOf(' ') + 1)
+      if ($key -ne $prev) {
+        $prev = $key
+        '[' + (Get-Date).ToString('HH:mm:ss.fff') + '] ' + $full
+      }
+      Start-Sleep -Milliseconds 120
+    }
+  }
   default {
-    'unknown action: ' + $Action + '  (point / move / click / watch / onclick)'
+    'unknown action: ' + $Action + '  (point / move / click / watch / onclick / follow)'
   }
 }
