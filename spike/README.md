@@ -177,3 +177,17 @@ panelHidden=true  display=flex  opacity=0  pointerEvents=auto  offsetWH=[275,44]
 不用 `display:none`/`visibility:hidden`——那会砍掉铁律④的 0.18s 淡出，
 而面板矩形只在打开时量，收起后不需要保留尺寸。
 回归检查在 `e2e/pet-check.mjs`：「面板收起后不再参与命中测试」。
+
+## 追加：从面板按钮移到 Qoder 仍是手型 —— 量下来是 Qoder 自己的
+
+`node spike/stale-cursor-probe.mjs`（真光标，逐步读形状）：
+
+| 步骤 | 桌宠 | 点击落在 | cursor |
+|---|---|---|---|
+| 停在面板按钮「转身」上 | GRAB | electron | hand（应该） |
+| 从按钮移进 Qoder 区停住 | PASSTHROUGH | Qoder CN | **arrow** |
+| 同一点只往右挪 2px | PASSTHROUGH | Qoder CN | **hand** |
+
+同一点差 2 像素形状就翻转，说明边界在 Qoder 的内容里（消息块、链接、代码块都可点），
+不是我们留下的残留形状——交接后系统确实重算了（第二行已经从 hand 变回 arrow）。
+自查口径：手型出现时看 `桌宠=` / `点击落在=`，只有 `GRAB` 或 `electron` 才轮得到我们。
