@@ -8,3 +8,5 @@ npm-install.log
 .DS_Store
 test-results/
 playwright-report/
+docs/
+codex-review/
