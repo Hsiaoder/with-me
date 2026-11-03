@@ -30,6 +30,9 @@ if (!rootEl) throw new Error('页面缺少 #root，装配无法开始')
 /** 收窄一次，免得每个用到的地方都要写非空断言。 */
 const root: HTMLElement = rootEl
 
+/** 页面装配。没有 destroy()：这扇窗只装配一次——主进程用 once('did-finish-load')
+ * 推皮肤，页面既不 reload 也不热切换。等真出现第二个装配点再补 disposer，
+ * 现在写出来就是个没有调用方的空壳（编码规则第 8 条）。 */
 function bootstrap(skin: SkinPayload): void {
   const manifest = skin.manifest
   const sprite = createSprite(root)
