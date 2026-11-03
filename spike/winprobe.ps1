@@ -21,7 +21,15 @@ public static class Win {
     public IntPtr hwndCapture; public IntPtr hwndMenuOwner; public IntPtr hwndMoveSize;
     public IntPtr hwndCaret; public RECT rcCaret; public IntPtr hCursor;
   }
+  [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int idx);
   [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint tid, out GUITHREADINFO i);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr extra);
+  public delegate bool EnumWindowsProc(IntPtr h, IntPtr extra);
+  public static System.Collections.Generic.List<IntPtr> Top { get; private set; }
+  public static void Collect() {
+    Top = new System.Collections.Generic.List<IntPtr>();
+    EnumWindows((h, e) => { Top.Add(h); return true; }, IntPtr.Zero);
+  }
   [StructLayout(LayoutKind.Sequential)] public struct CURSORINFO { public uint cbSize; public uint flags; public IntPtr hCursor; public POINT ptScreenPos; }
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int max);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
@@ -37,6 +45,26 @@ public static class Win {
 '@
 Add-Type -TypeDefinition $code
 
+if ($Action -eq 'exstyle') {
+  # The overlay relies on WS_EX_NOACTIVATE (0x08000000) so clicking it cannot activate.
+  # If some call cleared that bit, clicking the pet steals focus from the app underneath,
+  # and wheel messages go to the focused window: symptom is scrolling stops until you click.
+  # Filter by process *name* here: the caller's pid can be a launcher wrapper, not the
+  # browser process that actually owns the HWND.
+  [Win]::Collect()
+  $want = Get-Process electron -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }
+  foreach ($h in [Win]::Top) {
+    $p = [uint32]0
+    [Win]::GetWindowThreadProcessId($h, [ref]$p) | Out-Null
+    if ($want -notcontains [int]$p) { continue }
+    if ([Win]::Class($h) -ne 'Chrome_WidgetWin_1') { continue }
+    $ex = [Win]::GetWindowLong($h, -20) -band 0xFFFFFFFF
+    $noact = if ($ex -band 0x08000000) { 'YES' } else { 'NO  <-- activatable' }
+    $trans = if ($ex -band 0x20) { 'YES' } else { 'no' }
+    $layer = if ($ex -band 0x80000) { 'YES' } else { 'no' }
+    "hwnd=0x$('{0:x}' -f $h.ToInt64()) pid=$p exstyle=0x$('{0:x8}' -f $ex) NOACTIVATE=$noact TRANSPARENT=$trans LAYERED=$layer"
+  }
+}
 if ($Action -eq 'fg') {
   $h = [Win]::GetForegroundWindow()
   $r = New-Object Win+RECT
@@ -63,8 +91,8 @@ if ($Action -eq 'owner') {
   "owner=0x$('{0:x}' -f $h.ToInt64()) class=[$([Win]::Class($h))] pid=$pid2 proc=$name"
 }
 if ($Action -eq 'cursor') {
-  # 光标形状是「拥有这个点的线程最后设的 shape」。GetCursorInfo 只回调用线程自己的，
-  # 所以要先 AttachThreadInput 到目标线程，读到的才是屏幕上真那颗。
+  # Cursor shape is what the thread owning the point last set. GetCursorInfo only reports
+  # the calling thread, so attach to the target thread first to read the real one.
   if ($X -eq 0 -and $Y -eq 0) { $cp = New-Object Win+POINT; [Win]::GetCursorPos([ref]$cp) | Out-Null; $X = $cp.X; $Y = $cp.Y }
   $h = [Win]::Owner($X, $Y)
   $dummyPid = [uint32]0
@@ -81,7 +109,7 @@ if ($Action -eq 'cursor') {
   $arrow = [Win]::LoadCursor([IntPtr]::Zero, 32512)
   $hand = [Win]::LoadCursor([IntPtr]::Zero, 32649)
   $hc = $ci.hCursor
-  $shape = if ($hc -eq $arrow) { 'arrow' } elseif ($hc -eq $hand) { 'hand' } else { "other(0x{0:x},tid说0x{1:x})" -f $hc.ToInt64(), $gti.hCursor.ToInt64() }
+  $shape = if ($hc -eq $arrow) { 'arrow' } elseif ($hc -eq $hand) { 'hand' } else { "other(0x{0:x},tid 0x{1:x})" -f $hc.ToInt64(), $gti.hCursor.ToInt64() }
   "cursor=$shape owner=0x$('{0:x}' -f $h.ToInt64()) class=[$([Win]::Class($h))] tid=$tid"
 }
 if ($Action -eq 'pos') { $cp = New-Object Win+POINT; [Win]::GetCursorPos([ref]$cp) | Out-Null; "pos=$($cp.X),$($cp.Y)" }
