@@ -209,7 +209,9 @@ function bootstrap(skin: SkinPayload): void {
   window.addEventListener('pointerup', () => {
     if (!dragging) return
     dragging = false
-    motion.snapToBottom()
+    // 停在松手的地方。这里原来调了 snapToBottom()，把高度强行拉回地面，
+    // 于是把宠物拖到右上角松手后它会"跳回原位"。setPosition 已经把 y 夹在
+    // 屏幕内了，不需要再吸附。（启动时落地仍由 bootstrap 里的 snapToBottom 负责）
     rules.feed('dragged')
     requestClip('drag')
   })

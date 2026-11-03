@@ -204,7 +204,7 @@ let probePids = []
 check('拖拽跟随光标，松手停在原地不回弹', async () => {
   const start = await page.evaluate(() => window.__petDebug.hitBox)
   const from = { x: start.x + start.w / 2, y: start.y + start.h / 2 }
-  const to = { x: from.x - 220, y: from.y - 60 }
+  const to = { x: from.x - 220, y: from.y - 120 }
   const drag = await page.evaluate(async ({ from, to }) => {
     const fire = (type, p) => window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
     fire('pointerdown', from)
@@ -212,13 +212,15 @@ check('拖拽跟随光标，松手停在原地不回弹', async () => {
     fire('pointermove', to)
     const during = window.__petDebug.hitBox
     fire('pointerup', to)
-    await new Promise((r) => setTimeout(r, 60))
-    return { moved: { x: Math.round(during.x), y: Math.round(during.y) }, after: window.__petDebug.hitBox }
+    await new Promise((r) => setTimeout(r, 200))
+    return { during, after: window.__petDebug.hitBox, bottom: window.innerHeight }
   }, { from, to })
-  // 拖拽中位置应当跟上（允许 20 像素误差，舞台与身体框有偏移）
-  assert.ok(Math.abs(drag.moved.x - (to.x - start.w / 2)) < 40, `拖拽中没有跟随：${JSON.stringify(drag.moved)}`)
-  // 松手后停在原地：位置不能再等于起手位置
-  assert.notEqual(drag.after.x, start.x, '松手后弹回原位了')
+  // 拖拽中要跟上光标
+  assert.ok(Math.abs(drag.during.x - (to.x - start.w / 2)) < 40, `拖拽中没有跟随：${JSON.stringify(drag.during)}`)
+  // 松手后 x 和 y 都必须停在松手处。只比 x 的话，把高度拉回地面的 bug 会漏过去
+  assert.ok(Math.abs(drag.after.x - drag.during.x) < 2, `松手后 x 跳了：${drag.during.x} → ${drag.after.x}`)
+  assert.ok(Math.abs(drag.after.y - drag.during.y) < 2, `松手后 y 跳了：${drag.during.y} → ${drag.after.y}`)
+  assert.ok(drag.after.y < drag.bottom - 200, `松手后被吸回地面：y=${drag.after.y} 屏高=${drag.bottom}`)
 })
 
 check('Ctrl+Shift+点身体切换命中框', async () => {
