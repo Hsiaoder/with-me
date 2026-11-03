@@ -65,6 +65,44 @@ if ($Action -eq 'exstyle') {
     "hwnd=0x$('{0:x}' -f $h.ToInt64()) pid=$p exstyle=0x$('{0:x8}' -f $ex) NOACTIVATE=$noact TRANSPARENT=$trans LAYERED=$layer"
   }
 }
+if ($Action -eq 'watch') {
+  # One process, many samples: every PowerShell start re-compiles the C# above and costs
+  # about a second, which is coarser than the events we are chasing.
+  # pet=GRAB means the overlay is holding the mouse (WS_EX_TRANSPARENT cleared):
+  # then clicks AND wheel for the whole screen land on the transparent layer.
+  # Labels are ASCII: the console codepage mangles Chinese into junk.
+  [Win]::Collect()
+  $petHwnd = [IntPtr]::Zero
+  foreach ($h in [Win]::Top) {
+    $p2 = [uint32]0
+    [Win]::GetWindowThreadProcessId($h, [ref]$p2) | Out-Null
+    if ((Get-Process -Id $p2 -ErrorAction SilentlyContinue).ProcessName -ne 'electron') { continue }
+    if ([Win]::Class($h) -ne 'Chrome_WidgetWin_1') { continue }
+    $ex = [Win]::GetWindowLong($h, -20) -band 0xFFFFFFFF
+    if ($ex -band 0x08000000) { $petHwnd = $h; break }   # WS_EX_NOACTIVATE = our overlay
+  }
+  if ($petHwnd -eq [IntPtr]::Zero) { 'pet overlay not found (electron window with WS_EX_NOACTIVATE) - start the pet first' }
+  $end = (Get-Date).AddSeconds($Y / 10)
+  $t0 = Get-Date
+  while ((Get-Date) -lt $end) {
+    $cp = New-Object Win+POINT
+    [Win]::GetCursorPos([ref]$cp) | Out-Null
+    $oh = [Win]::Owner($cp.X, $cp.Y)
+    $op = [uint32]0
+    [Win]::GetWindowThreadProcessId($oh, [ref]$op) | Out-Null
+    $fh = [Win]::GetForegroundWindow()
+    $fp = [uint32]0
+    [Win]::GetWindowThreadProcessId($fh, [ref]$fp) | Out-Null
+    $pet = '?'
+    if ($petHwnd -ne [IntPtr]::Zero) {
+      $ex2 = [Win]::GetWindowLong($petHwnd, -20) -band 0xFFFFFFFF
+      $pet = if ($ex2 -band 0x20) { 'PASSTHROUGH' } else { 'GRAB' }
+    }
+    $ms = [int]((Get-Date) - $t0).TotalMilliseconds
+    "t=${ms}ms  focus=$((Get-Process -Id $fp -ErrorAction SilentlyContinue).ProcessName)  underCursor=$((Get-Process -Id $op -ErrorAction SilentlyContinue).ProcessName)[$([Win]::Class($oh))]  pet=$pet"
+    Start-Sleep -Milliseconds 200
+  }
+}
 if ($Action -eq 'fg') {
   $h = [Win]::GetForegroundWindow()
   $r = New-Object Win+RECT
