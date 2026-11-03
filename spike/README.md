@@ -158,3 +158,22 @@ grab 开着时全屏窗就是光标底下的窗口，滚轮也归它，而它没
 排查口诀：鼠标离开宠物后 `桌宠` 还停在 `GRAB`，就是还有东西扣着鼠标；
 `点击落在` 出现 `electron` 而你已经不在宠物上，同一回事。
 一次性查当前那一点用 `point`，按点击实录用 `onclick`（含 UIA 控件名）。
+
+## 追加：点完宠物移出去，光标自己变成手指 —— 看不见的按钮还在改形状
+
+`node spike/panel-hit-probe.mjs` 按面板自己的矩形取样，实测结果：
+
+```
+panelHidden=true  display=flex  opacity=0  pointerEvents=auto  offsetWH=[275,44]
+命中到的元素=BUTTON[转身]  cursor=pointer
+```
+
+`hidden` 属性只被 UA 样式 `[hidden]{display:none}` 管，而我们的
+`.pet-panel{display:flex}` 是**作者样式**，优先级压过它——所以「收起」实际只是透明度 0，
+元素照样占位、照样参与命中测试。光标形状是按命中的元素画的，于是用户在一只
+看不见的按钮上划过就变手指；那一下点击也会被它吃掉。
+
+修法一条：`.pet-panel[hidden] { pointer-events: none }`。
+不用 `display:none`/`visibility:hidden`——那会砍掉铁律④的 0.18s 淡出，
+而面板矩形只在打开时量，收起后不需要保留尺寸。
+回归检查在 `e2e/pet-check.mjs`：「面板收起后不再参与命中测试」。

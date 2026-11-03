@@ -74,6 +74,16 @@ body {
   opacity: 1;
 }
 
+/* 收起 ≠ 不存在。`.pet-panel{display:flex}` 是作者样式，压过了 UA 的
+   `[hidden]{display:none}`，所以元素照旧占位、照旧参与命中测试——透明度 0 的按钮
+   仍然用 cursor:pointer 改写光标形状（真机症状：点完宠物移出去，头顶变成手指），
+   也仍然能吃掉那一下点击。
+   这里只收 pointer-events：不用 display:none / visibility:hidden，
+   那会砍掉 0.18s 淡出，而面板矩形只在打开时量，收起后不需要保留尺寸。 */
+.pet-panel[hidden] {
+  pointer-events: none;
+}
+
 .pet-panel button {
   border: 1px solid rgba(0, 0, 0, 0.14);
   border-radius: 6px;

@@ -277,6 +277,30 @@ check('光标离开身体与面板后立刻放开鼠标，不等面板收起', a
   assert.equal(after.open, true, '面板该还开着（400ms 收起延时是可见性，不是扣鼠标）')
 })
 
+check('面板收起后不再参与命中测试：看不见的按钮不许抢光标和点击', async () => {
+  // 真机症状：点完宠物移出去，光标在宠物上方那条带子里变成手指。
+  // 根因不在透明度：`.pet-panel{display:flex}` 是作者样式，压过了 UA 的
+  // `[hidden]{display:none}`，所以收起后元素还占着 275x44，命中的仍是带
+  // cursor:pointer 的按钮——光标形状按命中的元素画，看不见也照画。
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  await page.waitForTimeout(460)
+  assert.equal((await dbg()).open, true, '前置：面板该开着')
+  const band = await page.evaluate(() => {
+    const b = document.querySelector('.pet-panel').getBoundingClientRect()
+    return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) }
+  })
+  await feed({ x: 4, y: 4 })
+  await page.waitForTimeout(460)
+  assert.equal((await dbg()).open, false, '前置：面板该已收起')
+  const at = await page.evaluate((p) => {
+    const el = document.elementFromPoint(p.x, p.y)
+    return { tag: el ? el.tagName : 'null', cursor: el ? getComputedStyle(el).cursor : 'n/a' }
+  }, band)
+  assert.notEqual(at.tag, 'BUTTON', `收起的面板还在命中测试里：${JSON.stringify(at)} @${band.x},${band.y}`)
+  assert.notEqual(at.cursor, 'pointer', `看不见的按钮还在改光标形状：${JSON.stringify(at)}`)
+})
+
 check('久无人理后由皮肤权重自主选池：turn 进得了运行链路', async () => {
   // 复审 #2 的 P1-2：pickAmbient 单测全绿但渲染层从来没调用它，
   // 于是 weights 和 turn 全死在链路外。这条只认运行时那份 manifest 与规则层。
