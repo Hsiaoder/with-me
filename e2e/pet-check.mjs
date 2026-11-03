@@ -14,6 +14,7 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { CLIP_FADE_MS } from '../src/shared/config.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -69,9 +70,50 @@ check('硬约束：任何 video 都不许开 loop', async () => {
   assert.deepEqual(loops, [false, false], '有人把 video.loop 打开了，违反规格第 4 节')
 })
 
-check('铁律④：交叉淡入的过渡时长是 0.18s', async () => {
-  const dur = await page.evaluate(() => getComputedStyle(document.querySelector('video')).transitionDuration)
-  assert.equal(dur, '0.18s')
+check('铁律④：淡出只许挂在退场层上，两层不许同时动', async () => {
+  // 两层同时淡（新层 0→1、旧层 1→0）叠出来的不透明度是 f+(1−f)²，中间只剩 0.75，
+  // 桌面会从宠物身上透过去——那就是「每次换片都闪一下」。所以过渡只能有一份。
+  const css = readFileSync(join(process.cwd(), 'src/renderer/style.css'), 'utf8')
+  const body = (re) => re.exec(css)?.[1] ?? ''
+  const base = body(/\n\.pet-video\s*\{([^}]*)\}/)
+  const front = body(/\.pet-video\.is-front\s*\{([^}]*)\}/)
+  const out = body(/\.pet-video\.is-out\s*\{([^}]*)\}/)
+  assert.ok(!/transition/.test(base), '.pet-video 基类带了过渡：新层也会淡，中间漏光')
+  assert.ok(!/transition/.test(front), '.is-front 带了过渡：新层该直接满不透明压在下边')
+  assert.match(out, /transition:\s*opacity 0\.18s/, '退场层必须淡出 0.18s')
+  assert.match(out, /z-index:\s*2/, '退场层要盖在新层上面淡，不然淡的是底下那层')
+  assert.equal(CLIP_FADE_MS, 180, 'config 的淡出时长和 style.css 里的对不上了')
+})
+
+check('换片那一瞬不漏光：淡出期间峰值 alpha 恒为 255', async () => {
+  const box = await page.evaluate(() => window.__petDebug.hitBox)
+  const region = {
+    x: Math.max(0, Math.round(box.x - 20)),
+    y: Math.max(0, Math.round(box.y - 20)),
+    width: Math.round(box.w + 40),
+    height: Math.round(box.h + 40),
+  }
+  // 抓的是窗口真实合成结果，不是页面里 video 的状态：opacity 加起来是 1 不代表叠出来不透明
+  const samples = await app.evaluate(async ({ BrowserWindow }, { region, pool, name }) => {
+    const win = BrowserWindow.getAllWindows().find((w) => w.isVisible())
+    // 不 await：__testPlay 的 promise 要等整条素材播完才 resolve
+    void win.webContents.executeJavaScript(`window.__testPlay('${pool}', '${name}'); 'kicked'`)
+    const out = []
+    for (let n = 0; n < 45; n++) {
+      const img = await win.capturePage(region)
+      const b = img.toBitmap()
+      let max = 0
+      for (let i = 3; i < b.length; i += 4) if (b[i] > max) max = b[i]
+      const fading = await win.webContents.executeJavaScript('document.querySelectorAll("video.is-out").length')
+      out.push({ max, fading })
+    }
+    return out
+  }, { region, pool: 'idle', name: 'patrol2' })
+
+  const fades = samples.filter((s) => s.fading > 0)
+  assert.ok(fades.length >= 2, `45 次采样只撞见 ${fades.length} 帧淡出，这条检查测不到东西`)
+  const worst = Math.min(...fades.map((s) => s.max))
+  assert.equal(worst, 255, `淡出期间峰值 alpha 只有 ${worst}：两层都在动，桌面从宠物身上透过去了`)
 })
 
 check('currentTime 在推进，不是停在首帧', async () => {

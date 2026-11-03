@@ -50,6 +50,13 @@ export const WALK_SPEED_PX_PER_SEC = 40
 /** 舞台宽相对画布宽的缩放，位移与脚底对齐都要用它。 */
 export const STAGE_SCALE = STAGE_W_CSS / CANVAS_W
 
+// ---- 播放 ----
+/**
+ * 换片时旧层淡出的时长。必须和 `style.css` 里 `.pet-video.is-out` 的 transition 一致，
+ * 不然收尾定时器会把还在淡的层提前摘掉（露出半成品）。
+ */
+export const CLIP_FADE_MS = 180
+
 // ---- 皮肤 ----
 export const SKIN_MANIFEST = 'manifest.json'
 export const SKIN_ANIMATION_DIR = 'animation'

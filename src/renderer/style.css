@@ -38,12 +38,24 @@ body {
   object-fit: contain;
   pointer-events: none;
   opacity: 0;
-  /* 铁律④：0.18s 透明度过渡垫住切换接缝，没有这条换动画时会看见一跳 */
-  transition: opacity 0.18s ease;
+  z-index: 1;
 }
 
+/* 当前层：满不透明，压在最下面。它不做过渡——换片时它是「直接就是满的」，
+   淡的动作整个交给退场那一层做。 */
 .pet-video.is-front {
   opacity: 1;
+  z-index: 1;
+}
+
+/* 退场层盖在新层上面淡出。**只有这一层在动**：
+   两层同时淡（一个 0→1、一个 1→0）叠出来的不透明度是 f+(1−f)²，中间只剩 0.75，
+   桌面会从宠物身上透过去，观感就是「闪一下」——而且每次换片都闪。
+   铁律④的 0.18s 时长挂在这里，值要和 config.ts 的 CLIP_FADE_MS 一致。 */
+.pet-video.is-out {
+  opacity: 0;
+  z-index: 2;
+  transition: opacity 0.18s ease;
 }
 
 /* 朝左靠镜像复用朝右素材，不重做出动画。翻整个舞台，两个 video 一起跟着翻 */
