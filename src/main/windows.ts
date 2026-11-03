@@ -33,6 +33,11 @@ export function createWindowsPlatform(): Platform {
         focusable: false,
         skipTaskbar: true,
         alwaysOnTop: true,
+        // WS_EX_TOOLWINDOW。Chromium 类应用（浏览器、抖音这些）会把一个工作区尺寸的大窗
+        // 算成"把我盖住了"，一旦我们取消穿透（鼠标落在宠物上）它们就停止绘制，
+        // 观感就是别的软件卡住一下、要再点一下才醒。工具窗不参与这个判定，
+        // 顺带也不进 Alt+Tab 列表。参考实现 qqpet 同样带这一位并注明了这个坑。
+        ...(process.platform === 'win32' && { type: 'toolbar' }),
         webPreferences: {
           preload: join(here, '../preload/index.cjs'),
           contextIsolation: true,

@@ -173,6 +173,21 @@ switch ($Action) {
     $p = Get-Here
     [Win]::State($p.X, $p.Y) + '  cursor=' + [Win]::Shape($p.X, $p.Y)
   }
+  'petstyle' {
+    # Dump the overlay's extended window style so the flags can be checked one by one.
+    $h = [Win]::FindPet()
+    if ($h -eq [IntPtr]::Zero) { 'pet: not running' }
+    else {
+      $ex = [Win]::ExStyle($h)
+      $f = @()
+      if ($ex -band [Win]::WS_EX_TRANSPARENT) { $f += 'TRANSPARENT' } else { $f += 'GRABBING' }
+      if ($ex -band [Win]::WS_EX_NOACTIVATE) { $f += 'NOACTIVATE' } else { $f += 'CANNOT-BE-NOACTIVATE' }
+      if ($ex -band 0x00080000) { $f += 'LAYERED' }
+      if ($ex -band 0x00000080) { $f += 'TOOLWINDOW' }
+      if ($ex -band 0x00000008) { $f += 'TOPMOST' }
+      'exstyle=0x' + ('{0:x8}' -f $ex) + '  ' + ($f -join ' ')
+    }
+  }
   'focus' {
     # Where keys and the wheel actually go, per thread - and whether anyone holds capture.
     'fg-thread: ' + [Win]::ThreadInfo([Win]::GetForegroundWindow())
