@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createHoverTimer } from '../src/shared/hover.js'
-import { HOVER_DWELL_MS, HOVER_RELEASE_MS } from '../src/shared/config.js'
+import { HOVER_DWELL_MS, PANEL_HIDE_MS } from '../src/shared/config.js'
 
 const on = { x: 1, y: 1 }
 const off = { x: 9, y: 9 }
@@ -60,7 +60,7 @@ describe('悬停关闭', () => {
     expect(h.isOpen).toBe(true)
   })
 
-  it('离开身体与面板满 HOVER_RELEASE_MS 才 close', () => {
+  it('离开身体与面板满 PANEL_HIDE_MS 才 close', () => {
     const c = clock()
     const h = createHoverTimer(c.now)
     h.onPoint(on, true, false)
@@ -68,9 +68,9 @@ describe('悬停关闭', () => {
     h.onPoint(on, true, false)
     c.set(901)
     expect(h.onPoint(off, false, false)).toBe('none')
-    c.set(901 + HOVER_RELEASE_MS - 1)
+    c.set(901 + PANEL_HIDE_MS - 1)
     expect(h.onPoint(off, false, false)).toBe('none')
-    c.set(901 + HOVER_RELEASE_MS)
+    c.set(901 + PANEL_HIDE_MS)
     expect(h.onPoint(off, false, false)).toBe('close')
     expect(h.isOpen).toBe(false)
   })
@@ -87,7 +87,7 @@ describe('悬停关闭', () => {
     expect(h.onPoint(on, false, true)).toBe('none')
     c.set(2000)
     expect(h.onPoint(off, false, false)).toBe('none')   // 刚重置，还没满
-    c.set(2000 + HOVER_RELEASE_MS)
+    c.set(2000 + PANEL_HIDE_MS)
     expect(h.onPoint(off, false, false)).toBe('close')
   })
 
@@ -144,7 +144,7 @@ describe('静止光标的待转换计时', () => {
     expect(h.pendingMs(c.now())).toBeNull()
   })
 
-  it('离开后：还要 HOVER_RELEASE_MS 才收，静止不动也得自己收掉', () => {
+  it('离开后：还要 PANEL_HIDE_MS 才收，静止不动也得自己收掉', () => {
     const c = clock()
     const h = createHoverTimer(c.now)
     h.onPoint(on, true, false)
@@ -152,8 +152,8 @@ describe('静止光标的待转换计时', () => {
     h.onPoint(on, true, false)
     c.set(600)
     h.onPoint(off, false, false)
-    expect(h.pendingMs(c.now())).toBe(HOVER_RELEASE_MS)
-    c.set(600 + HOVER_RELEASE_MS)
+    expect(h.pendingMs(c.now())).toBe(PANEL_HIDE_MS)
+    c.set(600 + PANEL_HIDE_MS)
     expect(h.onPoint(off, false, false)).toBe('close')
     expect(h.pendingMs(c.now())).toBeNull()
   })

@@ -4,9 +4,9 @@ import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { PANEL_POOLS } from '../src/shared/config.js'
 
 /**
- * jsdom 没有排版引擎，offsetWidth/offsetHeight 恒为 0，
- * 而「面板上报自己的控件矩形」正是这里要测的东西。给它一个固定值，
- * 让断言能落在坐标换算上；真实尺寸由 e2e 在 Chromium 里验。
+ * jsdom 没有排版引擎，offsetWidth/offsetHeight 恒为 0，而「打开后量自身尺寸用来
+ * 夹回屏幕内」正是这里要测的东西。给它一个固定值，让断言能落在坐标换算上；
+ * 真实尺寸、真实显隐（display:none 到底生不生效）由 e2e 在 Chromium 里验。
  */
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: () => 240 })
@@ -34,21 +34,29 @@ describe('defaultActions', () => {
 })
 
 describe('createPanel', () => {
-  it('未打开时 hidden，rect 为 null', () => {
+  it('未打开时 hidden，尺寸为 null', () => {
     const { panel } = mount()
     expect(panel.el.hidden).toBe(true)
     expect(panel.isOpen).toBe(false)
-    expect(panel.rect()).toBeNull()
+    expect(panel.size()).toBeNull()
   })
 
-  it('show 后能拿到控件矩形，hide 后回到 null', () => {
+  it('根节点挂 data-hit：命中判定问 DOM 就够了，不需要面板自报矩形', () => {
+    const { panel } = mount()
+    expect(panel.el.dataset.hit).toBe('')
+    // 按钮是根节点的子元素，closest('[data-hit]') 会一路爬上来命中
+    const btn = panel.el.querySelector('button')
+    expect(btn?.closest('[data-hit]')).toBe(panel.el)
+  })
+
+  it('show 后能拿到自身尺寸（夹回屏幕内要用），hide 后回到 null', () => {
     const { panel } = mount()
     panel.show({ x: 100, y: 200 })
     expect(panel.el.hidden).toBe(false)
     expect(panel.isOpen).toBe(true)
-    expect(panel.rect()).toEqual({ x: 100, y: 200, w: 240, h: 36 })
+    expect(panel.size()).toEqual({ w: 240, h: 36 })
     panel.hide()
-    expect(panel.rect()).toBeNull()
+    expect(panel.size()).toBeNull()
     expect(panel.el.hidden).toBe(true)
   })
 

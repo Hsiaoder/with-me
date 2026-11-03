@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
-  DEFAULT_BODY_BOX, REQUIRED_POOLS, HOVER_DWELL_MS, HOVER_RELEASE_MS, LEASE_TIMEOUT_MS,
+  DEFAULT_BODY_BOX, REQUIRED_POOLS, HOVER_DWELL_MS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS,
 } from '../src/shared/config.js'
 
@@ -32,7 +32,7 @@ describe('悬停与租约的时间关系', () => {
   })
   it('停留与释放的窗口同量级，但都不小于 2 个光标间隔', () => {
     expect(HOVER_DWELL_MS).toBeGreaterThan(33 * 2)
-    expect(HOVER_RELEASE_MS).toBeGreaterThan(33 * 2)
+    expect(PANEL_HIDE_MS).toBeGreaterThan(33 * 2)
   })
 })
 

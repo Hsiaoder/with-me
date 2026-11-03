@@ -49,28 +49,28 @@ describe('panelAnchor', () => {
   const size = { w: 300, h: 40 }
   const body = { x: 500, y: 400, w: 120, h: 142 }
 
-  it('默认摆在身体上方，留出一条 gap', () => {
-    expect(panelAnchor(body, size, screen, 40)).toEqual({ x: 500, y: 320 })
+  // 对齐 qqpet：按钮条默认跟在脚底下，脚下没地方才翻到头顶。
+  it('默认摆在脚底下，留出一条 gap', () => {
+    expect(panelAnchor(body, size, screen, 16)).toEqual({ x: 500, y: 400 + 142 + 16 })
   })
 
-  it('顶边放不下就翻到身体下方', () => {
-    const low = { ...body, y: 30 }
-    expect(panelAnchor(low, size, screen, 40).y).toBe(30 + 142 + 40)
+  it('脚底下放不下（宠物站在地上）就翻到头顶', () => {
+    const low = { ...body, y: 760 }
+    expect(panelAnchor(low, size, screen, 16).y).toBe(760 - 40 - 16)
   })
 
   it('身体靠近右边缘时横向夹回屏幕内，不让按钮溢出到看不见的地方', () => {
     const right = { ...body, x: 1500 }
-    expect(panelAnchor(right, size, screen, 40).x).toBe(1600 - 300)
+    expect(panelAnchor(right, size, screen, 16).x).toBe(1600 - 300)
   })
 
   it('身体靠近左边缘时不出现负坐标', () => {
-    expect(panelAnchor({ ...body, x: -50 }, size, screen, 40).x).toBe(0)
+    expect(panelAnchor({ ...body, x: -50 }, size, screen, 16).x).toBe(0)
   })
 
-  it('上下都放不下时夹在屏幕底边', () => {
-    const tight = { x: 0, y: 0, w: 1600, h: 952 }
-    const p = panelAnchor({ x: 10, y: 20, w: 100, h: 930 }, size, tight, 40)
-    expect(p.y).toBe(952 - 40)
+  it('上下都放不下时夹在屏幕内，不跑到负坐标', () => {
+    const p = panelAnchor({ x: 10, y: 20, w: 100, h: 930 }, size, screen, 16)
+    expect(p.y).toBe(0)
   })
 })
 describe('anyContains', () => {
