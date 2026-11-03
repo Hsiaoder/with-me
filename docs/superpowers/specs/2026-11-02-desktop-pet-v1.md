@@ -26,8 +26,8 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 |---|---|
 | 桌面存在 | 整屏透明覆盖窗，宠物站在桌面上，置顶，不抢任务栏 |
 | 播放动画 | 预渲染的带 alpha webm，双播放器无缝衔接 |
-| 自主行为 | 规则层（被点/被拖/久无人理）+ 随机层（池内按权重抽，排除刚播过的） |
-| 悬停面板 | 光标停留满 400ms 弹按钮，点按钮切动作池，离开满 400ms 收起 |
+| 自主行为 | 规则层管反应（被点/被拖）与「多久没人理」；久无人理之后规则层**交出选池决策权**，由随机层按 manifest 权重在 idle/move/turn 里抽 |
+| 悬停面板 | 光标停留满 400ms 弹按钮，点按钮切动作池，离开满 400ms 收起。计时到点**自己完成**：主进程对相同坐标去重，手停住时不会有第二次光标事件，所以渲染层必须自己挂定时器催 |
 | 鼠标穿透 | 非交互区域穿透到下面；关闭穿透带 500ms 超时兜底 |
 | 换皮肤 | 按契约做的目录即皮肤；不合法就拒绝装载并逐条说明 |
 | 存档 | `save.json` 原子写 + `.bak` 备份 + 版本字段；`stats` 通道冻结但衰减逻辑不实现 |
@@ -91,8 +91,8 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 | P1 平台层 | `Platform { createWindow, setInteractive, sendCursor, setFocusable, onPageReady, send, show, hide }`；未建窗前调用其余动作抛错 | 窗口尺寸 = 主屏工作区且永不改变；穿透开关生效；窗口方法只出现在 `windows.ts` |
 | P2 皮肤包 | `validateManifest(raw)`、`loadSkin(dir)`、`clipFile(...)`、`clipUrl(pool,name)`、`missingRequiredPools(m)`、`isLooping/isMirrorable/bodyBoxOf` | 契约见[皮肤包契约 spec](2026-11-02-skin-pack-contract.md)；错误一次列全，逐条可读 |
 | P3 播放器 | `ClipPlayer { prepare, play, cancel, current, generation, destroy }`。**没有 loop 概念**，重复播放由行为层再调 `play()` | 四条铁律 + 不许开 `video.loop`，假实现合同 10 条、真 DOM e2e 7 项 |
-| P4 行为调度 | `createRuleEngine(now,idleLongMs).feed(event) → pool`；`createPicker(rng).pickFrom(skin,pool,current)` | 同种子同测试跑十次结果一致；权重与池全部来自 manifest |
-| P5 交互层 | `bodyRect(...)`、`anyContains(...)`、`createHoverTimer(now).onPoint(...)`、`createPanel(...).rect()` | 停留 400ms 开、离开 400ms 关、租约 500ms 超时兜底，三条都有单测 |
+| P4 行为调度 | `createRuleEngine(now,idleLongMs).feed(event) → pool \| AMBIENT_POOL`；`createPicker(rng).pickFrom/pickAmbient`；接缝 `nextClip({rules,picker,source,loops,ref}) → {kind:'loop'\|'play', ref}` | 接缝本身是被测对象：`pickAmbient` 曾单测全绿却没人调用，皮肤权重全死在链路外。真机链路另由 e2e 的 `ambientNext` 钩子证明 |
+| P5 交互层 | `bodyRect(...)`、`anyContains(...)`、`createHoverTimer(now).onPoint(...) / .pendingMs(now)`、`createPanel(...).rect()` | 停留 400ms 开、离开 400ms 关、租约 500ms 超时兜底，三条都有单测；`pendingMs` 让静止光标也能计时到点自动开合 |
 | P6 持久化 | `migrate(raw)`、`saveTo(dir,data)`、`loadFrom(dir)`、`platformDataDir()`、`applyCare(save,action,delta)` | 断电不留半个文件；主档坏读备份、都坏回默认并记 warning；永不抛异常 |
 
 ## 6. 三份契约
@@ -137,7 +137,7 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 - [x] `npm test` 全绿：18 个测试文件 165 条，约 1 秒
 - [x] `npm run alpha:check` 对内置皮肤 6 段全部 `haze:false`
 - [x] 分层依赖：渲染层无 `import '../main/'`，shared 无 `import 'electron'` / `node:fs`，`src/main/` 下只有 `windows.ts` 出现窗口方法
-- [x] `npm run e2e`：真 Electron 上 17 项——页面从 `app://` 起来且无异常、两槽且前台唯一、素材解码出 640 宽、`video.loop` 全为 false、过渡时长 0.18s、`currentTime` 在推进、换片后仍只有一个前台、命中框 = 舞台位置 + bodyBox 缩放、悬停 400ms 弹面板、五个按钮、面板在身体上方且不溢出屏幕、点 `move` 切池、**光标不动时租约心跳仍在续期**、贴右边缘时面板夹回、拖拽跟随且松手不回弹、Ctrl+Shift+点切换命中框、让路探测子进程已启动、退出不留探测孤儿
+- [x] `npm run e2e`：真 Electron 上 20 项——页面从 `app://` 起来且无异常、rAF 不被节流、两槽且前台唯一且已解码在播、`video.loop` 全为 false、过渡时长 0.18s、`currentTime` 在推进、换片后仍只有一个前台、命中框 = 舞台位置 + bodyBox 缩放、**光标静止满 400ms 自动弹面板**（只喂一次坐标）、五个按钮、面板在身体上方且不溢出屏幕、点 `move` 切池、**光标不动时租约心跳仍在续期**、贴右边缘时面板夹回、拖拽跟随且松手不回弹、Ctrl+Shift+点切换命中框、让路探测子进程已启动、**静止离开后面板自动收起**、**久无人理后由权重抽到 turn/move**、同 userData 的第二实例被锁挡掉、退出不留探测孤儿
 - [x] `npm run e2e:skin`：换皮肤这条轴 3 项——用户目录皮肤优先且按存档 id 装载、找不到时回退但留下警告、越界皮肤 id 被拒
 
 **真机（只有这三条需要人，其余都已被上面的自动化覆盖）**
@@ -167,7 +167,7 @@ Windows 桌面上站一只宠物：它自己按规则和权重播动画，鼠标
 
 | 项 | 状态 | 影响 |
 |---|---|---|
-| ~~video 后端没有自动化验证~~ **已闭合** | `e2e/pet-check.mjs`（`npm run e2e`）在真 Electron 上验 15 项：页面从 `app://` 起来且无异常、两槽且前台唯一、`video.loop` 全为 false、过渡时长 0.18s、`currentTime` 在推进、换片后仍只有一个前台、命中框 = 舞台位置 + bodyBox 缩放、悬停 400ms 弹面板、面板不溢出屏幕、按钮切池、租约心跳、贴边夹取、面板收起、让路子进程启动、退出不留孤儿 | 四铁律不再只靠假实现 |
+| ~~video 后端没有自动化验证~~ **已闭合** | `e2e/pet-check.mjs`（`npm run e2e`）在真 Electron 上验 20 项，清单见上一节验收列表 | 四铁律不再只靠假实现；悬停开合、自主选池这类**时序与接线**问题也只能在真链路上验 |
 | 角色形象授权 | 未定。大肥鱼形象是「署名 · 非商业 · 相同方式共享」，禁商用；「缓存」有完整设定但三视图要重做 | 不阻塞 v1（用色块皮肤），阻塞真实素材进场 |
 | 蓝幕抠像脚本 | 占位皮肤走通了 `colorkey` 最简管线，真实角色素材的容差与溢色处理未验 | 影响素材产能，不影响代码结构 |
 | 内存基线 | spike 那轮把截图缓冲区算进了 Browser 进程，需要一次不带测量的干净读数；GPU 进程 300MB 左右是否能在真实皮肤下降下来也不知道 | 决定预算能不能从 600MB 收紧 |

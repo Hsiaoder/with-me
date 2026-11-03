@@ -503,7 +503,7 @@ ipcMain.handle('spike:cursor', () => {
 
 - [ ] **Step 3: 跑起来，按设计文档第 3 节的四步逐项观察**
 
-**进度：① 边缘、② 流畅已自动出数并通过；③ 穿透的软件链路已通、系统层点击待人工确认；④ 让路本轮未测。** 人工清单在 `spike/README.md` 末尾，跑 `SPIKE_HOLD=1 npx electron spike/main.mjs` 完成。
+**进度：① 边缘、② 流畅已自动出数并通过，真机复核无灰底；③ 穿透的软件链路已通、系统层点击待人工确认；④ 让路已在 Task 13 真机验收通过。** 人工清单在 `spike/README.md` 末尾，跑 `SPIKE_HOLD=1 npx electron spike/main.mjs` 完成。
 
 ```bash
 npx electron spike/main.mjs
@@ -2298,7 +2298,7 @@ Expected: `renderer 不依赖 main ✔`。若命中，说明有人把装载逻�
 
 注意 `LoadedSkin` 类型来自 `src/shared/skin-store-types.ts`（Task 7 Step 4 建），纯类型 + 纯路径拼接，无 `node:fs` 依赖，可以安全被渲染层 import。
 
-- [ ] **Step 6: 真机验收**
+- [x] **Step 6: 真机验收**
 
 ```bash
 npm run build && npx electron dist/main/index.js
@@ -2876,7 +2876,7 @@ window.addEventListener('keydown', (e) => {
 })
 ```
 
-- [ ] **Step 4: 真机验收**
+- [x] **Step 4: 真机验收**
 
 ```bash
 npm run build && npx electron dist/main/index.js
