@@ -1,11 +1,13 @@
 import { PANEL_LABELS, PANEL_POOLS } from '../shared/config.js'
-import type { Point, Rect } from '../shared/types.js'
+import type { Point } from '../shared/types.js'
 
 /**
  * 悬停面板：一排按钮，点哪个就切到哪个动作池。
  *
- * 面板必须**上报自己的控件矩形**——整屏覆盖层默认是鼠标穿透的，只有身体框和
- * 面板框这两块需要临时接住鼠标，否则按钮点了也落在下面的窗口上。
+ * 命中判定**不由面板上报矩形**：根节点挂一个 `data-hit`，渲染层拿推进来的
+ * 光标坐标问 DOM（`elementFromPoint(...).closest('[data-hit]')`）就够了。
+ * 这样"能不能接住这点鼠标"由真实布局回答，收起（`display:none`）的元素
+ * 天然问不到——不会出现透明度 0 却照样吃点击、照样改光标形状那种鬼东西。
  */
 
 export type PanelAction = { id: string; label: string; pool: string }
@@ -15,8 +17,8 @@ export interface Panel {
   readonly isOpen: boolean
   show(at: Point): void
   hide(): void
-  /** 面板在屏幕上占的那一块；没打开时是 null，穿透判定据此决定要不要接住鼠标。 */
-  rect(): Rect | null
+  /** 面板自身尺寸，只有打开时量得到（收起时不在布局里）。夹回屏幕内要用。 */
+  size(): { w: number; h: number } | null
 }
 
 /** 按钮来自 config 的 PANEL_POOLS，顺序即显示顺序；标签也在 config，不在这儿写死。 */
@@ -28,6 +30,8 @@ export function createPanel(root: HTMLElement, actions: PanelAction[], onClick: 
   const el = document.createElement('div')
   el.className = 'pet-panel'
   el.setAttribute('role', 'toolbar')
+  // 命中权威就靠这个属性：它的存在表示「这块像素归桌宠」，子元素自动跟着算。
+  el.dataset.hit = ''
   el.hidden = true
   for (const a of actions) {
     const b = document.createElement('button')
@@ -55,10 +59,10 @@ export function createPanel(root: HTMLElement, actions: PanelAction[], onClick: 
       at = null
       el.hidden = true
     },
-    rect() {
+    size() {
       if (!at) return null
-      // 只在打开后测量：hidden 时 display:none，量出来是 0
-      return { x: at.x, y: at.y, w: el.offsetWidth, h: el.offsetHeight }
+      // 只有打开后才量得到：收起时不在布局里，offsetWidth 是 0，所以别在收起状态调它
+      return { w: el.offsetWidth, h: el.offsetHeight }
     },
   }
 }

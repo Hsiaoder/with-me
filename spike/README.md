@@ -191,3 +191,21 @@ panelHidden=true  display=flex  opacity=0  pointerEvents=auto  offsetWH=[275,44]
 同一点差 2 像素形状就翻转，说明边界在 Qoder 的内容里（消息块、链接、代码块都可点），
 不是我们留下的残留形状——交接后系统确实重算了（第二行已经从 hand 变回 arrow）。
 自查口径：手型出现时看 `桌宠=` / `点击落在=`，只有 `GRAB` 或 `electron` 才轮得到我们。
+
+## 追加：`display-probe.mjs` —— 别在过渡中间读 computed style
+
+e2e 有一条断言报「收起后面板还在布局里：`display=flex`」，而 `open` 已经是 false。
+逐时刻采样（`node spike/display-probe.mjs`）看清了：
+
+```
+开着时:   hidden=false open=true  display=flex  opacity=0.91 w=275
+离开+1000ms: hidden=true open=false display=none opacity=0 w=0
+```
+
+`open=false` 立刻生效，`display` 却要等 `transition: display .18s allow-discrete`
+（我特意保留的淡出）走完才翻成 `none`。断言读早了 100ms。
+教训：**读离散属性的过渡结果，要在 `transitionDuration` 之后再取**，否则测的是动画中间帧。
+
+另外这个探针第一版压根没把面板打开——它没冻行为链，宠物正在走动，喂进去的坐标
+早就不在身上了，于是一路报 `display=none`，看着像"修好了"其实是没测到。
+先 `__testPlay` 冻住链，再断言"开着"，才有资格断言"收着"。

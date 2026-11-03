@@ -51,8 +51,11 @@ body {
   transform: scaleX(-1);
 }
 
-/* 悬停面板。不写 pointer-events:none——面板就是要能点。
-   它挂在 #root 下而不是 .pet-sprite 里，所以不受舞台那层穿透影响。 */
+/* 悬停面板。它挂在 #root 下而不是 .pet-sprite 里，所以不受舞台那层穿透影响。
+   收起 = 真的移出布局（下面那条 [hidden] 规则），不是透明度 0。
+   作者样式必须写出来压过 UA 的 `[hidden]{display:none}`——`.pet-panel{display:flex}`
+   本来就把 UA 那条顶掉了，这正是上一轮「看不见的按钮照样吃点击、照样把手型改掉」
+   那个 bug 的根因。 */
 .pet-panel {
   position: absolute;
   left: 0;
@@ -66,22 +69,25 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
   font: 12px "Microsoft YaHei UI", sans-serif;
   opacity: 0;
-  transition: opacity 0.18s ease;
+  /* display 也在过渡里，且允许离散属性参与：这样收起时有淡出，
+     淡出结束才真的移出布局（Chromium 117+ 的 transition-behavior）。 */
+  transition: opacity 0.18s ease, display 0.18s allow-discrete;
   will-change: transform;
+}
+
+.pet-panel[hidden] {
+  display: none;
 }
 
 .pet-panel:not([hidden]) {
   opacity: 1;
 }
 
-/* 收起 ≠ 不存在。`.pet-panel{display:flex}` 是作者样式，压过了 UA 的
-   `[hidden]{display:none}`，所以元素照旧占位、照旧参与命中测试——透明度 0 的按钮
-   仍然用 cursor:pointer 改写光标形状（真机症状：点完宠物移出去，头顶变成手指），
-   也仍然能吃掉那一下点击。
-   这里只收 pointer-events：不用 display:none / visibility:hidden，
-   那会砍掉 0.18s 淡出，而面板矩形只在打开时量，收起后不需要保留尺寸。 */
-.pet-panel[hidden] {
-  pointer-events: none;
+/* 淡入：从 display:none 出来的元素需要先有起始帧才能过渡，靠 @starting-style。 */
+@starting-style {
+  .pet-panel:not([hidden]) {
+    opacity: 0;
+  }
 }
 
 .pet-panel button {

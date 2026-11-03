@@ -43,15 +43,16 @@ export function anyContains(rects: Rect[], p: Point): boolean {
 }
 
 /**
- * 面板该摆在身体框上方的哪个位置（覆盖层 CSS 坐标）。
+ * 按钮面板该摆在宠物身边的哪个位置（覆盖层 CSS 坐标）。
  *
- * 优先贴在身体上方；顶边放不下就翻到身体下方；最后整体夹回屏幕内。
- * 夹取是必须的——覆盖层虽然铺满屏幕，面板自己不能溢出到看不见的地方，
- * 否则用户会以为按钮"消失了"。
+ * **脚底下优先**——一排按钮跟着脚走，视觉上是从宠物身上「递出来」的，
+ * 这也是 QQ 宠那一系桌宠的做法；脚下放不下（宠物站在地上时必然放不下）
+ * 才翻到头顶。最后整体夹回屏幕内：覆盖层虽然铺满屏幕，面板自己不能溢出到
+ * 看不见的地方，否则用户会以为按钮"消失了"。
  */
 export function panelAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Point {
-  const above = body.y - size.h - gap
-  const y0 = above >= screen.y ? above : body.y + body.h + gap
+  const below = body.y + body.h + gap
+  const y0 = below + size.h <= screen.y + screen.h ? below : body.y - size.h - gap
   const x = Math.min(
     Math.max(body.x, screen.x),
     Math.max(screen.x, screen.x + screen.w - size.w),

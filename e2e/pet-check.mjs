@@ -112,6 +112,19 @@ check('命中框 = 舞台位置 + bodyBox 按缩放换算', async () => {
 })
 
 const feed = (p) => page.evaluate((pt) => window.__petDebug.cursor(pt), p)
+/**
+ * 把面板叫出来、光标停在身体上。位置类检查的前置用它，别依赖"上一条检查留下的状态"——
+ * 那些检查会把宠物挪走。宠物可能正在走动，所以重读命中框重试。
+ */
+async function openOnBody(retry = 3) {
+  for (let i = 0; i < retry; i++) {
+    const h = await page.evaluate(() => window.__petDebug.hitBox)
+    await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+    await page.waitForTimeout(460)
+    if ((await dbg()).open) return true
+  }
+  return false
+}
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
   pool: window.__petDebug.current.pool,
@@ -133,15 +146,30 @@ check('悬停满 400ms 自动出现面板，五个按钮齐全', async () => {
   assert.equal(await page.locator('.pet-panel button').count(), 5)
 })
 
-check('面板出现在身体上方且不溢出屏幕', async () => {
-  const s = await dbg()
-  const r = await page.evaluate(() => {
+check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢出屏幕', async () => {
+  const panelRect = () => page.evaluate(() => {
     const b = document.querySelector('.pet-panel').getBoundingClientRect()
-    return { x: b.x, y: b.y, w: b.width }
+    return { x: b.x, y: b.y, w: b.width, h: b.height }
   })
-  assert.ok(r.y < s.hit.y, `面板该在身体上方：panel.y=${r.y} body.y=${s.hit.y}`)
-  assert.ok(r.x >= 0 && r.x + r.w <= s.inner.w, `横向溢出：${r.x}+${r.w} vs ${s.inner.w}`)
-  assert.ok(r.y >= 0, `顶部溢出：${r.y}`)
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+
+  // 宠物挪到屏幕中间：脚底下有整块地方 → 面板必须在身体下方
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: 600, y: 300 })
+  await page.waitForTimeout(150)
+  let body = await page.evaluate(() => window.__petDebug.hitBox)
+  let pr = await panelRect()
+  assert.ok(pr.h > 0, '面板量到 0 高：它没开着，或者已被移出布局')
+  assert.ok(pr.y >= body.y + body.h, `脚下有地方时面板该在下方：panel.y=${pr.y} bodyBottom=${body.y + body.h}`)
+  assert.ok(pr.x >= 0 && pr.x + pr.w <= inner.w, `横向溢出：${pr.x}+${pr.w} vs ${inner.w}`)
+
+  // 宠物站回地上：脚底下只剩屏幕边那几像素 → 翻到头顶
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: 600, y: inner.h - 200 })
+  await page.waitForTimeout(150)
+  body = await page.evaluate(() => window.__petDebug.hitBox)
+  pr = await panelRect()
+  assert.ok(pr.y + pr.h <= body.y + 1, `脚下放不下时面板该翻到头顶：panelBottom=${pr.y + pr.h} bodyTop=${body.y}`)
+  assert.ok(pr.y >= 0, `顶部溢出：${pr.y}`)
 })
 
 check('点 move 按钮切到 move 池', async () => {
@@ -153,6 +181,7 @@ check('点 move 按钮切到 move 池', async () => {
 check('心跳：光标不动时仍在持续续期租约', async () => {
   // 这条测的是刚修掉的 bug：requestGrab 原本只在光标移动时发，手停在面板上不动，
   // 500ms 后租约过期、鼠标被放开给桌面，下一次点击就穿到下面的窗口去了。
+  assert.ok(await openOnBody(), '前置：面板叫不出来，心跳无从谈起')
   const before = (await dbg()).sends
   await page.waitForTimeout(1400)
   const after = (await dbg()).sends
@@ -163,11 +192,7 @@ check('心跳：光标不动时仍在持续续期租约', async () => {
 check('宠物贴右边缘时面板夹回屏幕内', async () => {
   const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
   await page.evaluate((p) => window.__petDebug.moveTo(p), { x: inner.w - 40, y: inner.h - 300 })
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
-  await feed(center)
-  await page.waitForTimeout(460)
-  assert.equal((await dbg()).open, true, '面板没开，量到的矩形是 0，夹取断言会假通过')
+  assert.ok(await openOnBody(), '面板没开，量到的矩形是 0，夹取断言会假通过')
   const r = await page.evaluate(() => {
     const b = document.querySelector('.pet-panel').getBoundingClientRect()
     return { x: b.x, y: b.y, w: b.width }
@@ -247,7 +272,7 @@ check('让路探测子进程已启动（新出现的 powershell，父进程是 e
   probePids = fresh.map(([pid]) => pid)
 })
 
-check('离开身体与面板满 400ms 后面板自动收起', async () => {
+check('离开身体与面板满 1500ms 后面板自动收起', async () => {
   // 上一版这里直接喂离开坐标然后断言「收了」——可那时候面板已经被拖拽测试关掉了，
   // 断言的是「本来就没开」，什么都没测到。先把面板叫起来，再验它自己收回去。
   const h = await page.evaluate(() => window.__petDebug.hitBox)
@@ -255,33 +280,35 @@ check('离开身体与面板满 400ms 后面板自动收起', async () => {
   await page.waitForTimeout(460)
   assert.equal((await dbg()).open, true, '前置条件：静止悬停满 400ms 该弹出面板')
   await feed({ x: 5, y: 5 })
-  // 只喂这一次离开坐标：静止时光标不会再产生新事件，收起也得计时自己完成
-  await page.waitForTimeout(460)
-  assert.equal((await dbg()).open, false, '光标静止离开后没收起')
+  // 只喂这一次离开坐标：静止时光标不会再产生新事件，收起也得计时自己完成。
+  // 收起比弹出慢得多（PANEL_HIDE_MS 1500 vs HOVER_DWELL_MS 400）：鼠标在按钮之间
+  // 走位的那段时间不该把面板收掉，否则用户会觉得按钮自己跑了。
+  await page.waitForTimeout(500)
+  assert.equal((await dbg()).open, true, '才 500ms 就收了：收起延时没走 PANEL_HIDE_MS')
+  await page.waitForTimeout(1100)
+  assert.equal((await dbg()).open, false, '光标静止离开满 1500ms 后没收起')
 })
 
 check('光标离开身体与面板后立刻放开鼠标，不等面板收起', async () => {
   // 整窗粒度的穿透：只要还「接住」，整块屏幕的点击都被透明层吞掉。
-  // 面板的 400ms 收起延时只管可见性，不该顺手把鼠标也扣住 400ms——
-  // 真机上就是这个症状：从宠物移出去点别处，那一下要点两次才灵。
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(460)
-  const open = await dbg()
-  assert.equal(open.open, true, '前置条件：面板该开着')
-  assert.equal(open.grab, true, '前置条件：光标在身上，该接住鼠标')
+  // 面板的收起延时只管可见性，不该顺手把鼠标也扣住——真机上就是这个症状：
+  // 从宠物移出去点别处，那一下要点两次才灵。
+  assert.ok(await openOnBody(), '前置条件：面板该开着')
+  const s = await dbg()
+  assert.equal(s.grab, true, '前置条件：光标在身上，该接住鼠标')
 
   await feed({ x: 4, y: 4 })
   const after = await page.evaluate(() => ({ grab: window.__petDebug.grabRequested, open: window.__petDebug.panelOpen }))
   assert.equal(after.grab, false, '光标已经离开身体和面板，鼠标却没放开')
-  assert.equal(after.open, true, '面板该还开着（400ms 收起延时是可见性，不是扣鼠标）')
+  assert.equal(after.open, true, '面板该还开着（PANEL_HIDE_MS 是可见性延时，不是扣鼠标）')
 })
 
-check('面板收起后不再参与命中测试：看不见的按钮不许抢光标和点击', async () => {
+check('面板收起后真的移出布局：不吃点击、不改光标形状', async () => {
   // 真机症状：点完宠物移出去，光标在宠物上方那条带子里变成手指。
-  // 根因不在透明度：`.pet-panel{display:flex}` 是作者样式，压过了 UA 的
-  // `[hidden]{display:none}`，所以收起后元素还占着 275x44，命中的仍是带
-  // cursor:pointer 的按钮——光标形状按命中的元素画，看不见也照画。
+  // 根因是样式优先级：UA 的 `[hidden]{display:none}` 被作者样式
+  // `.pet-panel{display:flex}` 顶掉了，所以「收起」只等于透明度 0，元素照旧占位、
+  // 照旧参与命中测试，命中的还是带 cursor:pointer 的按钮。
+  // 现在收起由 `.pet-panel[hidden]{display:none}` 显式做，命中判定也只问 DOM。
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
   await page.waitForTimeout(460)
@@ -291,13 +318,22 @@ check('面板收起后不再参与命中测试：看不见的按钮不许抢光�
     return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) }
   })
   await feed({ x: 4, y: 4 })
-  await page.waitForTimeout(460)
+  await page.waitForTimeout(1600)
   assert.equal((await dbg()).open, false, '前置：面板该已收起')
+  // open=false 是立刻生效的，display 却要等 0.18s 的离散过渡走完（淡出是故意留的）。
+  // 不在这里等一下就等于在动画中间读数，会得到还没换过去的 flex。
+  await page.waitForTimeout(400)
   const at = await page.evaluate((p) => {
     const el = document.elementFromPoint(p.x, p.y)
-    return { tag: el ? el.tagName : 'null', cursor: el ? getComputedStyle(el).cursor : 'n/a' }
+    return {
+      tag: el ? el.tagName : 'null',
+      cursor: el ? getComputedStyle(el).cursor : 'n/a',
+      hitDataHit: el !== null && el.closest('[data-hit]') !== null,
+      display: getComputedStyle(document.querySelector('.pet-panel')).display,
+    }
   }, band)
-  assert.notEqual(at.tag, 'BUTTON', `收起的面板还在命中测试里：${JSON.stringify(at)} @${band.x},${band.y}`)
+  assert.equal(at.display, 'none', `收起后面板还在布局里：${JSON.stringify(at)}`)
+  assert.equal(at.hitDataHit, false, `收起的面板还能被命中：${JSON.stringify(at)} @${band.x},${band.y}`)
   assert.notEqual(at.cursor, 'pointer', `看不见的按钮还在改光标形状：${JSON.stringify(at)}`)
 })
 

@@ -1,7 +1,7 @@
 import {
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
-  PANEL_OFFSET_ABOVE,
+  PANEL_GAP,
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
@@ -118,11 +118,11 @@ function bootstrap(skin: SkinPayload): void {
     const body = hitBox()
     const screen = { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
     // 先摆一次才量得出面板自身尺寸，再按尺寸夹回屏幕内。面板宽度由按钮数量决定，
-    // 事先不知道，只能量一次。
-    panel.show({ x: body.x, y: Math.max(0, body.y - PANEL_OFFSET_ABOVE) })
-    const size = panel.rect()
+    // 事先不知道，只能量一次。收起时它不在布局里，所以量这一步只在打开状态下有意义。
+    panel.show({ x: body.x, y: body.y + body.h + PANEL_GAP })
+    const size = panel.size()
     if (!size) return
-    panel.show(panelAnchor(body, { w: size.w, h: size.h }, screen, PANEL_OFFSET_ABOVE))
+    panel.show(panelAnchor(body, size, screen, PANEL_GAP))
   }
 
   /**
@@ -199,8 +199,10 @@ function bootstrap(skin: SkinPayload): void {
   function handleCursor(p: Point): void {
     lastCursor = p
     const over = overBody(p)
-    const pr = panel.rect()
-    const overPanel = pr !== null && anyContains([pr], p)
+    // 面板那块不自报矩形，直接问 DOM：命中的元素（或其祖先）带 data-hit 才算。
+    // 收起的面板不在布局里，问不到，所以不存在「看不见却抢鼠标」的中间状态。
+    const hit = document.elementFromPoint(p.x, p.y)
+    const overPanel = hit !== null && hit.closest('[data-hit]') !== null
     const ev = hover.onPoint(p, over || dragging, overPanel)
     if (ev === 'open') placePanel()
     if (ev === 'close') panel.hide()

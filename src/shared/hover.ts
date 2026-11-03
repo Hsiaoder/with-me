@@ -1,8 +1,8 @@
-import { HOVER_DWELL_MS, HOVER_RELEASE_MS } from './config.js'
+import { HOVER_DWELL_MS, PANEL_HIDE_MS } from './config.js'
 import type { Point } from './types.js'
 
 /**
- * 悬停计时：停留满 HOVER_DWELL_MS 才 open，离开身体与面板满 HOVER_RELEASE_MS 才 close。
+ * 悬停计时：停留满 HOVER_DWELL_MS 才 open，离开身体与面板满 PANEL_HIDE_MS 才 close。
  *
  * 为什么要两个方向的延时：路过就弹会闪，一走就收会让用户点不到按钮。
  * 面板算「还在宠物上」——光标从宠物挪到面板这几像素不该把面板收掉。
@@ -52,7 +52,7 @@ export function createHoverTimer(now: () => number): HoverTimer {
       enteredAt = null
       if (!open) return 'none'
       leftAt ??= now()
-      if (now() - leftAt < HOVER_RELEASE_MS) return 'none'
+      if (now() - leftAt < PANEL_HIDE_MS) return 'none'
       open = false
       leftAt = null
       return 'close'
@@ -64,7 +64,7 @@ export function createHoverTimer(now: () => number): HoverTimer {
     },
     pendingMs(now: number): number | null {
       if (!open && enteredAt !== null) return Math.max(0, HOVER_DWELL_MS - (now - enteredAt))
-      if (open && leftAt !== null) return Math.max(0, HOVER_RELEASE_MS - (now - leftAt))
+      if (open && leftAt !== null) return Math.max(0, PANEL_HIDE_MS - (now - leftAt))
       return null
     },
   }

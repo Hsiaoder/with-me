@@ -25,6 +25,12 @@ using System.Diagnostics;
 public static class Win {
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
   [StructLayout(LayoutKind.Sequential)] public struct CURSORINFO { public uint cbSize; public uint flags; public IntPtr hCursor; public POINT ptScreenPos; }
+  [StructLayout(LayoutKind.Sequential)] public struct GUITHREADINFO {
+    public uint cbSize; public uint flags; public IntPtr hwndActive; public IntPtr hwndFocus;
+    public IntPtr hwndCapture; public IntPtr hwndMenuOwner; public IntPtr hwndMoveSize;
+    public IntPtr hwndCaret; public RECT rcCaret; public IntPtr hCursor;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 
   [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int max);
@@ -40,6 +46,8 @@ public static class Win {
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);
   [DllImport("user32.dll")] public static extern bool GetCursorInfo(out CURSORINFO i);
   [DllImport("user32.dll")] public static extern IntPtr LoadCursor(IntPtr h, int id);
+  [DllImport("user32.dll")] public static extern bool GetGUIThreadInfo(uint tid, out GUITHREADINFO i);
+  [DllImport("user32.dll")] public static extern IntPtr GetCapture();
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   public delegate bool EnumProc(IntPtr h, IntPtr extra);
 
@@ -76,11 +84,44 @@ public static class Win {
     return "@" + x + "," + y +
            "  \u70b9\u51fb\u843d\u5728=" + Proc(op) + "[" + Class(o) + "]" +
            "  \u952e\u76d8/\u6eda\u8f6e=" + Proc(fp) +
-           "  \u684c\u5ba0=" + ps;
+           "  \u684c\u5ba0=" + ps +
+           FocusOf("\u6eda\u8f6e\u771f\u6b63\u7684\u7126\u70b9", f) +
+           Capture("\u684c\u5ba0\u6263\u4f4f", pet) +
+           Capture("\u7126\u70b9\u6263\u4f4f", f) +
+           Capture("\u843d\u70b9\u6263\u4f4f", o);
   }
 
   // GetCursorInfo reports the calling thread, so attach to the thread owning the point
   // to read the shape that is actually on screen.
+  // Mouse capture: while a window holds it, EVERY mouse message (move, click, wheel)
+  // is delivered to it no matter where the pointer is. Chromium calls SetCapture on
+  // mouse-down and releases on mouse-up; if the up never reaches it, capture leaks.
+  // Capture is per-thread, so ask the GUI info of the threads we care about.
+  public static string Capture(string label, IntPtr window) {
+    if (window == IntPtr.Zero) return "";
+    uint p; uint tid = GetWindowThreadProcessId(window, out p);
+    GUITHREADINFO g = new GUITHREADINFO();
+    g.cbSize = (uint)Marshal.SizeOf(typeof(GUITHREADINFO));
+    if (!GetGUIThreadInfo(tid, out g)) return "";
+    if (g.hwndCapture == IntPtr.Zero) return "";
+    return "  " + label + "=0x" + g.hwndCapture.ToInt64().ToString("x")
+      + "[" + Class(g.hwndCapture) + "]";
+  }
+
+  // The wheel goes to the FOCUSED window, and "focused" is per-thread: the foreground
+  // top-level can be app X while X's thread focuses some child, or nothing at all.
+  // That is the only place left once capture and activation are ruled out.
+  public static string FocusOf(string label, IntPtr window) {
+    if (window == IntPtr.Zero) return "";
+    uint p; uint tid = GetWindowThreadProcessId(window, out p);
+    GUITHREADINFO g = new GUITHREADINFO();
+    g.cbSize = (uint)Marshal.SizeOf(typeof(GUITHREADINFO));
+    if (!GetGUIThreadInfo(tid, out g)) return "";
+    if (g.hwndFocus == IntPtr.Zero) return "  " + label + "=NONE";
+    uint fp; GetWindowThreadProcessId(g.hwndFocus, out fp);
+    return "  " + label + "=" + Proc(fp) + "[" + Class(g.hwndFocus) + "]";
+  }
+
   public static string Shape(int x, int y) {
     IntPtr o = Owner(x, y);
     uint p; uint tid = GetWindowThreadProcessId(o, out p);
@@ -116,6 +157,13 @@ switch ($Action) {
   }
   'click' {
     [Win]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    [Win]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+  }
+  'hold' {
+    # Real press-and-release with a gap. CDP synthetic input skips the native mouse path,
+    # so it never produces a SetCapture - only real input can reproduce a capture leak.
+    [Win]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 450
     [Win]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
   }
   'watch' {

@@ -21,8 +21,12 @@ export const DEFAULT_BODY_BOX = { x: 200, y: 50, w: 240, h: 285 } as const
 export const CURSOR_POLL_MS = 33
 /** 光标停在身体上满这么久才弹面板，避免路过就闪。 */
 export const HOVER_DWELL_MS = 400
-/** 光标离开身体与面板满这么久才收面板，留出走位的时间。 */
-export const HOVER_RELEASE_MS = 400
+/**
+ * 面板最后一次交互后，光标不在身体也不在面板上满这么久才收起。
+ * 比弹出的 400ms 长得多：面板是用来点按钮的，鼠标在按钮之间走位的时间
+ * 不该把面板收掉；而收得太快会让用户觉得按钮自己跑了。
+ */
+export const PANEL_HIDE_MS = 1500
 /** 渲染层超过这么久没续期就强制恢复穿透，防止整块屏幕点不动。 */
 export const LEASE_TIMEOUT_MS = 500
 /**
@@ -84,5 +88,5 @@ export const SKIN_HOST = 'skin'
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}/`
 /** 素材地址由 JS 拼绝对 URL，不走相对解析。 */
 export const SKIN_ORIGIN = `${APP_SCHEME}://${SKIN_HOST}/`
-/** 面板贴在身体上方的偏移；越界时由渲染层夹回屏幕内。 */
-export const PANEL_OFFSET_ABOVE = 40
+/** 面板与身体框之间的间距；脚底下放不下时同一个间距翻到头顶。 */
+export const PANEL_GAP = 16
