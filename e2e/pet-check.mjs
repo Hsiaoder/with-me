@@ -134,7 +134,7 @@ const dbg = () => page.evaluate(() => ({
   inner: { w: window.innerWidth, h: window.innerHeight },
 }))
 
-check('悬停满 400ms 自动出现面板，五个按钮齐全', async () => {
+check('悬停满 400ms 自动出现面板，三个功能按钮齐全', async () => {
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
   await feed(center)
@@ -143,7 +143,7 @@ check('悬停满 400ms 自动出现面板，五个按钮齐全', async () => {
   // 再喂一次等于把「计时到点自己开」这条链路绕过掉——上一版就是这么假通过的。
   await page.waitForTimeout(460)
   assert.equal((await dbg()).open, true, '光标静止满 400ms 后仍没弹出')
-  assert.equal(await page.locator('.pet-panel button').count(), 5)
+  assert.deepEqual(await page.locator('.pet-panel button').allTextContents(), ['喂食', '小游戏', '状态'])
 })
 
 check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢出屏幕', async () => {
@@ -172,10 +172,11 @@ check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢�
   assert.ok(pr.y >= 0, `顶部溢出：${pr.y}`)
 })
 
-check('点 move 按钮切到 move 池', async () => {
-  await page.click('.pet-panel button[data-pool="move"]')
-  await page.waitForFunction(() => window.__petDebug.current.pool === 'move', null, { timeout: 5000 })
-  assert.equal((await dbg()).pool, 'move')
+check('点喂食按钮：宠物给一个 click 池的反应', async () => {
+  assert.ok(await openOnBody(), '前置：面板叫不出来，按钮点不到')
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
+  assert.equal((await dbg()).pool, 'click')
 })
 
 check('心跳：光标不动时仍在持续续期租约', async () => {

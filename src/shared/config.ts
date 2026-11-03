@@ -60,15 +60,16 @@ export const REQUIRED_POOLS = ['idle', 'turn', 'move', 'click', 'drag'] as const
 export const LOOPING_POOLS = ['idle', 'turn', 'move'] as const
 /** 无人交互时允许自主挑选的池。反应池（click/drag）不在其中——宠物不该没事干抖一下被点的反应。 */
 export const AMBIENT_POOLS = ['idle', 'move', 'turn'] as const
-/** 面板上的动作按钮，顺序即显示顺序。 */
-export const PANEL_POOLS = ['idle', 'move', 'turn', 'click', 'drag'] as const
-export const PANEL_LABELS: Record<string, string> = {
-  idle: '待机',
-  move: '走走',
-  turn: '转身',
-  click: '回应',
-  drag: '抓一把',
-}
+/**
+ * 面板上的功能按钮，顺序即显示顺序。
+ * 业务功能（喂食扣饥饿值、小游戏、状态面板）还没接，`pool` 只决定按下之后
+ * 宠物给哪个反应；三个都指向 click 池，因为它是皮肤契约保证存在的反应池。
+ */
+export const PANEL_BUTTONS = [
+  { id: 'feed', label: '喂食', pool: 'click' },
+  { id: 'game', label: '小游戏', pool: 'click' },
+  { id: 'status', label: '状态', pool: 'click' },
+] as const
 
 // ---- 存档 ----
 export const SAVE_VERSION = 1

@@ -1,8 +1,8 @@
-import { PANEL_LABELS, PANEL_POOLS } from '../shared/config.js'
+import { PANEL_BUTTONS } from '../shared/config.js'
 import type { Point } from '../shared/types.js'
 
 /**
- * 悬停面板：一排按钮，点哪个就切到哪个动作池。
+ * 悬停面板：一排功能按钮。
  *
  * 命中判定**不由面板上报矩形**：根节点挂一个 `data-hit`，渲染层拿推进来的
  * 光标坐标问 DOM（`elementFromPoint(...).closest('[data-hit]')`）就够了。
@@ -21,9 +21,9 @@ export interface Panel {
   size(): { w: number; h: number } | null
 }
 
-/** 按钮来自 config 的 PANEL_POOLS，顺序即显示顺序；标签也在 config，不在这儿写死。 */
+/** 按钮来自 config 的 PANEL_BUTTONS，顺序即显示顺序；标签也在 config，不在这儿写死。 */
 export function defaultActions(): PanelAction[] {
-  return PANEL_POOLS.map((pool) => ({ id: pool, label: PANEL_LABELS[pool] ?? pool, pool }))
+  return PANEL_BUTTONS.map((b) => ({ ...b }))
 }
 
 export function createPanel(root: HTMLElement, actions: PanelAction[], onClick: (a: PanelAction) => void): Panel {
@@ -37,7 +37,7 @@ export function createPanel(root: HTMLElement, actions: PanelAction[], onClick: 
     const b = document.createElement('button')
     b.type = 'button'
     b.textContent = a.label
-    b.dataset.pool = a.pool
+    b.dataset.id = a.id
     b.addEventListener('click', () => onClick(a))
     el.append(b)
   }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { createPanel, defaultActions } from '../src/renderer/panel.js'
-import { PANEL_POOLS } from '../src/shared/config.js'
+import { PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
 
 /**
  * jsdom 没有排版引擎，offsetWidth/offsetHeight 恒为 0，而「打开后量自身尺寸用来
@@ -22,14 +22,14 @@ const mount = (onClick = vi.fn()) => {
 afterEach(() => { document.body.replaceChildren() })
 
 describe('defaultActions', () => {
-  it('按钮与必需池一一对应，顺序即 PANEL_POOLS', () => {
-    expect(defaultActions().map((a) => a.pool)).toEqual([...PANEL_POOLS])
+  it('三个功能按钮：喂食/小游戏/状态，顺序即 PANEL_BUTTONS', () => {
+    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status'])
+    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态'])
   })
-  it('每个动作都有中文标签', () => {
-    for (const a of defaultActions()) {
-      expect(a.label, a.pool).toBeTruthy()
-      expect(a.label).not.toBe(a.pool)
-    }
+  it('按钮的反应池必须是皮肤契约里保证存在的池', () => {
+    // 业务功能还没接，按钮只做「给个反应」。反应来自 click 池，
+    // 而 click 是 REQUIRED_POOLS 之一，任何合法皮肤都有它。
+    for (const a of defaultActions()) expect(REQUIRED_POOLS).toContain(a.pool)
   })
 })
 
@@ -69,11 +69,11 @@ describe('createPanel', () => {
   it('点按钮回调带上被点的动作', () => {
     const { panel, onClick } = mount()
     panel.show({ x: 0, y: 0 })
-    panel.el.querySelector<HTMLButtonElement>('button[data-pool="move"]')!.dispatchEvent(
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="feed"]')!.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     )
     expect(onClick).toHaveBeenCalledTimes(1)
-    expect(onClick.mock.calls[0]![0]).toMatchObject({ pool: 'move', id: 'move' })
+    expect(onClick.mock.calls[0]![0]).toMatchObject({ id: 'feed', pool: 'click' })
   })
 
   it('面板自身必须可点：不能继承舞台那层 pointer-events:none', () => {
@@ -92,6 +92,6 @@ describe('createPanel', () => {
     panel.show({ x: 0, y: 0 })
     panel.show({ x: 10, y: 10 })
     expect(root.querySelectorAll('.pet-panel')).toHaveLength(1)
-    expect(root.querySelectorAll('button')).toHaveLength(PANEL_POOLS.length)
+    expect(root.querySelectorAll('button')).toHaveLength(PANEL_BUTTONS.length)
   })
 })
