@@ -207,15 +207,15 @@ body.pet-over {
   background: #eef6f4;
 }
 
-/* 命中区与排布：所有视图的按钮共用。34px 的方块留着当命中区——图标才 22px，
+/* 命中区与排布：所有视图的按钮共用。40px 的方块留着当命中区——图标才 26px，
    按图标本身点太费眼睛。 */
 .pet-panel button {
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: none;
   background: none;
@@ -224,15 +224,15 @@ body.pet-over {
 
 /* 动作视图的五颗：图标底下垫一枚 Kenney `button_round_line`（CC0，白底 + 灰环 + 一点蓝内圈）。
    以前这里刻意什么都不画，结果白色系的图标（米饭碗）压在浅色壁纸上会糊成一片，
-   也看不出哪里能点。34px 的方块仍然是命中区——图标才 22px，按图标本身点太费眼睛。
+   也看不出哪里能点。40px 的方块仍然是命中区——图标才 26px，按图标本身点太费眼睛。
    选择器用 `button[data-id]`：只有动作按钮带 data-id，设置/列表/状态视图的按钮各有自己的底板。 */
 .pet-panel button[data-id] {
   background: url("icons/button_round_line.svg") center / 100% 100% no-repeat;
 }
 
 .pet-icon {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: block;
   /* 圆底是白的，白色系图标还是得靠这道投影分边；深色桌面上投影也顺手把整颗按钮托起来。 */
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
@@ -374,7 +374,7 @@ body.pet-over {
 }
 
 /* 选择器要压过基类 `.pet-panel button`（那条把尺寸和边框都定了），
-   所以这里带上 .pet-panel 一层——单写 .pet-food 权重不够，格子会被打回 34px 无边圆片。 */
+   所以这里带上 .pet-panel 一层——单写 .pet-food 权重不够，格子会被打回 40px 无边圆片。 */
 .pet-panel .pet-food {
   flex: 0 0 auto;
   width: 56px;

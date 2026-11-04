@@ -822,11 +822,12 @@ check('点一下不动是「点」：走 click 池，绝不碰 drag', async () =
     const p = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
     const fire = (type, q) => window.dispatchEvent(new PointerEvent(type, { clientX: q.x, clientY: q.y, bubbles: true }))
     const pools = [window.__petDebug.current.pool]
+    // 按下与松开之间一个 await 都不留。留了空档，真实系统光标的 pointermove 就会挤进来
+    // 把这次判成拖拽——按钮放大之后交互区更宽，窗口开着时鼠标更容易落在区内，概率明显上升。
+    // 「点」的定义本来就是 down 和 up 之间没有别的输入进来。
     fire('pointerdown', p)
-    pools.push(window.__petDebug.current.pool)
-    await new Promise((r) => setTimeout(r, 120))
-    pools.push(window.__petDebug.current.pool)
     fire('pointerup', p)
+    pools.push(window.__petDebug.current.pool)
     await new Promise((r) => setTimeout(r, 300))
     const v = document.querySelector('.pet-video.is-front')
     pools.push(window.__petDebug.current.pool)
@@ -835,6 +836,8 @@ check('点一下不动是「点」：走 click 池，绝不碰 drag', async () =
   assert.ok(!seen.pools.includes('drag'), `只按下没移动就判成拖拽了：${JSON.stringify(seen.pools)}`)
   assert.strictEqual(seen.pools.at(-1), 'click', `松手后当前池不是 click：${JSON.stringify(seen.pools)}`)
   assert.match(seen.front, /^click\//, `点一下前台没播 click 素材：${seen.front}`)
+  // 这一下点击同时把面板叫出来了，收干净再走下一条
+  await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
 check('Ctrl+Shift+点身体切换命中框', async () => {
