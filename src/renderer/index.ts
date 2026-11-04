@@ -1,6 +1,8 @@
 import {
   BUBBLE_GAP,
+  BUBBLE_H,
   BUBBLE_SHOW_MS,
+  BUBBLE_W,
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
   PANEL_GAP,
@@ -174,8 +176,8 @@ function bootstrap(skin: SkinPayload): void {
   })
   /** 气泡自己的一次性定时器。不挂 rAF：覆盖层没焦点时 rAF 会被节流，定时器才准（心跳那条踩过）。 */
   let bubbleDeadline: ReturnType<typeof setTimeout> | null = null
-  /** 气泡显示尺寸。底图 32×38 等比放大 4 倍，非等比会把朝下的尾巴扯宽。 */
-  const BUBBLE_SIZE = { w: 128, h: 152 }
+  /** 气泡显示尺寸。来自 config，和 style.css 里那条 width/height 是同一个数（有测试钉住）。 */
+  const BUBBLE_SIZE = { w: BUBBLE_W, h: BUBBLE_H }
 
   const screenRect = (): Rect => ({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight })
 

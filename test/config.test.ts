@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import {
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, HOVER_DWELL_MS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
-  GRAB_HEARTBEAT_MS, BUBBLE_IMAGE,
+  GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_BODY_H,
   FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
 } from '../src/shared/config.js'
 import { mimeOf } from '../src/main/protocol.js'
@@ -75,5 +75,37 @@ describe('操作型视图共用宽裕的收起延时', () => {
     expect(VIEW_HIDE_MS).toBe(5000)
     const src = readFileSync('src/shared/config.ts', 'utf8')
     expect(src).not.toContain('SETTING_HIDE_MS')
+  })
+})
+
+describe('气泡尺寸', () => {
+  it('config 的 BUBBLE_W/H 和 style.css 里那条 width/height 是同一个数', () => {
+    // 照 CLIP_FADE_MS 那条老规矩：JS 算锚点用一份、CSS 排版用一份，改一处忘另一处
+    // 就是「气泡位置对但内容被裁一半」这种查起来很费劲的错。
+    const css = readFileSync('src/renderer/style.css', 'utf8')
+    const body = css.match(/\.pet-bubble \{([^}]*)\}/)?.[1] ?? ''
+    expect(body).toMatch(new RegExp(`width: ${BUBBLE_W}px`))
+    expect(body).toMatch(new RegExp(`height: ${BUBBLE_H}px`))
+  })
+
+  it('像素底图用邻取放大，不然 16×16 会糊成一团', () => {
+    const css = readFileSync('src/renderer/style.css', 'utf8')
+    expect(css.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).toMatch(/image-rendering: pixelated/)
+  })
+
+  it('文字与按钮都留在身子范围内（尾巴那 30px 不压字）', () => {
+    const css = readFileSync('src/renderer/style.css', 'utf8')
+    const block = (sel: string): string => css.match(new RegExp(`[.]${sel} [{]([^}]*)[}]`))?.[1] ?? ''
+    const px = (sel: string, prop: string): number =>
+      Number(new RegExp(`${prop}: (\\d+)px`).exec(block(sel))?.[1] ?? -1)
+
+    for (const sel of ['pet-bubble-text', 'pet-bubble-reply']) {
+      expect(px(sel, 'top'), `${sel} 的 top 没读到`).toBeGreaterThanOrEqual(0)
+      expect(px(sel, 'height'), `${sel} 的 height 没读到`).toBeGreaterThan(0)
+    }
+    expect(px('pet-bubble-text', 'top') + px('pet-bubble-text', 'height')).toBeLessThanOrEqual(BUBBLE_BODY_H)
+    expect(px('pet-bubble-reply', 'top') + px('pet-bubble-reply', 'height')).toBeLessThanOrEqual(BUBBLE_BODY_H)
+    // 反证：数没读到就是 -1，上面两条会直接红，不会出现"读不到也算通过"
+    expect(px('pet-bubble-nosuch', 'top')).toBe(-1)
   })
 })

@@ -86,10 +86,21 @@ export const BUBBLE_SHOW_MS = 5000
 export const TALK_COOLDOWN_MS = 25000
 /** 「闲到交出决策权」那一拍里开口的概率。事件驱动的台词不受它约束。 */
 export const TALK_IDLE_PROB = 0.35
-/** 气泡白色可用区实测只有 20×20（4× 放大后 80×80），13px 字号一行 4 字、最多 4 行。 */
+/** 文字区实测 120×78（下面还有回应按钮那一行），13px 字号一行约 9 字、放得下 3 行；24 字留了余量。 */
 export const TALK_MAX_CHARS = 24
-/** 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。 */
+/**
+ * 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。
+ * 现在是 Pixel Style 5 那枚：16×16 的圆角方块 + 底部中间的尾巴。
+ */
 export const BUBBLE_IMAGE = 'emotes/bubble.png'
+/**
+ * 显示尺寸 = 原图 10 倍。**必须整数倍**：像素图放大到 9.5 倍会把格子拉成 uneven 的糊边，
+ * 而 style.css 里的 width/height 要和这两个数一致（有测试钉住，照 CLIP_FADE_MS 那条老规矩）。
+ */
+export const BUBBLE_W = 160
+export const BUBBLE_H = 160
+/** 原图 16×16 里身子占第 0..12 行，尾巴占 13..15 → 换算到显示尺寸就是身子 130px。 */
+export const BUBBLE_BODY_H = 130
 /** 气泡与它下面那块（面板或身体）之间的间隙。 */
 export const BUBBLE_GAP = 12
 

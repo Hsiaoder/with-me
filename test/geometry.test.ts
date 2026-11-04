@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { anyContains, bodyRect, bubbleAnchor, panelAnchor, stageRect, unionRect } from '../src/shared/geometry.js'
-import { CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
+import { BUBBLE_H, BUBBLE_W, CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
 const pos = { x: 400, y: 300 }   // 舞台左上角（覆盖层 CSS 坐标）
@@ -124,41 +124,42 @@ describe('unionRect', () => {
 describe('bubbleAnchor', () => {
   const screen = { x: 0, y: 0, w: 1600, h: 952 }
   const body = { x: 700, y: 700, w: 140, h: 180 }
-  const size = { w: 128, h: 152 }
+  // 用真实的气泡尺寸当夹具：它是 160，比身体还宽，横向夹取是真会发生的分支，不是摆设。
+  const size = { w: BUBBLE_W, h: BUBBLE_H }
 
   it('没有面板时贴在身体上方，横向按身体对称轴居中', () => {
-    expect(bubbleAnchor(body, null, size, screen, 12)).toEqual({ x: 706, y: 536 })
+    expect(bubbleAnchor(body, null, size, screen, 12)).toEqual({ x: 690, y: 528 })
   })
 
   it('面板在头顶时接在面板外侧，而不是压在面板身上', () => {
     const panel = { x: 690, y: 650, w: 160, h: 34 }        // 底边 684 ≤ 身体顶 700 → 在头顶
-    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 706, y: 486 })
+    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 690, y: 478 })
   })
 
   it('面板在脚下时气泡仍直接接在身体上方（永远在宠物上面）', () => {
     const panel = { x: 690, y: 890, w: 160, h: 34 }
-    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 706, y: 536 })
+    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 690, y: 528 })
   })
 
   it('头顶空间不足时**允许越出屏幕**：窗口外的部分被裁掉，拖回来就重新出现', () => {
     // 以前这里夹到 screen.y，结果宠物拖到最上面时气泡整个压回宠物头上——
     // 「贴住屏幕顶」看着安全，实际是把气泡推到它最不该去的地方。
     const high = { x: 700, y: 100, w: 140, h: 180 }
-    expect(bubbleAnchor(high, null, size, screen, 12)).toEqual({ x: 706, y: -64 })
+    expect(bubbleAnchor(high, null, size, screen, 12)).toEqual({ x: 690, y: -72 })
   })
 
   it('越界只发生在 y：横向仍然夹回屏幕内，左右没有"裁一半"这种半吊子', () => {
     const high = { x: 700, y: 20, w: 140, h: 180 }
-    expect(bubbleAnchor(high, null, size, screen, 12).y).toBe(-144)
+    expect(bubbleAnchor(high, null, size, screen, 12).y).toBe(-152)
     const right = { x: 1560, y: 100, w: 20, h: 180 }
-    expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - 128)
+    expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - BUBBLE_W)
   })
 
-  it('横向夹回屏幕内。用窄身体测：气泡 128 比正常身体 140 还窄，宽身体贴边时中心必然越不出屏幕，夹取根本不生效', () => {
-    const left = { x: 10, y: 700, w: 20, h: 180 }
+  it('横向夹回屏幕内：贴左墙往右挪到 0，贴右墙往左挪到屏幕右边', () => {
+    const left = { x: 0, y: 700, w: 140, h: 180 }
     expect(bubbleAnchor(left, null, size, screen, 12).x).toBe(0)
-    const right = { x: 1560, y: 700, w: 20, h: 180 }
-    expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - 128)
+    const right = { x: 1460, y: 700, w: 140, h: 180 }
+    expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - BUBBLE_W)
   })
 })
 

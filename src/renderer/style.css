@@ -127,8 +127,9 @@ body.pet-over {
   left: 0;
   top: 0;
   display: block;
-  width: 128px;
-  height: 152px;
+  /* 16×16 原图放大 10 倍，值要和 config.ts 的 BUBBLE_W/BUBBLE_H 一致（有测试钉住）。 */
+  width: 160px;
+  height: 160px;
   pointer-events: auto;
   cursor: var(--pet-cursor);
   will-change: transform;
@@ -150,24 +151,43 @@ body.pet-over {
   }
 }
 
-/* 底图铺满整块，文字层单独定位在白色区里。两层分开才不会被彼此的尺寸绑死：
+/* 底图铺满整块，文字层单独定位在白色区内。两层分开才不会被彼此的尺寸绑死：
    以后换成切片拉伸或换图片，只有 bg 这一层要动。 */
 .pet-bubble-bg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  /* 像素图必须邻取放大：默认的双线性会把 16×16 糊成一团白斑，边角那条深色描边直接消失。 */
+  image-rendering: pixelated;
   pointer-events: none;
 }
 
-/* 回应按钮：白色区底部那一行。文字区只占 24..104，而白色区实际到 128，
-   所以它放得下、也不压尾巴。必须 pointer-events:auto——底图与文字层都是 none。 */
+/* 身子占原图第 0..12 行 → 显示后是 0..130px，尾巴在 130..160。
+   文字和按钮都只能待在 130 以内，压到尾巴上就变成"字飘在空气里"。 */
+.pet-bubble-text {
+  position: absolute;
+  left: 20px;
+  top: 18px;
+  width: 120px;
+  height: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font: 13px/1.5 "Microsoft YaHei UI", sans-serif;
+  color: #2b2f36;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 回应按钮：文字区下面那一行，仍在身子范围内。 */
 .pet-bubble-reply {
   position: absolute;
-  left: 24px;
-  top: 106px;
-  width: 80px;
-  height: 20px;
+  left: 20px;
+  top: 100px;
+  width: 120px;
+  height: 22px;
   padding: 0;
   border: 1px solid rgba(0, 0, 0, 0.14);
   border-radius: 10px;
@@ -184,22 +204,6 @@ body.pet-over {
 
 .pet-bubble-reply:hover {
   background: #eef6f4;
-}
-
-.pet-bubble-text {
-  position: absolute;
-  left: 24px;
-  top: 24px;
-  width: 80px;
-  height: 80px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  font: 13px/1.5 "Microsoft YaHei UI", sans-serif;
-  color: #2b2f36;
-  overflow: hidden;
-  pointer-events: none;
 }
 
 /* 动作视图只有图标，不画圆片。34px 的方块留着当命中区——图标才 22px，
