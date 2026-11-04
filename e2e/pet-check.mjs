@@ -481,7 +481,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   const labels = await page.locator('.pet-panel button').evaluateAll((bs) =>
     bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
   assert.deepEqual(labels,
-    ['喂食=icons/rice.svg', '小游戏=icons/activity.svg', '状态=icons/status.svg', '设置=icons/settings.svg',
+    ['喂食=icons/rice.svg', '小游戏=icons/activity.svg', '状态=icons/heart.svg', '设置=icons/settings.svg',
       '说话=emotes/dots3.png'],
     `按钮的文字/图标不对：${JSON.stringify(labels)}`)
   // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空片。

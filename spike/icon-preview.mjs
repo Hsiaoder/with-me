@@ -10,22 +10,25 @@ import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { _electron as electron } from 'playwright'
 
-const ICONS = ['feed', 'game', 'status', 'settings', 'talk']
-const labels = { feed: '喂食', game: '小游戏', status: '状态', settings: '设置', talk: '说话' }
+// 要预览哪几枚：路径相对 src/renderer，这样 svg 和 png 都能进来
+const ICONS = [
+  { file: 'icons/rice.svg', label: '喂食' },
+  { file: 'icons/activity.svg', label: '小游戏' },
+  { file: 'icons/heart.svg', label: '状态' },
+  { file: 'icons/settings.svg', label: '设置' },
+  { file: 'emotes/dots3.png', label: '说话' },
+]
 
-// 相对路径解析不出来（基准是 about:blank），所以一律给 file:// 绝对地址
-const url = (name) => pathToFileURL(resolve('src/renderer/icons', `${name}.svg`)).href
+const url = (rel) => pathToFileURL(resolve('src/renderer', rel)).href
 
-const cell = (name, disc, bg) => {
+const cell = (icon, disc, bg) => {
   // 圆底这里用 img 叠层而不是 CSS background：file:// 页面的 CSS 背景图在这台机器上没画出来
   // （应用里走 app:// 是好的，上一轮真实截图 + e2e 的 decode 检查都验过），
   // 预览工具不该为一个渲染差异分神，img 一定出图。
-  const frame = disc
-    ? `<img class="disc" src="${url('button_round_line')}" alt="">`
-    : ''
+  const frame = disc ? `<img class="disc" src="${url('icons/button_round_line.svg')}" alt="">` : ''
   return `<div class="slot" style="background:${bg}">
-    <div class="btn">${frame}<img src="${url(name)}" alt=""></div>
-    <div class="cap">${labels[name]}</div>
+    <div class="btn">${frame}<img src="${url(icon.file)}" alt=""></div>
+    <div class="cap">${icon.label}</div>
   </div>`
 }
 
