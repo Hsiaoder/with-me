@@ -79,6 +79,21 @@ export const LOOPING_POOLS = ['idle', 'turn', 'move'] as const
  * 想放回来只要把名字加回这个数组。
  */
 export const AMBIENT_POOLS = ['idle', 'turn'] as const
+
+// ---- 说话 ----
+/** 气泡默认停留时长。光标还在气泡上会续命，见渲染层装配。 */
+export const BUBBLE_SHOW_MS = 5000
+/** 距上次说话不足这么久就不再插一句，六个 reason 都受它约束。 */
+export const TALK_COOLDOWN_MS = 25000
+/** 「闲到交出决策权」那一拍里开口的概率。事件驱动的台词不受它约束。 */
+export const TALK_IDLE_PROB = 0.35
+/** 气泡白色可用区实测只有 20×20（4× 放大后 80×80），13px 字号一行 4 字、最多 4 行。 */
+export const TALK_MAX_CHARS = 24
+/** 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。 */
+export const BUBBLE_IMAGE = 'emotes/bubble.png'
+/** 气泡与它下面那块（面板或身体）之间的间隙。 */
+export const BUBBLE_GAP = 12
+
 /**
  * 面板上的功能按钮，顺序即显示顺序。
  *
