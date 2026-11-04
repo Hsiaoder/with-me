@@ -238,6 +238,12 @@ body.pet-over {
   overflow: hidden;
 }
 
+/* 视口和它下面的横条是一列，夹在两个翻页键中间。 */
+.pet-food-main {
+  display: flex;
+  flex-direction: column;
+}
+
 .pet-food-strip {
   display: flex;
   gap: 4px;
@@ -277,6 +283,8 @@ body.pet-over {
    而且 ::-webkit-scrollbar 塞不进「矩形下面单独一条」这个形状。 */
 .pet-scroll {
   position: relative;
+  /* 宽度必须等于 thumbGeometry 用的视口宽，比例换算才对得上像素。 */
+  width: 236px;
   height: 8px;
   margin-top: 4px;
   border-radius: 4px;

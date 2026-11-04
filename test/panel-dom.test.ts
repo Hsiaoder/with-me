@@ -260,6 +260,17 @@ describe('食物视图', () => {
     expect(moved).not.toBe('translateX(-240px)')     // 拖 100px 不该等于按一次翻页
   })
 
+  it('横条是视口同一列的下面一行，不是面板的兄弟节点', () => {
+    // 面板是横排 flex：横条直接挂在面板上会并排站到右边去（截图量出来过）。
+    // 用户要的是「矩形下面有横条」，所以它必须和视口同列。
+    const { panel } = mountFoods()
+    const main = panel.el.querySelector('.pet-food-main')
+    expect(main?.parentElement?.className).toBe('pet-foods')
+    expect(panel.el.querySelector('.pet-scroll')?.parentElement).toBe(main)
+    expect(panel.el.querySelector('.pet-food-viewport')?.parentElement).toBe(main)
+    expect(panel.el.querySelector('.pet-foods')?.parentElement).toBe(panel.el)
+  })
+
   it('收起再打开时滚动复位，不会停在用户上次看一半的地方', () => {
     const { panel } = mountFoods()
     ;(panel.el.querySelector('.pet-page[data-page="next"]') as HTMLElement).click()

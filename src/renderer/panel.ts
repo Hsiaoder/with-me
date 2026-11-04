@@ -183,22 +183,29 @@ export function createPanel(
       strip.append(cell)
     }
     viewport.append(strip)
-    row.append(prev, viewport, next)
-    el.append(row)
 
-    // 横条在长方形下面，是自绘控件不是浏览器滚动条：透明覆盖层里要的是「能画成什么样都行」。
-    // 一条都放得下时不画——没有可滚的东西却摆一根轨道，是在骗用户还能拖。
+    // 横条必须在矩形**下面**，所以「视口 + 横条」自己成一列，再夹进两个翻页键中间。
+    // 直接把横条 append 到面板上会并排站到右边——面板是横排 flex，截图量出来过。
+    // 这一列的宽度就是 VIEW_W，thumbGeometry 算的比例才对得上像素。
+    const main = document.createElement('div')
+    main.className = 'pet-food-main'
+    main.append(viewport)
+
     let thumb: HTMLElement | null = null
     const t = thumbGeometry(scrollX, CONTENT_W, VIEW_W)
     if (t !== null) {
+      // 一条都放得下时不画轨道：没有可滚的东西却摆一根横条，是在骗用户还能拖。
       const track = document.createElement('div')
       track.className = 'pet-scroll'
       thumb = document.createElement('div')
       thumb.className = 'pet-thumb'
       thumb.addEventListener('pointerdown', startDrag)
       track.append(thumb)
-      el.append(track)
+      main.append(track)
     }
+
+    row.append(prev, main, next)
+    el.append(row)
 
     foodRefs = { strip, prev, next, thumb }
     syncScroll()

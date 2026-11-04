@@ -1,13 +1,13 @@
 /**
- * 一次性截图探针：把面板叫出来，抓一帧合成后的画面存成 PNG。
+ * 一次性截图探针：把面板、气泡、食物列表都叫出来，各抓一帧合成画面存成 PNG。
  *
- * 存在的理由：按钮「有没有圆圈」是像素级的事，e2e 只能验命中和光标，验不了外观。
- * 用户报的画现象也得先在这台机器的桌面帧上证实，不能靠推测改 CSS。
+ * 存在的理由：显隐、命中、坐标这些 e2e 验得了；「尾巴有没有指着宠物头」「四个字挤不挤」
+ * 「列表和气泡叠不叠」是画面级的事，只能看像素。占位素材会掩护这类缺陷。
  *
- * 跑法：node spike/icon-shot.mjs   → spike/out/icon-shot.png
+ * 跑法：node spike/icon-shot.mjs   → spike/out/bubble-shot.png、spike/out/foods-shot.png
  */
 import { _electron as electron } from 'playwright'
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -15,11 +15,12 @@ const SKIN_SRC = join(tmpdir(), 'dsh-asar-BHUAA9', 'pet', 'skins', 'dshtry')
 const ud = mkdtempSync(join(tmpdir(), 'icon-shot-'))
 mkdirSync(join(ud, 'skins'), { recursive: true })
 cpSync(SKIN_SRC, join(ud, 'skins', 'dshtry'), { recursive: true })
-// 不写这份存档的话默认皮肤是 block，截出来是绿方块，看不到试穿形象
+// 不写这份存档的话默认皮肤是 block（绿方块），截出来看不到试穿形象
 writeFileSync(join(ud, 'save.json'), JSON.stringify({ version: 1, skin: 'dshtry' }), 'utf8')
 
 let code = 0
 try {
+  if (!existsSync(SKIN_SRC)) throw new Error(`试穿皮肤不在：${SKIN_SRC}（先跑 node spike/dsh-asar-extract.mjs）`)
   const app = await electron.launch({
     args: ['.'],
     cwd: process.cwd(),
@@ -28,32 +29,48 @@ try {
   const page = await app.firstWindow()
   await page.waitForTimeout(1600)
 
-  // 把光标停在身体正中，等满 400ms 让面板自己弹出来
-  await page.evaluate(() => {
-    const h = window.__petDebug.hitBox
-    window.__petDebug.cursor({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  })
-  await page.waitForTimeout(600)
-  const open = await page.evaluate(() => window.__petDebug.panelOpen)
-  console.log(`面板开着：${open}`)
+  const grab = async (name) => {
+    const b64 = await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0]
+      return w.capturePage().then((img) => img.toPNG().toString('base64'))
+    })
+    mkdirSync(join('spike', 'out'), { recursive: true })
+    writeFileSync(join('spike', 'out', name), Buffer.from(b64, 'base64'))
+  }
 
-  const shot = await app.evaluate(({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0]
-    return w.capturePage().then((img) => img.toPNG().toString('base64'))
-  })
-  const out = join('spike', 'out', 'icon-shot.png')
-  mkdirSync(join('spike', 'out'), { recursive: true })
-  const { writeFileSync } = await import('node:fs')
-  writeFileSync(out, Buffer.from(shot, 'base64'))
-  console.log(`已存：${out}`)
+  // 悬停叫出面板
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await page.evaluate((p) => window.__petDebug.cursor(p), { x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  await page.waitForTimeout(500)
 
-  // 顺手量一下按钮的实际样式，避免「截图看着没圆，其实是 UA 又给补回来了」
-  const css = await page.evaluate(() => {
-    const b = document.querySelector('.pet-panel button')
-    const s = getComputedStyle(b)
-    return { border: s.border, background: s.backgroundColor, radius: s.borderRadius, shadow: s.boxShadow }
+  // 说一句接近 24 字上限的话，专门看白色区装不装得下
+  await page.evaluate(() => window.__petDebug.say('无聊到数地板纹路了，你回来陪我玩嘛', 60000))
+  await grab('bubble-shot.png')
+
+  // 再截一张带食物列表的（气泡收掉，免得两层叠在一起看不出列表）
+  await page.evaluate(() => window.__petDebug.hideBubble())
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  await grab('foods-shot.png')
+
+  // 量一下关键几何，免得"看着对"其实溢出屏幕
+  const geo = await page.evaluate(() => {
+    const r = (sel) => {
+      const el = document.querySelector(sel)
+      if (!el) return null
+      const b = el.getBoundingClientRect()
+      return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }
+    }
+    return {
+      inner: { w: window.innerWidth, h: window.innerHeight },
+      body: window.__petDebug.hitBox,
+      plate: r('.pet-panel'),
+      foods: r('.pet-foods'),
+      thumb: r('.pet-thumb'),
+    }
   })
-  console.log(`按钮样式：${JSON.stringify(css)}`)
+  console.log(JSON.stringify(geo))
+  console.log('已存：spike/out/bubble-shot.png、spike/out/foods-shot.png')
   await app.close()
 } catch (e) {
   code = 1

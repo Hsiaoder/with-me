@@ -324,6 +324,22 @@ check('气泡：显示、覆盖、到点收起、悬停续命、跟着宠物走�
   await feed(await bubbleCenter())
   assert.equal(await overClass(), true, '光标在气泡上却没进交互区')
 
+  /**
+   * 堆叠：面板在头顶时，气泡必须整个悬在面板上面，两者不许叠在一起。
+   * 这条是截图里看出可疑才补的——淡出中途的一帧不能当证据，得让布局自己回答。
+   */
+  await page.evaluate(() => window.__petDebug.say('叠在一起就看不清了', 60000))
+  assert.ok(await openOnBody(), '前置：面板叫不出来就没有堆叠可验（收起时它不在布局里，量到的是全 0）')
+  const stack = await page.evaluate(() => {
+    const b = window.__petDebug.hitBox
+    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const u = document.querySelector('.pet-bubble').getBoundingClientRect()
+    return { panelAboveBody: p.y + p.height <= b.y, bubbleBottom: Math.round(u.y + u.height), panelTop: Math.round(p.y) }
+  })
+  assert.ok(stack.panelAboveBody, '前置：宠物站在地面时面板该在头顶')
+  assert.ok(stack.bubbleBottom <= stack.panelTop + 1,
+    `气泡压到面板上了：气泡底 ${stack.bubbleBottom} vs 面板顶 ${stack.panelTop}`)
+
   await page.evaluate(() => window.__petDebug.hideBubble())
 })
 
