@@ -74,9 +74,9 @@ body {
   top: 0;
   display: flex;
   gap: 8px;
-  /* 动作视图没有底板：四个图标各自一枚圆片，中间的空隙不吞点击（pointer-events:none，
-     按钮自己再打开）。命中判定照样成立——closest('[data-hit]') 从按钮往上爬，
-     爬到根节点就停，不看根节点接不接收事件。 */
+  /* 动作视图没有底板：四个图标光秃秃地排在桌面上，中间的空隙不吞点击
+     （pointer-events:none，按钮自己再打开）。命中判定照样成立——closest('[data-hit]')
+     从按钮往上爬，爬到根节点就停，不看根节点接不接收事件。 */
   padding: 0;
   background: transparent;
   border: 0;
@@ -105,6 +105,8 @@ body {
   }
 }
 
+/* 动作视图只有图标，不画圆片。34px 的方块留着当命中区——图标才 22px，
+   按图标本身点太费眼睛。 */
 .pet-panel button {
   pointer-events: auto;
   display: inline-flex;
@@ -113,10 +115,8 @@ body {
   width: 34px;
   height: 34px;
   padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  border: none;
+  background: none;
   cursor: pointer;
 }
 
@@ -124,6 +124,13 @@ body {
   width: 22px;
   height: 22px;
   display: block;
+  /* 没了底板，图标是直接压在任意桌面像素上的：给一道投影，深色背景上才读得出轮廓。 */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  transition: transform 0.12s ease;
+}
+
+.pet-panel button:hover .pet-icon {
+  transform: scale(1.15);
 }
 
 /* 设置视图是文字行，得回到「一块底板 + 方形按钮」，不然文字浮在桌面上读不成句。 */
@@ -147,7 +154,8 @@ body {
   background: rgba(255, 255, 255, 0.9);
 }
 
-.pet-panel button:hover {
+/* 悬停反馈只在设置视图里换底色；动作视图没有底板，画底色就成了一块方片。 */
+.pet-panel.is-settings button:hover {
   background: #eef6f4;
 }
 
