@@ -43,20 +43,44 @@ export function anyContains(rects: Rect[], p: Point): boolean {
 }
 
 /**
- * 并集的外接矩形。交互区就靠它把「身体 — 空隙 — 面板」连成一块：
- * 两个矩形各自命中时，中间那截空隙会闪回桌面的光标，因为并集本身是不连通的。
- * `b` 传 null 表示那块不在布局里（面板收起），区域就退回只剩身体。
+ * 外接矩形。`null` 表示那块现在不在布局里（面板收起 / 气泡没开），直接忽略。
+ *
+ * 交互区就靠它把「身体 — 空隙 — 面板 — 气泡」连成一块：各按自己的矩形判命中时，
+ * 中间那截空隙会闪回桌面的光标，因为并集本身是不连通的。
  */
-export function unionRect(a: Rect, b: Rect | null): Rect {
-  if (!b) return a
-  const x = Math.min(a.x, b.x)
-  const y = Math.min(a.y, b.y)
-  return {
-    x,
-    y,
-    w: Math.max(a.x + a.w, b.x + b.w) - x,
-    h: Math.max(a.y + a.h, b.y + b.h) - y,
+export function unionRect(a: Rect, ...rest: (Rect | null)[]): Rect {
+  let r = a
+  for (const b of rest) {
+    if (!b) continue
+    const x = Math.min(r.x, b.x)
+    const y = Math.min(r.y, b.y)
+    r = { x, y, w: Math.max(r.x + r.w, b.x + b.w) - x, h: Math.max(r.y + r.h, b.y + b.h) - y }
   }
+  return r
+}
+
+/**
+ * 气泡该摆在哪。**永远在宠物上方**——尾巴朝下指着宠物头，翻到下面去尾巴就指反了。
+ *
+ * 头顶放不下时贴住屏幕上沿，允许气泡与宠物头部重叠，不换到下面去：这是「永远在上方」
+ * 的直接代价，比突然出现一个尾巴朝上的气泡好解释。
+ *
+ * 面板在头顶时（宠物站在地面上必然如此），气泡接在**面板**外侧，串序是
+ * 屏幕顶 … 气泡 → 面板 → 宠物 → 地面；面板在脚下时不掺和，直接接身体上方。
+ */
+export function bubbleAnchor(
+  body: Rect,
+  panel: Rect | null,
+  size: { w: number; h: number },
+  screen: Rect,
+  gap: number,
+): Point {
+  const above = panel !== null && panel.y + panel.h <= body.y
+  const edge = above ? (panel as Rect).y : body.y
+  const centered = body.x + body.w / 2 - size.w / 2
+  const x = Math.min(Math.max(centered, screen.x), Math.max(screen.x, screen.x + screen.w - size.w))
+  const y = Math.max(screen.y, edge - gap - size.h)
+  return { x, y }
 }
 
 /**

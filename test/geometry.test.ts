@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, panelAnchor, stageRect, unionRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, panelAnchor, stageRect, unionRect } from '../src/shared/geometry.js'
 import { CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -118,5 +118,53 @@ describe('unionRect', () => {
   it('完全包含时不放大', () => {
     const inner = { x: 120, y: 220, w: 20, h: 20 }
     expect(unionRect(body, inner)).toEqual(body)
+  })
+})
+
+describe('bubbleAnchor', () => {
+  const screen = { x: 0, y: 0, w: 1600, h: 952 }
+  const body = { x: 700, y: 700, w: 140, h: 180 }
+  const size = { w: 128, h: 152 }
+
+  it('没有面板时贴在身体上方，横向按身体对称轴居中', () => {
+    expect(bubbleAnchor(body, null, size, screen, 12)).toEqual({ x: 706, y: 536 })
+  })
+
+  it('面板在头顶时接在面板外侧，而不是压在面板身上', () => {
+    const panel = { x: 690, y: 650, w: 160, h: 34 }        // 底边 684 ≤ 身体顶 700 → 在头顶
+    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 706, y: 486 })
+  })
+
+  it('面板在脚下时气泡仍直接接在身体上方（永远在宠物上面）', () => {
+    const panel = { x: 690, y: 890, w: 160, h: 34 }
+    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 706, y: 536 })
+  })
+
+  it('头顶空间不足时贴住屏幕顶，绝不翻到宠物下面', () => {
+    const high = { x: 700, y: 100, w: 140, h: 180 }
+    expect(bubbleAnchor(high, null, size, screen, 12)).toEqual({ x: 706, y: 0 })
+  })
+
+  it('横向夹回屏幕内。用窄身体测：气泡 128 比正常身体 140 还窄，宽身体贴边时中心必然越不出屏幕，夹取根本不生效', () => {
+    const left = { x: 10, y: 700, w: 20, h: 180 }
+    expect(bubbleAnchor(left, null, size, screen, 12).x).toBe(0)
+    const right = { x: 1560, y: 700, w: 20, h: 180 }
+    expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - 128)
+  })
+})
+
+describe('unionRect 可变参数', () => {
+  const a = { x: 100, y: 200, w: 120, h: 140 }
+
+  it('可以一次圈进三块，null 忽略', () => {
+    const panel = { x: 90, y: 160, w: 160, h: 34 }
+    const bubble = { x: 100, y: 8, w: 128, h: 152 }
+    expect(unionRect(a, panel, bubble)).toEqual({ x: 90, y: 8, w: 160, h: 332 })
+    expect(unionRect(a, null, bubble)).toEqual({ x: 100, y: 8, w: 128, h: 332 })
+  })
+
+  it('顺序无关', () => {
+    const p = { x: 90, y: 160, w: 160, h: 34 }
+    expect(unionRect(a, p)).toEqual(unionRect(a, null, p, null))
   })
 })
