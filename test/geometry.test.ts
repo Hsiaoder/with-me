@@ -140,9 +140,18 @@ describe('bubbleAnchor', () => {
     expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 706, y: 536 })
   })
 
-  it('头顶空间不足时贴住屏幕顶，绝不翻到宠物下面', () => {
+  it('头顶空间不足时**允许越出屏幕**：窗口外的部分被裁掉，拖回来就重新出现', () => {
+    // 以前这里夹到 screen.y，结果宠物拖到最上面时气泡整个压回宠物头上——
+    // 「贴住屏幕顶」看着安全，实际是把气泡推到它最不该去的地方。
     const high = { x: 700, y: 100, w: 140, h: 180 }
-    expect(bubbleAnchor(high, null, size, screen, 12)).toEqual({ x: 706, y: 0 })
+    expect(bubbleAnchor(high, null, size, screen, 12)).toEqual({ x: 706, y: -64 })
+  })
+
+  it('越界只发生在 y：横向仍然夹回屏幕内，左右没有"裁一半"这种半吊子', () => {
+    const high = { x: 700, y: 20, w: 140, h: 180 }
+    expect(bubbleAnchor(high, null, size, screen, 12).y).toBe(-144)
+    const right = { x: 1560, y: 100, w: 20, h: 180 }
+    expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - 128)
   })
 
   it('横向夹回屏幕内。用窄身体测：气泡 128 比正常身体 140 还窄，宽身体贴边时中心必然越不出屏幕，夹取根本不生效', () => {

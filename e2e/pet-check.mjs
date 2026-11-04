@@ -343,6 +343,36 @@ check('气泡：显示、覆盖、到点收起、悬停续命、跟着宠物走�
   await page.evaluate(() => window.__petDebug.hideBubble())
 })
 
+check('宠物贴屏幕顶时气泡越出去被裁掉，绝不压回宠物身上', async () => {
+  const h0 = await page.evaluate(() => window.__petDebug.hitBox)
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: h0.x, y: 120 })
+  await page.evaluate(() => {
+    window.__petDebug.setLastTalk(0)
+    window.__petDebug.say({ text: '顶上了也别说给我自己听', reply: '知道了' }, 60000)
+  })
+  await page.waitForTimeout(150)
+  const g = await page.evaluate(() => {
+    const u = document.querySelector('.pet-bubble').getBoundingClientRect()
+    const b = window.__petDebug.hitBox
+    return { top: Math.round(u.y), bottom: Math.round(u.y + u.height), bodyTop: Math.round(b.y) }
+  })
+  assert.ok(g.top < 0, `气泡该越出屏幕上沿，实际 top=${g.top}`)
+  assert.ok(g.bottom <= g.bodyTop + 1, `气泡压到宠物身上了：底 ${g.bottom} vs 身体顶 ${g.bodyTop}`)
+
+  // 拖回中间，它该整个回来
+  const h1 = await page.evaluate(() => window.__petDebug.hitBox)
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: h1.x, y: 420 })
+  await page.waitForTimeout(150)
+  const back = await page.evaluate(() => {
+    const u = document.querySelector('.pet-bubble').getBoundingClientRect()
+    return { top: Math.round(u.y), bottom: Math.round(u.y + u.height), bodyTop: Math.round(window.__petDebug.hitBox.y) }
+  })
+  assert.ok(back.top >= 0, `拖回来气泡没完全回到屏幕内：top=${back.top}`)
+  assert.ok(back.bottom <= back.bodyTop + 1, '回到中间反而压上宠物了')
+
+  await page.evaluate(() => window.__petDebug.hideBubble())
+})
+
 check('气泡里的回应按钮：看得见、点得到、点完收掉', async () => {
   await feed({ x: 4, y: 4 })
   await page.evaluate(() => {

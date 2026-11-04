@@ -62,8 +62,9 @@ export function unionRect(a: Rect, ...rest: (Rect | null)[]): Rect {
 /**
  * 气泡该摆在哪。**永远在宠物上方**——尾巴朝下指着宠物头，翻到下面去尾巴就指反了。
  *
- * 头顶放不下时贴住屏幕上沿，允许气泡与宠物头部重叠，不换到下面去：这是「永远在上方」
- * 的直接代价，比突然出现一个尾巴朝上的气泡好解释。
+ * 头顶放不下时**允许 y 为负**：覆盖层只盖住工作区，窗口外的部分天然被裁掉，
+ * 把宠物拖下来气泡就重新出现。以前夹到屏幕顶，结果是宠物贴顶时气泡整个压回头上——
+ * 「不越界」看着安全，实际是把气泡推到它最不该去的地方。
  *
  * 面板在头顶时（宠物站在地面上必然如此），气泡接在**面板**外侧，串序是
  * 屏幕顶 … 气泡 → 面板 → 宠物 → 地面；面板在脚下时不掺和，直接接身体上方。
@@ -79,8 +80,7 @@ export function bubbleAnchor(
   const edge = above ? (panel as Rect).y : body.y
   const centered = body.x + body.w / 2 - size.w / 2
   const x = Math.min(Math.max(centered, screen.x), Math.max(screen.x, screen.x + screen.w - size.w))
-  const y = Math.max(screen.y, edge - gap - size.h)
-  return { x, y }
+  return { x, y: edge - gap - size.h }
 }
 
 /**
