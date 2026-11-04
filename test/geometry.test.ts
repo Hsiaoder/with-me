@@ -128,29 +128,29 @@ describe('bubbleAnchor', () => {
   const size = { w: BUBBLE_W, h: BUBBLE_H }
 
   it('没有面板时贴在身体上方，横向按身体对称轴居中', () => {
-    expect(bubbleAnchor(body, null, size, screen, 12)).toEqual({ x: 690, y: 528 })
+    expect(bubbleAnchor(body, null, size, screen, 12)).toEqual({ x: 690, y: 498 })
   })
 
   it('面板在头顶时接在面板外侧，而不是压在面板身上', () => {
     const panel = { x: 690, y: 650, w: 160, h: 34 }        // 底边 684 ≤ 身体顶 700 → 在头顶
-    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 690, y: 478 })
+    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 690, y: 448 })
   })
 
   it('面板在脚下时气泡仍直接接在身体上方（永远在宠物上面）', () => {
     const panel = { x: 690, y: 890, w: 160, h: 34 }
-    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 690, y: 528 })
+    expect(bubbleAnchor(body, panel, size, screen, 12)).toEqual({ x: 690, y: 498 })
   })
 
   it('头顶空间不足时**允许越出屏幕**：窗口外的部分被裁掉，拖回来就重新出现', () => {
     // 以前这里夹到 screen.y，结果宠物拖到最上面时气泡整个压回宠物头上——
     // 「贴住屏幕顶」看着安全，实际是把气泡推到它最不该去的地方。
     const high = { x: 700, y: 100, w: 140, h: 180 }
-    expect(bubbleAnchor(high, null, size, screen, 12)).toEqual({ x: 690, y: -72 })
+    expect(bubbleAnchor(high, null, size, screen, 12)).toEqual({ x: 690, y: -102 })
   })
 
   it('越界只发生在 y：横向仍然夹回屏幕内，左右没有"裁一半"这种半吊子', () => {
     const high = { x: 700, y: 20, w: 140, h: 180 }
-    expect(bubbleAnchor(high, null, size, screen, 12).y).toBe(-152)
+    expect(bubbleAnchor(high, null, size, screen, 12).y).toBe(-182)
     const right = { x: 1560, y: 100, w: 20, h: 180 }
     expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - BUBBLE_W)
   })

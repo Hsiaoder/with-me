@@ -127,9 +127,9 @@ body.pet-over {
   left: 0;
   top: 0;
   display: block;
-  /* 16×16 原图放大 10 倍，值要和 config.ts 的 BUBBLE_W/BUBBLE_H 一致（有测试钉住）。 */
+  /* 32×38 原图放大 5 倍（描边正好 1 个源像素 = 5px），值要和 config.ts 的 BUBBLE_W/BUBBLE_H 一致（有测试钉住）。 */
   width: 160px;
-  height: 160px;
+  height: 190px;
   pointer-events: auto;
   cursor: var(--pet-cursor);
   will-change: transform;
@@ -158,18 +158,18 @@ body.pet-over {
   inset: 0;
   width: 100%;
   height: 100%;
-  /* 像素图必须邻取放大：默认的双线性会把 16×16 糊成一团，那圈蓝色描边和圆角直接消失。 */
-  image-rendering: pixelated;
+  /* Vector 底图**不能**用邻取放大：它是带抗锯齿的圆角，pixelated 会把边沿糊成 5px 的阶梯。
+     （Pixel 那版才需要 pixelated——换回像素图时要一起换回来。） */
   pointer-events: none;
 }
 
-/* 身子是原图第 0..12 行 → 显示 0..130，尾巴 130..160；但第 0/12 行整条是描边，
-   纯白内腔只到 120（BUBBLE_INNER_BOTTOM）。文字与按钮都待在 10..120 里，
+/* 身子是原图第 0..30 行 → 显示 0..155，尾巴 155..190；第 0 行与第 30 行是描边，
+   纯白内腔只到 155（BUBBLE_INNER_BOTTOM）。文字与按钮都待在 5..155 里，
    压到尾巴上就变成"字飘在空气里"，压到描边上就像要掉出气泡。 */
 .pet-bubble-text {
   position: absolute;
   left: 20px;
-  top: 18px;
+  top: 26px;
   width: 120px;
   height: 74px;
   display: flex;
@@ -182,11 +182,11 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 回应按钮：文字区下面那一行，底边 118 仍在纯白内腔里。 */
+/* 回应按钮：文字区下面那一行，底边 128 仍在纯白内腔（155）里。 */
 .pet-bubble-reply {
   position: absolute;
   left: 20px;
-  top: 96px;
+  top: 106px;
   width: 120px;
   height: 22px;
   padding: 0;

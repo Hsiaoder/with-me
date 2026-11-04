@@ -88,9 +88,11 @@ describe('气泡尺寸', () => {
     expect(body).toMatch(new RegExp(`height: ${BUBBLE_H}px`))
   })
 
-  it('像素底图用邻取放大，不然 16×16 会糊成一团', () => {
+  it('Vector 底图不许邻取放大：抗锯齿的圆角会被拉成阶梯', () => {
+    // 这条是反向的：Pixel 那版必须 pixelated，Vector 这版必须**别** pixelated。
+    // 换素材时最容易忘的就是这一行，所以钉住——底图换了渲染方式就得跟着表过态。
     const css = readFileSync('src/renderer/style.css', 'utf8')
-    expect(css.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).toMatch(/image-rendering: pixelated/)
+    expect(css.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).not.toMatch(/image-rendering:\s*pixelated/)
   })
 
   it('文字与按钮都留在纯白内腔里（描边那两行、尾巴那 30px 都不压字）', () => {

@@ -90,22 +90,24 @@ export const TALK_IDLE_PROB = 0.35
 export const TALK_MAX_CHARS = 24
 /**
  * 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。
- * 现在是 Pixel Style 6 那枚：16×16 的圆角方块 + 底部中间的尾巴，
- * 描边是蓝的（158,194,233）——Style 5 的描边只有 8 个近白像素，浅色桌面上等于没有边。
+ * 现在是 Vector Style 2 那枚，但**不是原图**：原图描边有 2 个源像素厚，放大后太粗，
+ * 用 `spike/emote-thin.mjs` 把内半圈刷白，只留最外 1 层（白色内腔同时变大到 28×28）。
  */
 export const BUBBLE_IMAGE = 'emotes/bubble.png'
 /**
- * 显示尺寸 = 原图 10 倍。**必须整数倍**：像素图放大到 9.5 倍会把格子拉成 uneven 的糊边，
- * 而 style.css 里的 width/height 要和这两个数一致（有测试钉住，照 CLIP_FADE_MS 那条老规矩）。
+ * 显示尺寸 = 原图 32×38 的 5 倍。挑 5 倍是为了描边：1 个源像素 × 5 = 5px，
+ * 正好是 Pixel Style 6 那版（1px × 10 倍 = 10px）的一半。
+ * Vector 图不要求整数倍（不是格子画），取整数只是让这几个数好核对。
+ * style.css 里的 width/height 要和这两个数一致（有测试钉住，照 CLIP_FADE_MS 那条老规矩）。
  */
 export const BUBBLE_W = 160
-export const BUBBLE_H = 160
+export const BUBBLE_H = 190
 /**
- * 身子占原图第 0..12 行（尾巴 13..15），第 0 与第 12 行整条是蓝色描边，
- * 纯白内腔只有第 1..11 行 → 换算到显示尺寸就是 10..120。
- * 文字与回应按钮的下界只能到 120：越过它就压在描边上，字看起来要掉出气泡。
+ * 身子占原图第 0..30 行（尾巴 31..37），描边占第 0 行与第 30 行整条，
+ * 纯白内腔是第 1..30 行的末尾 → 换算到显示尺寸就是 5..155。
+ * 文字与回应按钮的下界只能到 155：越过它就压在描边上，字看起来要掉出气泡。
  */
-export const BUBBLE_INNER_BOTTOM = 120
+export const BUBBLE_INNER_BOTTOM = 155
 /** 气泡与它下面那块（面板或身体）之间的间隙。 */
 export const BUBBLE_GAP = 12
 
