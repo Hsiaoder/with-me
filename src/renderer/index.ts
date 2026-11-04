@@ -154,10 +154,7 @@ function bootstrap(skin: SkinPayload): void {
       sayFor('feed')
       window.petBridge?.statEvent({ kind: 'feed', food: f.id })
       // 选完即收：列表就压在宠物脚底那块，不收的话你点完看不到它吃。
-      // 必须先 hover.reset() 再 panel.hide()：状态机自己那份「开着」的标记不会因为
-      // 你直接收面板而消失，不复位的话鼠标停在原地就再也弹不出来了（拖拽那条路同样这么做）。
-      hover.reset()
-      panel.hide()
+      closePanel()
     },
     /**
      * 状态栏里点性别。本地不预置反馈：它要写进存档，回灌一下也就是一帧的事，
@@ -324,6 +321,38 @@ function bootstrap(skin: SkinPayload): void {
   }
 
   /**
+   * 面板由**点击**叫出来（2026-11-04 改：以前是停留 400ms 自动弹）。
+   * 整屏覆盖层上「鼠标路过就出菜单」比在普通窗口里更烦人，而且它和
+   * 「我要动手了才该有按钮」这个直觉本来就不一致。
+   */
+  function openPanel(): void {
+    placePanel()
+    hover.open()
+    // 每次打开都报，主进程按「20 小时内只算一次」发亲密。
+    // 渲染层不自己判日界：它没有存档里的 lastEventAt，判了就是两份状态。
+    window.petBridge?.statEvent({ kind: 'daily-open' })
+  }
+
+  /**
+   * 收起面板。必须连 hover.reset() 一起——状态机自己那份「开着」的标记不会因为
+   * 你直接收面板而消失，不复位的话鼠标停在原地就再也弹不出来了（problem/05 §5.12）。
+   */
+  function closePanel(): void {
+    hover.reset()
+    panel.hide()
+    if (hoverDeadline !== null) {
+      clearTimeout(hoverDeadline)
+      hoverDeadline = null
+    }
+  }
+
+  /** 再点一次宠物就收：点击开的东西，得能用点击关。 */
+  function togglePanel(): void {
+    if (panel.isOpen) closePanel()
+    else openPanel()
+  }
+
+  /**
    * 心跳。租约 500ms 不续期就自动放开，而 requestGrab 原本只在**光标移动时**发——
    * 用户把手停在面板上不动，500ms 后鼠标被放开给桌面，下一次点击就穿到下面的窗口去了。
    *
@@ -419,13 +448,7 @@ function bootstrap(skin: SkinPayload): void {
      */
     const overPanel = hit !== null && hit.closest('.pet-panel') !== null
     const ev = hover.onPoint(p, over || dragging, overPanel)
-    if (ev === 'open') {
-      placePanel()
-      // 每次打开都报，主进程按「20 小时内只算一次」发亲密。
-      // 渲染层不自己判日界：它没有存档里的 lastEventAt，判了就是两份状态。
-      window.petBridge?.statEvent({ kind: 'daily-open' })
-    }
-    if (ev === 'close') panel.hide()
+    if (ev === 'close') closePanel()
     /**
      * 交互区 = 身体框、开着的面板框、开着的气泡框三者的外接矩形。用外接矩形而不是并集，
      * 因为要的是**连续**：身体和面板之间那截空隙、四个按钮之间那 8px、面板与气泡之间
@@ -461,13 +484,8 @@ function bootstrap(skin: SkinPayload): void {
     pressPoint = p
     const pos = stagePos()
     dragOffset = { x: p.x - pos.x, y: p.y - pos.y }
-    hover.reset()
-    // 拖拽期间不该弹面板：挂在途中的悬停定时器要一起撤掉，否则它会在按住的时候到点
-    if (hoverDeadline !== null) {
-      clearTimeout(hoverDeadline)
-      hoverDeadline = null
-    }
-    panel.hide()        // 面板锚在旧位置，宠物一动就飘；拖完靠悬停重新叫出来
+    // 这里不再收面板：按下可能就是「点一下叫出菜单」，收在 down 里会让 toggle 看不见状态。
+    // 真的拖起来了再收（见下面 pointermove 的阈值分支）。
   })
   window.addEventListener('pointermove', (e) => {
     if (!dragging) return
@@ -479,6 +497,7 @@ function bootstrap(skin: SkinPayload): void {
     if (dragStarted) return
     if (Math.hypot(p.x - pressPoint.x, p.y - pressPoint.y) < DRAG_START_PX) return
     dragStarted = true
+    closePanel()          // 拖拽期间不挂菜单：它一路跟着宠物飘，也不是用户此刻要用的东西
     requestClip('drag')
     sayFor('drag')
   })
@@ -490,9 +509,10 @@ function bootstrap(skin: SkinPayload): void {
     // 于是把宠物拖到右上角松手后它会"跳回原位"。setPosition 已经把 y 夹在
     // 屏幕内了，不需要再吸附。（启动时落地仍由 bootstrap 里的 snapToBottom 负责）
     if (!dragStarted) {
-      // 没过阈值就是「点了一下」。点了必须有反应，所以给它 click 动画；
+      // 没过阈值就是「点了一下」：给它 click 动画（点了必须有反应），并开关按钮面板。
       // 台词这一轮先不配（click 那一档等喂食回复一起补）。
       requestClip('click')
+      togglePanel()
       return
     }
     rules.feed('dragged')
@@ -561,13 +581,11 @@ function bootstrap(skin: SkinPayload): void {
       return true
     },
     /**
-     * 立刻收起面板并复位悬停。e2e 用它收尾：状态栏这类视图留在打开状态会把下一条
+     * 立刻收起面板。e2e 用它收尾：状态栏这类视图留在打开状态会把下一条
      * 检查的「点某个按钮」变成等一个不该存在的节点（30 秒超时）。
-     * 必须连 hover.reset() 一起，理由见 problem/05 §5.12。
      */
     hidePanel: (): boolean => {
-      hover.reset()
-      panel.hide()
+      closePanel()
       return true
     },
     get bubbleOpen(): boolean {

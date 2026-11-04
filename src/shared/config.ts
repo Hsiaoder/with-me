@@ -16,15 +16,13 @@ export const STAGE_H_CSS = (STAGE_W_CSS * CANVAS_H) / CANVAS_W
 /** 身体在画布里的默认包围盒。皮肤 manifest 的 bodyBox 与此同源，皮肤可覆盖。 */
 export const DEFAULT_BODY_BOX = { x: 200, y: 50, w: 240, h: 285 } as const
 
-// ---- 鼠标与悬停 ----
+// ---- 鼠标与面板 ----
 /** 主进程把系统光标推进给渲染层的间隔。穿透状态下网页收不到 mousemove，只能这样喂。 */
 export const CURSOR_POLL_MS = 33
-/** 光标停在身体上满这么久才弹面板，避免路过就闪。 */
-export const HOVER_DWELL_MS = 400
 /**
- * 面板最后一次交互后，光标不在身体也不在面板上满这么久才收起。
- * 比弹出的 400ms 长得多：面板是用来点按钮的，鼠标在按钮之间走位的时间
- * 不该把面板收掉；而收得太快会让用户觉得按钮自己跑了。
+ * 面板被点出来之后，光标不在身体也不在面板上满这么久才收起。
+ * 不能收得太快：面板是用来点按钮的，鼠标在按钮之间走位的那几像素不该把菜单抽走；
+ * 但也不能不收——它悬在桌面上会一直占着交互区。
  */
 export const PANEL_HIDE_MS = 1500
 /**

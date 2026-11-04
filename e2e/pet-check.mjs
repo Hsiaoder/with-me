@@ -158,15 +158,27 @@ check('命中框 = 舞台位置 + bodyBox 按缩放换算', async () => {
 })
 
 const feed = (p) => page.evaluate((pt) => window.__petDebug.cursor(pt), p)
+/** 点一下身体（按下与松开同一点 = 没过拖拽阈值的那条路）。 */
+const clickBody = (p) => page.evaluate((q) => {
+  const fire = (t) => window.dispatchEvent(new PointerEvent(t, { clientX: q.x, clientY: q.y, bubbles: true }))
+  fire('pointerdown')
+  fire('pointerup')
+}, p)
 /**
  * 把面板叫出来、光标停在身体上。位置类检查的前置用它，别依赖"上一条检查留下的状态"——
  * 那些检查会把宠物挪走。宠物可能正在走动，所以重读命中框重试。
+ * 2026-11-04 起面板由**点击**叫出来，所以这里点一下而不是喂光标；
+ * 已经开着就绝对不能再点——那一次点会变成收起，前置就反了。
  */
 async function openOnBody(retry = 3) {
   for (let i = 0; i < retry; i++) {
     const h = await page.evaluate(() => window.__petDebug.hitBox)
-    await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-    await page.waitForTimeout(460)
+    const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    if (!(await dbg()).open) await clickBody(center)
+    // 点完再喂一次光标：grabRequested 与交互区只在光标事件里更新，
+    // 而真实用户点宠物时鼠标本来就停在宠物上——不喂就等于测了一个现实中不存在的组合。
+    await feed(center)
+    await page.waitForTimeout(120)
     if ((await dbg()).open) return true
   }
   return false
@@ -227,10 +239,7 @@ check('光标形状跟着交互区走：身体上是 hand_point，舞台那截�
 check('交互区是连续的：身体—空隙—按钮一路不掉', async () => {
   // 用户要的是"一路都是同一枚手"。两个矩形各自命中时中间那截会落空，
   // 所以区域取身体与开着的面板的外接矩形。
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(460)
-  assert.equal((await dbg()).open, true, '前置：面板该开着')
+  assert.ok(await openOnBody(), '前置：面板该开着')
 
   const geo = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
@@ -456,22 +465,26 @@ const dbg = () => page.evaluate(() => ({
   inner: { w: window.innerWidth, h: window.innerHeight },
 }))
 
-check('悬停满 400ms 自动出现面板，五个按钮齐全', async () => {
+check('点一下身体出面板，再点一下收起，五个按钮齐全', async () => {
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  // 鼠标停在身体上**不该**弹面板（2026-11-04 改：以前停留 400ms 就弹）。
+  // 只喂一次、然后等过原来那个 400ms 的门槛，弹了就是没改干净。
   await feed(center)
-  assert.equal((await dbg()).open, false, '刚进去就弹出了，停留计时没生效')
-  // 只喂这一次。真机上光标停住不动时主进程不会重复发同坐标（cursor.ts 去重），
-  // 再喂一次等于把「计时到点自己开」这条链路绕过掉——上一版就是这么假通过的。
-  await page.waitForTimeout(460)
-  assert.equal((await dbg()).open, true, '光标静止满 400ms 后仍没弹出')
+  await page.waitForTimeout(600)
+  assert.equal((await dbg()).open, false, '鼠标只是停在身体上，面板自己弹出来了——路过就闪又回来了')
+
+  await clickBody(center)
+  await page.waitForTimeout(120)
+  assert.equal((await dbg()).open, true, '点了一下没把面板叫出来')
   const labels = await page.locator('.pet-panel button').evaluateAll((bs) =>
     bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
   assert.deepEqual(labels,
     ['喂食=icons/rice.svg', '小游戏=icons/activity.svg', '状态=icons/status.svg', '设置=icons/settings.svg',
       '说话=emotes/dots3.png'],
     `按钮的文字/图标不对：${JSON.stringify(labels)}`)
-  // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空圆片。
+  // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空片。
   // 先等 decode 落地再断言，否则抢到的是「还没解完」而不是「解不出来」。
   const decoded = await page.locator('.pet-panel button img').evaluateAll(async (imgs) => {
     await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
@@ -479,6 +492,11 @@ check('悬停满 400ms 自动出现面板，五个按钮齐全', async () => {
   })
   assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true', 'true/true'],
     `图标没解码成功：${JSON.stringify(decoded)}`)
+
+  // 点击开的东西就得能点击关：再点一次同样的位置
+  await clickBody(center)
+  await page.waitForTimeout(120)
+  assert.equal((await dbg()).open, false, '再点一下没能把面板收掉')
 })
 
 check('「说话」按钮：按顺序放台词，走完绕回，冷却拦不住它', async () => {
@@ -963,10 +981,7 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {
   // 上一版这里直接喂离开坐标然后断言「收了」——可那时候面板已经被拖拽测试关掉了，
   // 断言的是「本来就没开」，什么都没测到。先把面板叫起来，再验它自己收回去。
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(460)
-  assert.equal((await dbg()).open, true, '前置条件：静止悬停满 400ms 该弹出面板')
+  assert.ok(await openOnBody(), '前置条件：点一下身体该把面板叫出来')
   await feed({ x: 5, y: 5 })
   // 只喂这一次离开坐标：静止时光标不会再产生新事件，收起也得计时自己完成。
   // 收起比弹出慢得多（PANEL_HIDE_MS 1500 vs HOVER_DWELL_MS 400）：鼠标在按钮之间
