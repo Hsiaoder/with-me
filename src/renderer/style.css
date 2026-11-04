@@ -30,6 +30,14 @@ body {
   overflow: visible;
 }
 
+/* 鼠标进到宠物身体命中区时换成 Kenney 的 hand_point（CC0）。
+   规则挂在 body 上，不挂舞台：`.pet-sprite` 是 pointer-events:none，
+   它自己那层的 cursor 永远轮不到——命中测试直接跳过它。
+   热点 (9,2) 是指尖那一格，按 PNG 的 alpha 实测量出来的（顶边 y=2，x 跨 8..11）。 */
+body.pet-over {
+  cursor: url("icons/hand_point.svg") 9 2, pointer;
+}
+
 .pet-video {
   position: absolute;
   inset: 0;

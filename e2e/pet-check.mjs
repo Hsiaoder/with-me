@@ -171,6 +171,43 @@ async function openOnBody(retry = 3) {
   }
   return false
 }
+
+const overClass = () => page.evaluate(() => document.body.classList.contains('pet-over'))
+
+check('光标形状跟着命中区走：身体上是 hand_point，舞台那截透明空白不是', async () => {
+  // 判据必须是身体框而不是舞台矩形——画布四周那截透明空白还归桌面，
+  // 在那儿显示「可以点」的手形是骗人的。这条只验到 DOM 层：
+  // 系统真换了光标是操作系统口径的事，由 spike/cursor-probe.mjs 拿 GetCursorInfo 证。
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  assert.equal(await overClass(), true, '进到身体命中区没换光标')
+
+  const stage = await page.evaluate(() => {
+    const r = document.querySelector('.pet-stage').getBoundingClientRect()
+    return { x: Math.round(r.x), y: Math.round(r.y) }
+  })
+  await feed({ x: stage.x + 2, y: stage.y + 2 })
+  assert.equal(await overClass(), false, '舞台左上角那截透明空白也换了光标')
+
+  // 规则本身：指向图标文件，热点是指尖那一格（PNG alpha 实测量出顶边 y=2、x 跨 8..11）
+  const cur = await page.evaluate(() => {
+    for (const sheet of document.styleSheets) {
+      for (const r of sheet.cssRules) if (r.selectorText === 'body.pet-over') return r.style.cursor
+    }
+    return null
+  })
+  assert.ok(cur, '样式表里没有 body.pet-over 这条规则')
+  assert.match(cur, /icons\/hand_point\.svg/, `光标没指向 hand_point：${cur}`)
+  assert.match(cur, /9 2/, `热点不是量出来的指尖：${cur}`)
+
+  // 上一轮图标 404 就是栽在 MIME 白名单：文件在磁盘上不等于取得到，光标同理
+  const got = await page.evaluate(async () => {
+    const r = await fetch('icons/hand_point.svg')
+    return { status: r.status, type: r.headers.get('content-type') }
+  })
+  assert.equal(got.status, 200, `光标素材取不到：${JSON.stringify(got)}`)
+  assert.equal(got.type, 'image/svg+xml', `MIME 不对：${JSON.stringify(got)}`)
+})
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
   pool: window.__petDebug.current.pool,

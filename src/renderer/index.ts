@@ -227,6 +227,17 @@ function bootstrap(skin: SkinPayload): void {
     hoverDeadline = setTimeout(() => handleCursor(p), left)
   }
 
+  /**
+   * 光标形状的开关。每拍都调，但只在真的翻面时碰 DOM——
+   * 33ms 一次的 classList 写入会不停触发样式重算，而这条挂在 body 上。
+   */
+  let overClassOn = false
+  function setOverClass(on: boolean): void {
+    if (on === overClassOn) return
+    overClassOn = on
+    document.body.classList.toggle('pet-over', on)
+  }
+
   function handleCursor(p: Point): void {
     lastCursor = p
     const over = overBody(p)
@@ -237,6 +248,9 @@ function bootstrap(skin: SkinPayload): void {
     const ev = hover.onPoint(p, over || dragging, overPanel)
     if (ev === 'open') placePanel()
     if (ev === 'close') panel.hide()
+    // 光标形状跟着命中区走，不跟着舞台矩形走：舞台左右各有一截透明空白，
+    // 在那儿显示「可以点」的手形是骗人的。判据用同一个 over，和抢鼠标准则一致。
+    setOverClass(over || dragging)
     // 「面板还开着」不参与判定：穿透是整窗粒度，多扣一秒鼠标就多吞一秒全桌点击。
     // 面板的 400ms 收起延时只管可见性。光标要回来点按钮时，进到面板矩形里
     // 下一拍（≤33ms）就把鼠标接住，人手从移到位到按下远不止这点时间。
