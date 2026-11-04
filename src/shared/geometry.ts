@@ -49,12 +49,16 @@ export function anyContains(rects: Rect[], p: Point): boolean {
  * 这也是 QQ 宠那一系桌宠的做法；脚下放不下（宠物站在地上时必然放不下）
  * 才翻到头顶。最后整体夹回屏幕内：覆盖层虽然铺满屏幕，面板自己不能溢出到
  * 看不见的地方，否则用户会以为按钮"消失了"。
+ *
+ * 横向**以身体的对称轴为轴居中**，不是贴着身体左沿：画布左右各有大片空白，
+ * 贴左沿会让整排图标明显偏向角色的一侧。
  */
 export function panelAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Point {
   const below = body.y + body.h + gap
   const y0 = below + size.h <= screen.y + screen.h ? below : body.y - size.h - gap
+  const centered = body.x + body.w / 2 - size.w / 2
   const x = Math.min(
-    Math.max(body.x, screen.x),
+    Math.max(centered, screen.x),
     Math.max(screen.x, screen.x + screen.w - size.w),
   )
   const y = Math.min(Math.max(y0, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))

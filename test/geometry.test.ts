@@ -50,8 +50,10 @@ describe('panelAnchor', () => {
   const body = { x: 500, y: 400, w: 120, h: 142 }
 
   // 对齐 qqpet：按钮条默认跟在脚底下，脚下没地方才翻到头顶。
-  it('默认摆在脚底下，留出一条 gap', () => {
-    expect(panelAnchor(body, size, screen, 16)).toEqual({ x: 500, y: 400 + 142 + 16 })
+  // 横向以角色的对称轴（身体框中线）为轴居中，不是贴着身体左沿——
+  // 画布左右各有大片空白，贴左沿会让整排按钮明显偏左。
+  it('默认摆在脚底下，留出一条 gap，并以身体中线居中', () => {
+    expect(panelAnchor(body, size, screen, 16)).toEqual({ x: 560 - 150, y: 400 + 142 + 16 })
   })
 
   it('脚底下放不下（宠物站在地上）就翻到头顶', () => {

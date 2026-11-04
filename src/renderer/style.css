@@ -73,12 +73,15 @@ body {
   left: 0;
   top: 0;
   display: flex;
-  gap: 6px;
-  padding: 6px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  gap: 8px;
+  /* 动作视图没有底板：四个图标各自一枚圆片，中间的空隙不吞点击（pointer-events:none，
+     按钮自己再打开）。命中判定照样成立——closest('[data-hit]') 从按钮往上爬，
+     爬到根节点就停，不看根节点接不接收事件。 */
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
   font: 12px "Microsoft YaHei UI", sans-serif;
   opacity: 0;
   /* display 也在过渡里，且允许离散属性参与：这样收起时有淡出，
@@ -103,22 +106,49 @@ body {
 }
 
 .pet-panel button {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border: 1px solid rgba(0, 0, 0, 0.14);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 4px 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
   cursor: pointer;
 }
 
-.pet-panel button:hover {
-  background: #eef6f4;
+.pet-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
-/* 设置视图：两行开关竖排。动作视图保持横排不动。 */
+/* 设置视图是文字行，得回到「一块底板 + 方形按钮」，不然文字浮在桌面上读不成句。 */
 .pet-panel.is-settings {
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+.pet-panel.is-settings button {
+  width: auto;
+  height: auto;
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.pet-panel button:hover {
+  background: #eef6f4;
 }
 
 .pet-setting {

@@ -25,6 +25,10 @@ const SCALE_Y = 180 / manifest.canvas.h
 const checks = []
 const check = (name, fn) => checks.push({ name, fn })
 
+/** 失败原因全量缩进打印：deepEqual 的差异从第二行才开始，只留首行等于没报。 */
+const indent = (s) =>
+  s.split('\n').slice(0, 12).map((l) => `      ${l}`).join('\n')
+
 let app
 let page
 const pageErrors = []
@@ -185,7 +189,52 @@ check('悬停满 400ms 自动出现面板，四个按钮齐全', async () => {
   // 再喂一次等于把「计时到点自己开」这条链路绕过掉——上一版就是这么假通过的。
   await page.waitForTimeout(460)
   assert.equal((await dbg()).open, true, '光标静止满 400ms 后仍没弹出')
-  assert.deepEqual(await page.locator('.pet-panel button').allTextContents(), ['喂食', '小游戏', '状态', '设置'])
+  const labels = await page.locator('.pet-panel button').evaluateAll((bs) =>
+    bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
+  assert.deepEqual(labels,
+    ['喂食=icons/rice.svg', '小游戏=icons/activity.svg', '状态=icons/status.svg', '设置=icons/settings.svg'],
+    `按钮的文字/图标不对：${JSON.stringify(labels)}`)
+  // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空圆片。
+  // 先等 decode 落地再断言，否则抢到的是「还没解完」而不是「解不出来」。
+  const decoded = await page.locator('.pet-panel button img').evaluateAll(async (imgs) => {
+    await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
+    return imgs.map((i) => `${i.naturalWidth > 0}/${i.complete}`)
+  })
+  assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true'],
+    `图标没解码成功：${JSON.stringify(decoded)}`)
+})
+
+check('面板以角色的对称轴居中，不是贴着身体左沿', async () => {
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  const g = await page.evaluate(() => {
+    const b = window.__petDebug.hitBox
+    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    return { axis: b.x + b.w / 2, center: p.x + p.width / 2 }
+  })
+  assert.ok(Math.abs(g.axis - g.center) < 2,
+    `面板中线 ${g.center.toFixed(1)} 没对上身体对称轴 ${g.axis.toFixed(1)}`)
+})
+
+check('拖到屏幕左右边缘时，是身体贴边而不是舞台贴边', async () => {
+  // 画布左右各有大片空白（试穿皮肤实测左 95.5、右 92.5 CSS 像素）。
+  // 以前夹的是舞台矩形，角色永远碰不到屏幕边——差的就是那截空白。
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  // 目标点必须远远越过屏幕边：夹取才是这条要验的东西，拖到「刚好不够」的位置
+  // 量到的是没夹住的中间值，改错方向也能过。
+  for (const [where, target] of [['左', -99999], ['右', 99999]]) {
+    await page.evaluate((p) => window.__petDebug.moveTo(p), { x: inner.w / 2 - 160, y: 200 })
+    const box = await page.evaluate(() => window.__petDebug.hitBox)
+    const from = { x: box.x + box.w / 2, y: box.y + box.h / 2 }
+    await page.evaluate(({ from, to }) => {
+      const fire = (type, p) => window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
+      fire('pointerdown', from)
+      fire('pointermove', to)
+      fire('pointerup', to)
+    }, { from, to: { x: target, y: 200 } })
+    const b = await page.evaluate(() => window.__petDebug.hitBox)
+    const edge = where === '左' ? b.x : inner.w - (b.x + b.w)
+    assert.ok(edge < 2, `拖到${where}边缘后身体还差 ${edge.toFixed(1)} 像素才贴住屏幕`)
+  }
 })
 
 check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢出屏幕', async () => {
@@ -317,7 +366,7 @@ check('可见性探测子进程已启动（新出现的 powershell，父进程�
 
 check('设置视图：切视图、改一项、当场落盘、收起延时更宽裕', async () => {
   assert.ok(await openOnBody(), '前置：面板叫不出来')
-  await page.click('.pet-panel button[data-view="settings"]')
+  await page.click('.pet-panel button[data-id="settings"]')
   await page.waitForSelector('.pet-panel .pet-setting')
   const selected = () => page.locator('.pet-setting').evaluateAll((rows) =>
     rows.map((r) => r.querySelector('button.on')?.dataset.value))
@@ -355,7 +404,8 @@ check('设置视图：切视图、改一项、当场落盘、收起延时更宽�
   // 收起后回动作视图；重新打开时看到的应该是按钮而不是设置页
   assert.ok(await openOnBody(), '前置：面板叫不回来')
   assert.equal(await page.locator('.pet-panel .pet-setting').count(), 0, '收起再开还停在设置视图')
-  assert.deepEqual(await page.locator('.pet-panel button').allTextContents(), ['喂食', '小游戏', '状态', '设置'])
+  assert.deepEqual(await page.locator('.pet-panel button').evaluateAll((bs) =>
+    bs.map((b) => b.getAttribute('aria-label'))), ['喂食', '小游戏', '状态', '设置'])
 })
 
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {
@@ -426,12 +476,18 @@ check('面板收起后真的移出布局：不吃点击、不改光标形状', a
 check('久无人理后由皮肤权重自主选池：turn 进得了运行链路，move 不再被自主选中', async () => {
   // 复审 #2 的 P1-2：pickAmbient 单测全绿但渲染层从来没调用它，
   // 于是 weights 和 turn 全死在链路外。这条只认运行时那份 manifest 与规则层。
+  //
+  // 只断言「抽到哪个池」，不断言 play/loop，也不断言池内哪一条：当前正在播什么
+  // 会影响随机层排除自己后剩下的候选，而 play/loop 的接缝由 nextClip 单测覆盖。
+  // 放在运行链路里会变成「跑到这条时刚好在播什么」的顺序依赖。
   const picks = []
   for (const rng of [0, 0.5, 0.99]) {
     picks.push(await page.evaluate((x) => window.__petDebug.ambientNext(x), rng))
   }
-  assert.equal(picks[2].kind, 'play', `该换新的一条，却拿到 ${picks[2].kind}`)
-  assert.equal(picks[2].ref.pool, 'turn', `rng=0.99 该抽到 turn，实际 ${picks[2].ref.pool}`)
+  const block = JSON.parse(readFileSync(join(process.cwd(), 'skins/block/manifest.json'), 'utf8'))
+  assert.equal(block.weights, undefined, '这条按无权重（idle/turn 各 1）算的期望值，改权重就得同步改断言')
+  assert.deepEqual(picks.map((p) => p.ref.pool), ['idle', 'turn', 'turn'],
+    `权重均分时低段该抽 idle、高段该抽 turn：${JSON.stringify(picks.map((p) => p.ref))}`)
   assert.ok(!picks.some((p) => p.ref.pool === 'move'),
     `宠物不该再自己平行走动：${JSON.stringify(picks.map((p) => p.ref))}`)
 })
@@ -473,7 +529,7 @@ try {
       console.log(`  ok  ${name}`)
     } catch (e) {
       failed++
-      console.error(`FAIL  ${name}\n      ${String(e.message).split('\n')[0]}`)
+      console.error(`FAIL  ${name}\n${indent(String(e.message))}`)
     }
   }
 

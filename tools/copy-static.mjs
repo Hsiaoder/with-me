@@ -6,19 +6,25 @@
 import { copyFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const STATIC_EXT = ['.html', '.css']
+const STATIC_EXT = ['.html', '.css', '.svg']
 const COPIES = [
   ['src/preload/index.cjs', 'dist/preload/index.cjs'],
 ]
 
+/** 递归搬：图标放在 src/renderer/icons/，页面按相对路径引用，目录结构必须原样保留。 */
 function copyDir(srcDir, outDir) {
   if (!existsSync(srcDir)) return 0
   mkdirSync(outDir, { recursive: true })
   let n = 0
-  for (const name of readdirSync(srcDir)) {
-    const full = join(srcDir, name)
-    if (STATIC_EXT.some((ext) => name.endsWith(ext))) {
-      copyFileSync(full, join(outDir, name))
+  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
+    const full = join(srcDir, entry.name)
+    const dest = join(outDir, entry.name)
+    if (entry.isDirectory()) {
+      n += copyDir(full, dest)
+      continue
+    }
+    if (STATIC_EXT.some((ext) => entry.name.endsWith(ext))) {
+      copyFileSync(full, dest)
       n++
     }
   }

@@ -81,14 +81,26 @@ export const LOOPING_POOLS = ['idle', 'turn', 'move'] as const
 export const AMBIENT_POOLS = ['idle', 'turn'] as const
 /**
  * 面板上的功能按钮，顺序即显示顺序。
- * 业务功能（喂食扣饥饿值、小游戏、状态面板）还没接，`pool` 只决定按下之后
- * 宠物给哪个反应；三个都指向 click 池，因为它是皮肤契约保证存在的反应池。
+ *
+ * `pool` 是点下去播哪一类反应；`view` 是切到哪个视图。业务功能（喂食扣饥饿值、
+ * 小游戏、状态面板）还没接，带 pool 的三条都指向 click 池，因为它是皮肤契约保证存在的反应池。
+ * 图标是 SVG 文件，相对渲染层页面（`app://assets/renderer/index.html`）解析。
  */
-export const PANEL_BUTTONS = [
-  { id: 'feed', label: '喂食', pool: 'click' },
-  { id: 'game', label: '小游戏', pool: 'click' },
-  { id: 'status', label: '状态', pool: 'click' },
-] as const
+export type PanelButton = {
+  id: string
+  /** 图标读不懂时的兜底：按钮的 title 与 aria-label。 */
+  label: string
+  icon: string
+  pool?: string
+  view?: 'settings'
+}
+
+export const PANEL_BUTTONS: readonly PanelButton[] = [
+  { id: 'feed', label: '喂食', icon: 'icons/rice.svg', pool: 'click' },
+  { id: 'game', label: '小游戏', icon: 'icons/activity.svg', pool: 'click' },
+  { id: 'status', label: '状态', icon: 'icons/status.svg', pool: 'click' },
+  { id: 'settings', label: '设置', icon: 'icons/settings.svg', view: 'settings' },
+]
 
 // ---- 存档 ----
 export const SAVE_VERSION = 1

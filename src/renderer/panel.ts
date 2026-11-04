@@ -1,4 +1,4 @@
-import { PANEL_BUTTONS } from '../shared/config.js'
+import { PANEL_BUTTONS, type PanelButton } from '../shared/config.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
 import type { Point } from '../shared/types.js'
 
@@ -14,12 +14,16 @@ import type { Point } from '../shared/types.js'
  * 而面板正开着的时候切视图是常态。
  */
 
-export type PanelAction = { id: string; label: string; pool: string }
+/** 按钮的形状完全由 config 的 PANEL_BUTTONS 决定，这里不复制一份。 */
+export type PanelAction = PanelButton
 export type PanelView = 'actions' | 'settings'
 
 export interface PanelHandlers {
-  /** 按了动作视图里的某个按钮 */
-  action(a: PanelAction): void
+  /**
+   * 按了动作视图里的某个按钮。带 `pool` 才回调——带 `view` 的那颗（设置）
+   * 由面板自己处理视图切换，不会走到这里。
+   */
+  action(a: PanelAction & { pool: string }): void
   /** 按了设置视图里的某个选项。只报被点的那一项，别整包覆盖。 */
   setting(patch: Partial<Settings>): void
   /** 视图换了。调用方据此换收起延时（设置视图要更宽裕的时间）。 */
@@ -57,8 +61,23 @@ function btn(label: string, attrs: Record<string, string>, on: boolean): HTMLBut
   const b = document.createElement('button')
   b.type = 'button'
   b.textContent = label
+  b.title = label
+  b.setAttribute('aria-label', label)
   for (const [k, v] of Object.entries(attrs)) b.dataset[k] = v
   if (on) b.classList.add('on')
+  return b
+}
+
+/** 图标按钮：图是主角，文字退成 title/aria-label。图挂了也不留空白——它带 label。 */
+function iconBtn(a: PanelButton): HTMLButtonElement {
+  const b = btn(a.label, { id: a.id }, false)
+  const img = document.createElement('img')
+  img.className = 'pet-icon'
+  img.src = a.icon
+  img.alt = ''
+  img.draggable = false
+  b.textContent = ''
+  b.append(img)
   return b
 }
 
@@ -104,13 +123,18 @@ export function createPanel(
     }
 
     for (const a of actions) {
-      const b = btn(a.label, { id: a.id, pool: a.pool }, false)
-      b.addEventListener('click', () => handlers.action(a))
+      const b = iconBtn(a)
+      b.addEventListener('click', () => {
+        // 带 view 的按钮是切视图（设置），带 pool 的才是点歌；两者都由 config 说清楚
+        if (a.view) {
+          switchTo(a.view)
+          return
+        }
+        const pool = a.pool
+        if (pool !== undefined) handlers.action({ ...a, pool })
+      })
       el.append(b)
     }
-    const gear = btn('设置', { view: 'settings' }, false)
-    gear.addEventListener('click', () => switchTo('settings'))
-    el.append(gear)
   }
 
   function switchTo(v: PanelView): void {

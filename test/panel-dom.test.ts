@@ -24,14 +24,24 @@ const mount = (onClick = vi.fn()) => {
 afterEach(() => { document.body.replaceChildren() })
 
 describe('defaultActions', () => {
-  it('三个功能按钮：喂食/小游戏/状态，顺序即 PANEL_BUTTONS', () => {
-    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status'])
-    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态'])
+  it('四个按钮：喂食/小游戏/状态/设置，顺序即 PANEL_BUTTONS', () => {
+    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status', 'settings'])
+    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态', '设置'])
   })
-  it('按钮的反应池必须是皮肤契约里保证存在的池', () => {
+
+  it('每个按钮都带一个 icons/ 下的 SVG', () => {
+    for (const a of defaultActions()) {
+      expect(a.icon, `${a.id} 没有图标`).toMatch(/^icons\/[a-z-]+\.svg$/)
+    }
+  })
+
+  it('带反应池的按钮只能用皮肤契约保证存在的池', () => {
     // 业务功能还没接，按钮只做「给个反应」。反应来自 click 池，
     // 而 click 是 REQUIRED_POOLS 之一，任何合法皮肤都有它。
-    for (const a of defaultActions()) expect(REQUIRED_POOLS).toContain(a.pool)
+    // 设置那颗不带 pool——它切视图，不点歌。
+    const withPool = defaultActions().filter((a) => a.pool !== undefined)
+    expect(withPool).toHaveLength(3)
+    for (const a of withPool) expect(REQUIRED_POOLS).toContain(a.pool)
   })
 })
 
@@ -94,8 +104,8 @@ describe('createPanel', () => {
     panel.show({ x: 0, y: 0 })
     panel.show({ x: 10, y: 10 })
     expect(root.querySelectorAll('.pet-panel')).toHaveLength(1)
-    // 三个动作按钮 + 一个固定的「设置」入口
-    expect(root.querySelectorAll('button')).toHaveLength(PANEL_BUTTONS.length + 1)
+    // 四个按钮全部来自 PANEL_BUTTONS，面板自己不再额外加东西
+    expect(root.querySelectorAll('button')).toHaveLength(PANEL_BUTTONS.length)
   })
 })
 
@@ -112,16 +122,20 @@ describe('设置视图', () => {
     return { panel, root, action, set, view }
   }
 
-  it('动作视图多一个设置按钮，它不带 pool', () => {
+  it('动作视图是四枚图标：图在按钮里，文字退成 title 与 aria-label', () => {
     const { panel } = mountWithSettings()
-    const labels = [...panel.el.querySelectorAll('button')].map((b) => b.textContent)
-    expect(labels).toEqual(['喂食', '小游戏', '状态', '设置'])
+    const buttons = [...panel.el.querySelectorAll('button')]
+    expect(buttons.map((b) => b.querySelector('img')?.getAttribute('src'))).toEqual([
+      'icons/rice.svg', 'icons/activity.svg', 'icons/status.svg', 'icons/settings.svg',
+    ])
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '设置'])
+    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '设置'])
     expect(panel.view).toBe('actions')
   })
 
   it('点设置切成两行开关，并通知调用方换收起延时', () => {
     const { panel, view } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     expect(panel.view).toBe('settings')
     expect(view).toHaveBeenCalledWith('settings')
     const rows = panel.el.querySelectorAll('.pet-setting')
@@ -131,14 +145,14 @@ describe('设置视图', () => {
 
   it('点「隐藏」只报被点的那一项，不整包覆盖', () => {
     const { panel, set } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     panel.el.querySelector<HTMLButtonElement>('button[data-key="onFullscreen"][data-value="hide"]')!.click()
     expect(set).toHaveBeenCalledWith({ onFullscreen: 'hide' })
   })
 
   it('选中态跟着 setSettings 重绘，当前项标出来', () => {
     const { panel } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     const on = () => [...panel.el.querySelectorAll('.pet-setting')]
       .map((r) => r.querySelector('button.on')?.getAttribute('data-value'))
     expect(on()).toEqual(['show', 'show'])
@@ -148,7 +162,7 @@ describe('设置视图', () => {
 
   it('返回切回动作视图，延时通知回一次', () => {
     const { panel, view } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     panel.el.querySelector<HTMLButtonElement>('button[data-view="actions"]')!.click()
     expect(panel.view).toBe('actions')
     expect(view).toHaveBeenLastCalledWith('actions')
@@ -157,7 +171,7 @@ describe('设置视图', () => {
 
   it('收起面板就回到动作视图，并通知调用方换回延时', () => {
     const { panel, view } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     view.mockClear()
     panel.hide()
     expect(panel.view).toBe('actions')
@@ -167,7 +181,7 @@ describe('设置视图', () => {
   it('切视图不重新挂载面板：根节点还在原位，data-hit 不丢', () => {
     const { panel, root } = mountWithSettings()
     const el = panel.el
-    panel.el.querySelector<HTMLButtonElement>('button[data-view="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     expect(panel.el).toBe(el)
     expect(root.lastElementChild).toBe(el)
     expect(el.dataset.hit).toBe('')

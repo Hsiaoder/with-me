@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { join, resolve } from 'node:path'
 import { mapAppPath, mimeOf, type Roots } from '../src/main/protocol.js'
+import { PANEL_BUTTONS } from '../src/shared/config.js'
 
 // 断言两边都过 resolve()，否则 Windows 上 '/app/dist' 会被解析成 'C:\\app\\dist'，
 // 测试会因为平台路径风格而失败，而不是因为逻辑错了。
@@ -84,5 +85,14 @@ describe('mapAppPath', () => {
     expect(mimeOf('a/B.WEBM')).toBe('video/webm')
     expect(mimeOf('a/b.txt')).toBeNull()
     expect(mimeOf('a/b')).toBeNull()
+  })
+
+  it('面板按钮用到的每种素材后缀都在白名单里', () => {
+    // 文件躺在 dist 里、src 路径也对，但白名单漏了 .svg 时 `<img>` 只能拿到 404：
+    // 按钮照样渲染，只是里面是枚空圆片。第一次上图标就是 e2e 量到 naturalWidth 全 0 才发现。
+    for (const a of PANEL_BUTTONS) {
+      if (a.icon === undefined) continue
+      expect(mimeOf(a.icon), `图标 ${a.icon} 取不到`).not.toBeNull()
+    }
   })
 })

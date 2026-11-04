@@ -10,7 +10,7 @@ import {
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
 import { anyContains, bodyRect, panelAnchor } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
-import { createMotion, feetOffsetOf } from '../shared/motion.js'
+import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
@@ -57,6 +57,8 @@ function bootstrap(skin: SkinPayload): void {
     bounds: { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight },
     speedPxPerSec: WALK_SPEED_PX_PER_SEC,
     feetOffsetCss: feetOffsetOf(manifest.canvas.feetY, manifest.canvas.h),
+    // 夹取按角色实际占位算，不按舞台矩形——画布左右那截空白以前会把角色挡在屏幕边缘之外
+    bodyInset: bodyInsetOf(manifest.bodyBox),
     start: { x: (window.innerWidth - STAGE_W_CSS) / 2, y: 0 },
   })
   motion.snapToBottom()

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createMotion, feetOffsetOf } from '../src/shared/motion.js'
+import { bodyInsetOf, createMotion, feetOffsetOf } from '../src/shared/motion.js'
 import { CANVAS_H, FEET_Y, STAGE_H_CSS, STAGE_SCALE, STAGE_W_CSS } from '../src/shared/config.js'
 
 const bounds = { x: 0, y: 0, w: 1000, h: 600 }
@@ -79,5 +79,55 @@ describe('拖拽落点夹取', () => {
   it('范围比舞台还窄时右限退化成 0，不产生负宽度区间', () => {
     const m = createMotion({ bounds: { x: 0, y: 0, w: 100, h: 600 }, speedPxPerSec: 100, feetOffsetCss: feetOffset })
     expect(m.setPosition({ x: 500, y: 0 }).x).toBe(0)
+  })
+})
+
+describe('按身体框夹取（bodyInset）', () => {
+  /**
+   * 画布 640 宽里角色只占中间一段，左右各有大片空白。以前夹的是舞台矩形，
+   * 于是角色永远碰不到屏幕左右边缘——差的就是那截空白（实测约 95 CSS 像素）。
+   * 传了 bodyInset 之后，夹取按角色实际占位算，身体能贴住屏幕边。
+   */
+  const inset = { left: 95, right: 92, top: 10 }
+  const make2 = (over = {}) => make({ bodyInset: inset, ...over })
+
+  it('往左拖到底时，身体左沿贴住屏幕左边（舞台可以走出屏幕）', () => {
+    const m = make2()
+    expect(m.setPosition({ x: -500, y: 100 }).x).toBe(-inset.left)
+  })
+
+  it('往右拖到底时，身体右沿贴住屏幕右边', () => {
+    const m = make2()
+    const x = m.setPosition({ x: 5000, y: 100 }).x
+    expect(x).toBe(bounds.w - STAGE_W_CSS + inset.right)
+    expect(x + STAGE_W_CSS - inset.right).toBe(bounds.w)
+  })
+
+  it('往上拖时头顶可以贴住屏幕上沿', () => {
+    const m = make2()
+    expect(m.setPosition({ x: 100, y: -500 }).y).toBe(-inset.top)
+  })
+
+  it('不传 bodyInset 时行为不变（老用例的区间照旧）', () => {
+    expect(make().setPosition({ x: -500, y: 100 }).x).toBe(0)
+    expect(make().setPosition({ x: 5000, y: 100 }).x).toBe(bounds.w - STAGE_W_CSS)
+  })
+
+  it('走路的两端也用同一个区间', () => {
+    // 100px/s × 100ms = 每拍 10px；从 0 走到 -95 需要 10 拍，第 11 拍就掉头了
+    const m = make2({ start: { x: 0, y: bottomY }, facing: 'left' as const })
+    for (let i = 0; i < 10; i++) m.step(100)
+    expect(m.pos().x).toBe(-inset.left)
+    expect(m.facing()).toBe('right')
+  })
+})
+
+describe('bodyInsetOf', () => {
+  it('画布身体框换算成舞台内的 CSS 空白', () => {
+    // 试穿皮肤实测的框：x 191..455，y 21 起
+    const i = bodyInsetOf({ x: 191, y: 21, w: 264, h: 312 })
+    expect(i.left).toBeCloseTo(191 * STAGE_SCALE, 9)
+    expect(i.right).toBeCloseTo((640 - 191 - 264) * STAGE_SCALE, 9)
+    expect(i.top).toBeCloseTo(21 * STAGE_SCALE, 9)
   })
 })
