@@ -483,10 +483,10 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')
   assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '点喂食没进食物视图')
-  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), 12)
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), 6)
   // 一屏只露 4 格：视口是 overflow:hidden，其余靠滚
   // 12 格全在条上（视口只是没露出来），滚动才有东西可滚
-  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-food-strip > *').length), 12)
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-food-strip > *').length), 6)
   assert.ok(await page.evaluate(() => {
     const v = document.querySelector('.pet-food-viewport')
     return v.getBoundingClientRect().width < v.scrollWidth
@@ -509,12 +509,13 @@ check('食物列表：整屏步进、到底置灰、拖横条、收起后复位'
   assert.equal(await disabled('next'), false)
 
   await page.click('.pet-page[data-page="next"]')
-  assert.equal(await strip(), 'translateX(-240px)', '翻一屏该是 240（4 格 ×（56+4））')
+  // 6 格只有 356 宽，视口 236 → 最大滚动 120，比一整屏步进 240 还小，按一次就到头。
+  assert.equal(await strip(), 'translateX(-120px)', '6 格一步到底该是 -120')
 
   // 按到置灰为止，不是盲目按 8 次：到底之后 next 就该 disabled（上一条断言要的就是它），
   // 拿 page.click 去点一个 disabled 的按钮只会 30 秒超时——那是在等一个不该发生的事。
   for (let i = 0; i < 6 && !(await disabled('next')); i++) await page.click('.pet-page[data-page="next"]')
-  assert.equal(await strip(), 'translateX(-480px)', '最大滚动该是 716−236=480')
+  assert.equal(await strip(), 'translateX(-120px)', '最大滚动该是 356−236=120')
   assert.equal(await disabled('next'), true, '到底了 next 还亮着，骗人去点')
 
   // 拖滑块：位移按轨道比例换算回去，所以拖 100px 不等于按一次翻页
@@ -529,8 +530,7 @@ check('食物列表：整屏步进、到底置灰、拖横条、收起后复位'
     window.dispatchEvent(new MouseEvent('pointerup', { clientX: p.x - 100, clientY: p.y, bubbles: true }))
   }, box)
   const moved = await strip()
-  assert.notEqual(moved, 'translateX(-480px)', '拖横条没动内容')
-  assert.notEqual(moved, 'translateX(-240px)', '拖 100px 不该正好等于按一次翻页')
+  assert.ok(parseFloat(moved.replace(/[^0-9.-]/g, '')) > -120, `拖横条没改变位置（还停在到底那格）：${moved}`)
 
   // 收起再打开 → 复位，不该停在用户上次看一半的位置
   await feed({ x: 4, y: 4 })

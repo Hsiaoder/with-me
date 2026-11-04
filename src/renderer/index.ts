@@ -110,11 +110,13 @@ function bootstrap(skin: SkinPayload): void {
     })()
   }
 
-  function requestClip(pool: string): void {
+  /** 点了这一格该播哪条。找不到素材就回落到 click，点了必须有反应。 */
+  function requestClip(pool: string): boolean {
     const ref = picker.pickFrom(source, pool, current)
-    if (!ref) return
+    if (!ref) return false
     current = ref
     startChain()
+    return true
   }
 
   /**
@@ -131,13 +133,13 @@ function bootstrap(skin: SkinPayload): void {
       sayFor(a.id === 'game' ? 'game' : 'status')
     },
     /**
-     * 点了一格食物。播哪条动画由食物自己说了算，没配就回落到 click 池——
-     * 逐食物专属动画是以后的事，现在只留这个接缝。
+     * 点了一格食物。播哪条动画由食物自己说了算；皮肤里没有那个池（自带的 block
+     * 皮肤就没有 eat）就回落到 click 池——点了没反应比播错动画更糟。
      */
     pick: (f) => {
       lastInteractionAt = Date.now()
       rules.feed('interacted')
-      requestClip(f.anim?.pool ?? 'click')
+      if (!requestClip(f.anim?.pool ?? 'click')) requestClip('click')
       sayFor('feed')
     },
     setting: (patch) => {

@@ -56,9 +56,13 @@ export const toSkinPayload = (skin: LoadedSkin, warnings: string[] = []): SkinPa
 })
 
 const SUPPORTED_FORMAT = 1
-/** 池名与动画名要拼进文件路径和 URL，所以只放最安全的字符集。契约 3.3。 */
-const POOL_NAME = /^[a-z][a-z0-9_-]{0,31}$/
-const CLIP_NAME = /^[a-z][a-z0-9_-]{0,39}$/
+/**
+ * 池名与动画名要拼进文件路径和 URL，所以只放最安全的字符集。契约 3.3。
+ * 导出是给皮肤之外的地方复用同一条规则用的（比如食物表里写的动画名），
+ * 别处再抄一份正则就会有两套标准。
+ */
+export const POOL_NAME = /^[a-z][a-z0-9_-]{0,31}$/
+export const CLIP_NAME = /^[a-z][a-z0-9_-]{0,39}$/
 const NAME_HINT = '只允许小写字母开头的 a-z0-9_- '
 
 const isObj = (v: unknown): v is Record<string, unknown> =>

@@ -5,7 +5,7 @@ import {
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, HOVER_DWELL_MS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE,
-  FOODS, FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
+  FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
 } from '../src/shared/config.js'
 import { mimeOf } from '../src/main/protocol.js'
 
@@ -64,24 +64,8 @@ describe('气泡素材', () => {
   })
 })
 
-describe('食物表', () => {
-  it('id 唯一', () => {
-    const ids = FOODS.map((f) => f.id)
-    expect(new Set(ids).size).toBe(ids.length)
-  })
-
-  it('名字不超过一格能放下的 4 个汉字', () => {
-    for (const f of FOODS) expect([...f.name].length).toBeLessThanOrEqual(4)
-  })
-
-  it('配了 anim 的必须落在皮肤契约保证存在的池里', () => {
-    for (const f of FOODS) {
-      if (f.anim === undefined) continue
-      expect(REQUIRED_POOLS as readonly string[]).toContain(f.anim.pool)
-    }
-  })
-
-  it('尺寸契约：一屏正好 4 格，视口 236', () => {
+describe('食物列表的尺寸', () => {
+  it('一屏正好 4 格，视口 236——panel 与滚动数学都按这个数摆', () => {
     expect(FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP).toBe(236)
   })
 })

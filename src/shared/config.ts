@@ -122,27 +122,7 @@ export const FOOD_CELL = 56
 export const FOOD_GAP = 4
 /** 一屏可见格数。视口宽 = 4×56 + 3×4 = 236。 */
 export const FOOD_VISIBLE = 4
-
-/**
- * 一格食物。`anim` 是「吃这种东西播哪条」的接缝：没配就回落到 click 池。
- * 逐食物专属动画是以后的事，现在只留接缝，不填内容。
- */
-export type Food = { id: string; name: string; anim?: { pool: string; name: string } }
-
-export const FOODS: readonly Food[] = [
-  { id: 'rice', name: '米饭' },
-  { id: 'fish', name: '鱼干' },
-  { id: 'cake', name: '蛋糕' },
-  { id: 'milk', name: '牛奶' },
-  { id: 'apple', name: '苹果' },
-  { id: 'cookie', name: '饼干' },
-  { id: 'candy', name: '糖果' },
-  { id: 'bread', name: '面包' },
-  { id: 'bun', name: '包子' },
-  { id: 'berry', name: '草莓' },
-  { id: 'pudding', name: '布丁' },
-  { id: 'soy', name: '豆浆' },
-]
+/** 食物表本体在 `shared/food.ts`——那里要带排版宽度函数，config 只放常量。 */
 
 // ---- 存档 ----
 export const SAVE_VERSION = 1

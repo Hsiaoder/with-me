@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
-import { FOODS, PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
+import { PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
+import { FOODS } from '../src/shared/food.js'
 
 /**
  * jsdom 没有排版引擎，offsetWidth/offsetHeight 恒为 0，而「打开后量自身尺寸用来
@@ -219,7 +220,7 @@ describe('食物视图', () => {
     const { panel, pick } = mountFoods()
     ;(panel.el.querySelector('.pet-food') as HTMLElement).click()
     expect(pick).toHaveBeenCalledTimes(1)
-    expect(pick.mock.calls[0]![0].id).toBe('rice')
+    expect(pick.mock.calls[0]![0].id).toBe('token')
     expect(panel.view).toBe('foods')
   })
 
@@ -229,10 +230,11 @@ describe('食物视图', () => {
     const next = panel.el.querySelector('.pet-page[data-page="next"]') as HTMLElement
     const prev = panel.el.querySelector('.pet-page[data-page="prev"]') as HTMLElement
     expect(strip()).toBe('translateX(0px)')
-    next.click(); expect(strip()).toBe('translateX(-240px)')
-    for (let i = 0; i < 10; i++) next.click()
-    expect(strip()).toBe('translateX(-480px)')      // 最大滚动 716−236
-    for (let i = 0; i < 10; i++) prev.click()
+    // 6 格 ×(56+4) = 356，视口 236 → 最大滚动只有 120，比一整屏步进 240 还小，
+    // 所以按一次就到头。数字要按 FOODS 实际长度算，不能照 12 格的老期望写。
+    next.click(); expect(strip()).toBe('translateX(-120px)')
+    next.click(); expect(strip()).toBe('translateX(-120px)')
+    for (let i = 0; i < 4; i++) prev.click()
     expect(strip()).toBe('translateX(0px)')
   })
 
@@ -242,7 +244,7 @@ describe('食物视图', () => {
     const prev = panel.el.querySelector('.pet-page[data-page="prev"]') as HTMLButtonElement
     expect(prev.disabled).toBe(true)
     expect(next.disabled).toBe(false)
-    for (let i = 0; i < 5; i++) next.click()
+    next.click()
     expect(next.disabled).toBe(true)
     expect(prev.disabled).toBe(false)
   })
@@ -253,11 +255,15 @@ describe('食物视图', () => {
     expect(thumb).not.toBeNull()
     expect(thumb.style.width).not.toBe('')
     thumb.dispatchEvent(pointer('pointerdown', 40))
-    window.dispatchEvent(pointer('pointermove', 140))
-    window.dispatchEvent(pointer('pointerup', 140))
-    const moved = (panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform
-    expect(moved).not.toBe('translateX(0px)')
-    expect(moved).not.toBe('translateX(-240px)')     // 拖 100px 不该等于按一次翻页
+    window.dispatchEvent(pointer('pointermove', 60))
+    window.dispatchEvent(pointer('pointerup', 60))
+    // 拖 20px 该停在**中间**，不是 0 也不是到底。6 格只有 120px 可滚，
+    // 拖 100px 会直接撞到头，那条断言就退化成「不等于步进」，测不出比例换算。
+    // 内容条往左走（负数），滑块往右走（正数），所以各取各的号，别用一个 negate 糊过去
+    const num = (sel: string) => parseFloat((panel.el.querySelector(sel) as HTMLElement).style.transform.replace(/[^0-9.-]/g, ''))
+    expect(num('.pet-food-strip')).toBeLessThan(0)
+    expect(num('.pet-food-strip')).toBeGreaterThan(-120)
+    expect(num('.pet-thumb')).toBeGreaterThan(0)
   })
 
   it('横条是视口同一列的下面一行，不是面板的兄弟节点', () => {

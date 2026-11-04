@@ -1,4 +1,5 @@
-import { FOOD_CELL, FOOD_GAP, FOODS, FOOD_VISIBLE, PANEL_BUTTONS, type Food, type PanelButton } from '../shared/config.js'
+import { FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, PANEL_BUTTONS, type PanelButton } from '../shared/config.js'
+import { FOODS, type Food } from '../shared/food.js'
 import { clampScroll, pageStep, thumbGeometry } from '../shared/scroll.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
 import type { Point } from '../shared/types.js'

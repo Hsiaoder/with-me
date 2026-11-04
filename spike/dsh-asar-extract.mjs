@@ -18,13 +18,23 @@ const FFMPEG = execFileSync('node', ['-e', 'process.stdout.write(require("ffmpeg
 const W = 640, H = 360;
 const EBML = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
 
-/** 五个必需池各自挑一段：动作类型要和池的语义对得上，不然只是换个皮。 */
+/**
+ * 五个必需池各自挑一段：动作类型要和池的语义对得上，不然只是换个皮。
+ * eat 是扩展池（喂食列表用），名字与 src/shared/food.ts 的 id 一一对应。
+ * 「火锅」在素材源里叫「涮火锅」，没有「吃火锅」。
+ */
 const picks = [
   { pool: 'idle', name: 'breath', src: 'assets/webm/待机呼吸休闲.webm' },
   { pool: 'turn', name: 'look', src: 'assets/webm/东张西望.webm' },
   { pool: 'move', name: 'float', src: 'assets/webm/原地漂浮踏步.webm' },
   { pool: 'click', name: 'wave', src: 'assets/webm/点击回应-元气挥手.webm' },
   { pool: 'drag', name: 'grab', src: 'assets/webm/被鼠标拖拽悬空反馈.webm' },
+  { pool: 'eat', name: 'token', src: 'assets/webm/吃Token.webm' },
+  { pool: 'eat', name: 'rice', src: 'assets/webm/吃白饭.webm' },
+  { pool: 'eat', name: 'tanghulu', src: 'assets/webm/吃糖葫芦.webm' },
+  { pool: 'eat', name: 'crab', src: 'assets/webm/吃大闸蟹.webm' },
+  { pool: 'eat', name: 'hotpot', src: 'assets/webm/涮火锅.webm' },
+  { pool: 'eat', name: 'dumpling', src: 'assets/webm/吃饺子.webm' },
 ];
 
 /* ---------- asar 读取 ---------- */
