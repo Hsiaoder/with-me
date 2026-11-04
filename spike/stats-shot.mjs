@@ -24,17 +24,26 @@ try {
   const page = await app.firstWindow()
   await page.waitForTimeout(1600)
 
-  // 喂两次，让读数离开初值：全 70/70/50/0 那张图看不出条宽与颜色是不是真的跟着数走
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await page.evaluate((p) => window.__petDebug.cursor(p), { x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(500)
+  // 面板由点击叫出来（喂光标已经叫不动了），所以这里点身体
+  const clickBody = async () => {
+    const h = await page.evaluate(() => window.__petDebug.hitBox)
+    await page.evaluate((p) => {
+      const fire = (t) => window.dispatchEvent(new PointerEvent(t, { clientX: p.x, clientY: p.y, bubbles: true }))
+      fire('pointerdown')
+      fire('pointerup')
+    }, { x: h.x + h.w / 2, y: h.y + h.h / 2 })
+    await page.waitForTimeout(150)
+  }
+
+  // 喂一次，让读数离开初值：全 70/70/50/0 那张图看不出条宽与颜色是不是真的跟着数走
+  await clickBody()
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')
   await page.click('.pet-panel .pet-food[data-food="hotpot"]')
   await page.waitForTimeout(300)
 
-  await page.evaluate((p) => window.__petDebug.cursor(p), { x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(500)
+  // 选完即收，面板已经关了；再点一下身体才叫得回来
+  await clickBody()
   await page.click('.pet-panel button[data-id="status"]')
   await page.waitForSelector('.pet-panel .pet-stat')
   await page.waitForTimeout(300)
@@ -64,5 +73,5 @@ try {
   console.log('已存：spike/out/stats-shot.png')
 } finally {
   await app.close()
-  rmSync(ud, { recursive: true, force: true })
+  rmSync(ud, { recursive: true, force: true, maxRetries: 8, maxRetryTime: 2000 })
 }

@@ -25,7 +25,13 @@ try {
     const center = { x: hit.x + hit.w / 2, y: hit.y + hit.h / 2 }
     await feed(center)
     if (openPanelFirst) {
-      await page.waitForTimeout(460)
+      // 面板现在由点击叫出来，喂光标叫不动它
+      await page.evaluate((p) => {
+        const fire = (t) => window.dispatchEvent(new PointerEvent(t, { clientX: p.x, clientY: p.y, bubbles: true }))
+        fire('pointerdown')
+        fire('pointerup')
+      }, center)
+      await page.waitForTimeout(150)
       await feed(center)
     }
     const before = await snap()

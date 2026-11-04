@@ -44,12 +44,17 @@ try {
   const hit = await page.evaluate(() => window.__petDebug.hitBox)
   const center = { x: hit.x + hit.w / 2, y: hit.y + hit.h / 2 }
 
+  // 面板现在由点击叫出来（喂光标叫不动），所以这里点一下身体
+  await page.evaluate((p) => {
+    const fire = (t) => window.dispatchEvent(new PointerEvent(t, { clientX: p.x, clientY: p.y, bubbles: true }))
+    fire('pointerdown')
+    fire('pointerup')
+  }, center)
+  await page.waitForTimeout(200)
   await feed(center.x, center.y)
-  await page.waitForTimeout(500)
-  await feed(center.x, center.y)
-  console.log('【1】悬停开面板：', JSON.stringify(await probe()))
+  console.log('【1】点开面板：', JSON.stringify(await probe()))
 
-  // 点宠物：pointerdown 会 panel.hide()
+  // 点宠物：现在是 toggle，开着的时候这一下会把它收掉
   await page.mouse.move(center.x, center.y)
   await page.mouse.down()
   await page.mouse.up()

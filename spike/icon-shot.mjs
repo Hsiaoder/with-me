@@ -38,10 +38,14 @@ try {
     writeFileSync(join('spike', 'out', name), Buffer.from(b64, 'base64'))
   }
 
-  // 悬停叫出面板
+  // 点一下叫出面板（2026-11-04 起面板不再靠悬停弹出，喂光标已经叫不动它了）
   const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await page.evaluate((p) => window.__petDebug.cursor(p), { x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(500)
+  await page.evaluate((p) => {
+    const fire = (t) => window.dispatchEvent(new PointerEvent(t, { clientX: p.x, clientY: p.y, bubbles: true }))
+    fire('pointerdown')
+    fire('pointerup')
+  }, { x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  await page.waitForTimeout(200)
 
   // 说一句接近 24 字上限的话 + 带回应按钮，专门看白色区装不装得下、按钮压不压尾巴
   await page.evaluate(() => window.__petDebug.say({ text: '无聊到数地板纹路了，你回来陪我玩嘛', reply: '别数我陪你' }, 60000))
@@ -79,6 +83,6 @@ try {
   code = 1
   console.error(String(e && e.stack ? e.stack : e))
 } finally {
-  rmSync(ud, { recursive: true, force: true })
+  rmSync(ud, { recursive: true, force: true, maxRetries: 8, maxRetryTime: 2000 })
   process.exitCode = code
 }

@@ -493,8 +493,39 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true', 'true/true'],
     `图标没解码成功：${JSON.stringify(decoded)}`)
 
-  // 点击开的东西就得能点击关：再点一次同样的位置
-  await clickBody(center)
+  // 圆底（Kenney button_round_line）：计算样式里有 url 不算数——404 也照样在样式里，
+  // 必须真的把它 decode 出来。这条同时钉住两条白名单（protocol 的 MIME 表 + copy-static 的 STATIC_EXT）。
+  const disc = await page.evaluate(async () => {
+    const b = document.querySelector('.pet-panel button[data-id]')
+    const bg = getComputedStyle(b).backgroundImage
+    const m = /url\("?([^")]+)"?\)/.exec(bg)
+    if (!m) return { url: bg, ok: false }
+    const img = new Image()
+    img.src = m[1]
+    try {
+      await img.decode()
+    } catch {
+      return { url: m[1], ok: false }
+    }
+    return { url: m[1], ok: img.naturalWidth > 0, w: img.naturalWidth }
+  })
+  assert.ok(disc.ok, `圆底没加载出来：${JSON.stringify(disc)}`)
+  // 圆底只给动作按钮：切进设置视图，那里的按钮有自己的方形底板，叠两层会像画歪了。
+  // 要真的切过去看——动作视图里没有 .pet-setting 按钮，选择器写错就是一条永远为真的断言。
+  await page.click('.pet-panel button[data-id="settings"]')
+  await page.waitForSelector('.pet-panel .pet-setting')
+  const plateBtn = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('.pet-panel .pet-setting button')).backgroundImage)
+  assert.ok(!/button_round_line/.test(plateBtn), `设置视图的按钮也被套上圆底了：${plateBtn}`)
+  await page.evaluate(() => window.__petDebug.hidePanel())
+
+  // 点击开的东西就得能点击关：重新点一下叫出来，再点一下收掉
+  const h2 = await page.evaluate(() => window.__petDebug.hitBox)
+  const center2 = { x: h2.x + h2.w / 2, y: h2.y + h2.h / 2 }
+  await clickBody(center2)
+  await page.waitForTimeout(120)
+  assert.equal((await dbg()).open, true, '重新点一下没能再叫出面板')
+  await clickBody(center2)
   await page.waitForTimeout(120)
   assert.equal((await dbg()).open, false, '再点一下没能把面板收掉')
 })

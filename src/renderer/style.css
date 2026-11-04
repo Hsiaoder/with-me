@@ -207,7 +207,7 @@ body.pet-over {
   background: #eef6f4;
 }
 
-/* 动作视图只有图标，不画圆片。34px 的方块留着当命中区——图标才 22px，
+/* 命中区与排布：所有视图的按钮共用。34px 的方块留着当命中区——图标才 22px，
    按图标本身点太费眼睛。 */
 .pet-panel button {
   pointer-events: auto;
@@ -222,17 +222,26 @@ body.pet-over {
   cursor: var(--pet-cursor);
 }
 
+/* 动作视图的五颗：图标底下垫一枚 Kenney `button_round_line`（CC0，白底 + 灰环 + 一点蓝内圈）。
+   以前这里刻意什么都不画，结果白色系的图标（米饭碗）压在浅色壁纸上会糊成一片，
+   也看不出哪里能点。34px 的方块仍然是命中区——图标才 22px，按图标本身点太费眼睛。
+   选择器用 `button[data-id]`：只有动作按钮带 data-id，设置/列表/状态视图的按钮各有自己的底板。 */
+.pet-panel button[data-id] {
+  background: url("icons/button_round_line.svg") center / 100% 100% no-repeat;
+}
+
 .pet-icon {
   width: 22px;
   height: 22px;
   display: block;
-  /* 没了底板，图标是直接压在任意桌面像素上的：给一道投影，深色背景上才读得出轮廓。 */
+  /* 圆底是白的，白色系图标还是得靠这道投影分边；深色桌面上投影也顺手把整颗按钮托起来。 */
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
-  transition: transform 0.12s ease;
 }
 
-.pet-panel button:hover .pet-icon {
+/* 悬停时整颗一起放大，不是只放大图标：只放大图标会戳出圆底外沿，看着像画歪了。 */
+.pet-panel button[data-id]:hover {
   transform: scale(1.15);
+  transition: transform 0.12s ease;
 }
 
 /* 操作型视图（设置、食物列表）是一整块可见面板：底板、命中、光标都跟着。
