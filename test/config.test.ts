@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import {
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, HOVER_DWELL_MS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
-  GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_BODY_H,
+  GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_INNER_BOTTOM,
   FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
 } from '../src/shared/config.js'
 import { mimeOf } from '../src/main/protocol.js'
@@ -93,7 +93,7 @@ describe('气泡尺寸', () => {
     expect(css.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).toMatch(/image-rendering: pixelated/)
   })
 
-  it('文字与按钮都留在身子范围内（尾巴那 30px 不压字）', () => {
+  it('文字与按钮都留在纯白内腔里（描边那两行、尾巴那 30px 都不压字）', () => {
     const css = readFileSync('src/renderer/style.css', 'utf8')
     const block = (sel: string): string => css.match(new RegExp(`[.]${sel} [{]([^}]*)[}]`))?.[1] ?? ''
     const px = (sel: string, prop: string): number =>
@@ -103,8 +103,8 @@ describe('气泡尺寸', () => {
       expect(px(sel, 'top'), `${sel} 的 top 没读到`).toBeGreaterThanOrEqual(0)
       expect(px(sel, 'height'), `${sel} 的 height 没读到`).toBeGreaterThan(0)
     }
-    expect(px('pet-bubble-text', 'top') + px('pet-bubble-text', 'height')).toBeLessThanOrEqual(BUBBLE_BODY_H)
-    expect(px('pet-bubble-reply', 'top') + px('pet-bubble-reply', 'height')).toBeLessThanOrEqual(BUBBLE_BODY_H)
+    expect(px('pet-bubble-text', 'top') + px('pet-bubble-text', 'height')).toBeLessThanOrEqual(BUBBLE_INNER_BOTTOM)
+    expect(px('pet-bubble-reply', 'top') + px('pet-bubble-reply', 'height')).toBeLessThanOrEqual(BUBBLE_INNER_BOTTOM)
     // 反证：数没读到就是 -1，上面两条会直接红，不会出现"读不到也算通过"
     expect(px('pet-bubble-nosuch', 'top')).toBe(-1)
   })

@@ -158,19 +158,20 @@ body.pet-over {
   inset: 0;
   width: 100%;
   height: 100%;
-  /* 像素图必须邻取放大：默认的双线性会把 16×16 糊成一团白斑，边角那条深色描边直接消失。 */
+  /* 像素图必须邻取放大：默认的双线性会把 16×16 糊成一团，那圈蓝色描边和圆角直接消失。 */
   image-rendering: pixelated;
   pointer-events: none;
 }
 
-/* 身子占原图第 0..12 行 → 显示后是 0..130px，尾巴在 130..160。
-   文字和按钮都只能待在 130 以内，压到尾巴上就变成"字飘在空气里"。 */
+/* 身子是原图第 0..12 行 → 显示 0..130，尾巴 130..160；但第 0/12 行整条是描边，
+   纯白内腔只到 120（BUBBLE_INNER_BOTTOM）。文字与按钮都待在 10..120 里，
+   压到尾巴上就变成"字飘在空气里"，压到描边上就像要掉出气泡。 */
 .pet-bubble-text {
   position: absolute;
   left: 20px;
   top: 18px;
   width: 120px;
-  height: 78px;
+  height: 74px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -181,11 +182,11 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 回应按钮：文字区下面那一行，仍在身子范围内。 */
+/* 回应按钮：文字区下面那一行，底边 118 仍在纯白内腔里。 */
 .pet-bubble-reply {
   position: absolute;
   left: 20px;
-  top: 100px;
+  top: 96px;
   width: 120px;
   height: 22px;
   padding: 0;

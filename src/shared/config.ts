@@ -86,11 +86,12 @@ export const BUBBLE_SHOW_MS = 5000
 export const TALK_COOLDOWN_MS = 25000
 /** 「闲到交出决策权」那一拍里开口的概率。事件驱动的台词不受它约束。 */
 export const TALK_IDLE_PROB = 0.35
-/** 文字区实测 120×78（下面还有回应按钮那一行），13px 字号一行约 9 字、放得下 3 行；24 字留了余量。 */
+/** 文字区实测 120×74（下面还有回应按钮那一行），13px 字号一行约 9 字、放得下 3 行；24 字留了余量。 */
 export const TALK_MAX_CHARS = 24
 /**
  * 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。
- * 现在是 Pixel Style 5 那枚：16×16 的圆角方块 + 底部中间的尾巴。
+ * 现在是 Pixel Style 6 那枚：16×16 的圆角方块 + 底部中间的尾巴，
+ * 描边是蓝的（158,194,233）——Style 5 的描边只有 8 个近白像素，浅色桌面上等于没有边。
  */
 export const BUBBLE_IMAGE = 'emotes/bubble.png'
 /**
@@ -99,8 +100,12 @@ export const BUBBLE_IMAGE = 'emotes/bubble.png'
  */
 export const BUBBLE_W = 160
 export const BUBBLE_H = 160
-/** 原图 16×16 里身子占第 0..12 行，尾巴占 13..15 → 换算到显示尺寸就是身子 130px。 */
-export const BUBBLE_BODY_H = 130
+/**
+ * 身子占原图第 0..12 行（尾巴 13..15），第 0 与第 12 行整条是蓝色描边，
+ * 纯白内腔只有第 1..11 行 → 换算到显示尺寸就是 10..120。
+ * 文字与回应按钮的下界只能到 120：越过它就压在描边上，字看起来要掉出气泡。
+ */
+export const BUBBLE_INNER_BOTTOM = 120
 /** 气泡与它下面那块（面板或身体）之间的间隙。 */
 export const BUBBLE_GAP = 12
 
