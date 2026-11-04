@@ -148,6 +148,11 @@ function bootstrap(skin: SkinPayload): void {
       rules.feed('interacted')
       if (!requestClip(f.anim?.pool ?? 'click')) requestClip('click')
       sayFor('feed')
+      // 选完即收：列表就压在宠物脚底那块，不收的话你点完看不到它吃。
+      // 必须先 hover.reset() 再 panel.hide()：状态机自己那份「开着」的标记不会因为
+      // 你直接收面板而消失，不复位的话鼠标停在原地就再也弹不出来了（拖拽那条路同样这么做）。
+      hover.reset()
+      panel.hide()
     },
     setting: (patch) => {
       settings = { ...settings, ...patch }

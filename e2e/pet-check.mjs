@@ -596,9 +596,18 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
   assert.equal((await dbg()).pool, 'click')
   assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), true, '点了食物没回话')
+  // 选完即收：列表压在宠物脚底那块，不收就看不到它吃。连喂的代价只是再悬停一次，
+  // 而连喂的第二样本来会被 25 秒冷却吞掉台词，留着列表换不到什么。
+  assert.equal((await dbg()).open, false, '点了食物但列表没收起')
+  assert.ok(await openOnBody(), '前置：列表收掉之后面板叫不回来')
+  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'actions', '重新叫出来还停在食物列表')
 })
 
 check('食物列表：整屏步进、到底置灰、拖横条、收起后复位', async () => {
+  // 上一条检查现在会把列表收掉（选完即收），所以这条自己把列表叫出来，别接上一家的残局
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
   const strip = () => page.evaluate(() => document.querySelector('.pet-food-strip').style.transform)
   const disabled = (dir) => page.evaluate((d) => document.querySelector(`.pet-page[data-page="${d}"]`).disabled, dir)
 
