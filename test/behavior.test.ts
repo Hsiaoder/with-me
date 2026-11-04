@@ -118,7 +118,7 @@ describe('nextClip', () => {
       loops,
       ref: { pool: 'idle', name: 'patrol' },
     })
-    expect(n).toEqual({ kind: 'play', ref: { pool: 'turn', name: 'left' } })
+    expect(n).toEqual({ kind: 'play', ref: { pool: 'turn', name: 'left' }, ambient: true })
   })
 
   it('move 拿不到自主决策权：权重全给它也不会走动', () => {
@@ -144,7 +144,7 @@ describe('nextClip', () => {
       loops,
       ref: { pool: 'idle', name: 'patrol' },
     })
-    expect(n).toEqual({ kind: 'loop', ref: { pool: 'idle', name: 'patrol' } })
+    expect(n).toEqual({ kind: 'loop', ref: { pool: 'idle', name: 'patrol' }, ambient: true })
   })
 
   it('刚互动完那一拍给 idle，当前正循环 idle 就继续挂着', () => {
@@ -181,6 +181,33 @@ describe('nextClip', () => {
       loops,
       ref: { pool: 'click', name: 'tapped' },
     })
-    expect(n).toEqual({ kind: 'play', ref: { pool: 'click', name: 'tapped' } })
+    expect(n).toEqual({ kind: 'play', ref: { pool: 'click', name: 'tapped' }, ambient: true })
+  })
+
+  /**
+   * 装配层要靠这个标记决定「要不要考虑开口」：只有交出决策权那一拍才是宠物主动闲逛，
+   * 刚互动完的归位、反应动画播完的回待机都不算——那时候说话等于抢用户的话。
+   */
+  it('交出决策权那一条带 ambient，规则层钦定池的那条不带', () => {
+    const src = { pools: { idle: ['patrol'], turn: ['left'] } }
+    const amb = nextClip({
+      rules: ambientRules(),
+      picker: createPicker(() => 0),
+      source: src,
+      loops,
+      ref: { pool: 'idle', name: 'patrol' },
+    })
+    expect(amb.ambient).toBe(true)
+
+    const justInteracted = createRuleEngine(() => 0, 60_000)
+    justInteracted.feed('interacted')
+    const forced = nextClip({
+      rules: justInteracted,
+      picker: createPicker(() => 0),
+      source: src,
+      loops,
+      ref: { pool: 'click', name: 'tapped' },
+    })
+    expect(forced.ambient).toBeUndefined()
   })
 })

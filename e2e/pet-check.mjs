@@ -326,6 +326,50 @@ check('气泡：显示、覆盖、到点收起、悬停续命、跟着宠物走�
 
   await page.evaluate(() => window.__petDebug.hideBubble())
 })
+
+check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连点', async () => {
+  const tick = () => page.evaluate(() => window.__petDebug.tickAmbientForTalk())
+  const text = () => page.evaluate(() => window.__petDebug.bubbleText)
+  const open = () => page.evaluate(() => window.__petDebug.bubbleOpen)
+  const clocks = (talk, inter, rng) => page.evaluate((v) => {
+    window.__petDebug.hideBubble()
+    window.__petDebug.setLastTalk(v.talk)
+    window.__petDebug.setLastInteraction(v.inter)
+    window.__petDebug.setTalkRng(v.rng)
+  }, { talk, inter, rng })
+
+  // 掷不中概率：idle 闭嘴
+  await clocks(0, 0, 0.99)
+  assert.equal(await tick(), false, '没掷中概率还是说了话')
+
+  // 掷中了：该冒一句
+  await clocks(0, 0, 0.1)
+  assert.equal(await tick(), true, '闲到交出决策权却一句话都没说')
+  assert.ok((await text()).length > 0, '气泡开了但里面没字')
+
+  // 冷却：刚说过，点按钮不该又冒一句新的
+  const before = await text()
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  await page.waitForTimeout(460)
+  await page.click('.pet-panel button[data-id="game"]')
+  assert.equal(await text(), before, '25 秒冷却没挡住，连着冒了第二句')
+
+  // 事件必说：把 rng 钉在掷不中 idle 的值上，点按钮仍然要回话
+  await clocks(0, Date.now(), 0.99)
+  await page.click('.pet-panel button[data-id="game"]')
+  assert.equal(await open(), true, '点了按钮没回话——事件驱动的台词不许看概率')
+
+  /**
+   * 收尾：自己改过的状态自己还原（problem/06 §6.6 是双向的）。
+   * 交互时钟拨回现在、rng 留在掷不中的值上，后面的面板检查才不会撞上
+   * 「宠物自己开口」和「面板还开着」这两种残留——上一轮就是这么把
+   * 「刚进去就弹出了」那条搞红的。
+   */
+  await clocks(Date.now(), Date.now(), 0.99)
+  await feed({ x: 4, y: 4 })
+  await page.waitForTimeout(PANEL_HIDE_MS + 400)
+})
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
   pool: window.__petDebug.current.pool,

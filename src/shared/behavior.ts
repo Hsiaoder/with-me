@@ -59,8 +59,12 @@ export function createPicker(rng: () => number): Picker {
 
 /**
  * 播完一条之后该干什么：`loop` = 同一条无缝续挂，`play` = 换这条。
+ * `ambient` 只在「规则层交出决策权」那一拍给——装配层用它决定要不要考虑主动开口，
+ * 刚互动完的归位与反应动画播完的回待机都不算宠物自己闲逛，那时候说话是抢用户的话。
  */
-export type NextClip = { readonly kind: 'loop'; readonly ref: ClipRef } | { readonly kind: 'play'; readonly ref: ClipRef }
+export type NextClip =
+  | { readonly kind: 'loop'; readonly ref: ClipRef; readonly ambient?: true }
+  | { readonly kind: 'play'; readonly ref: ClipRef; readonly ambient?: true }
 
 export interface NextClipDeps {
   rules: RuleEngine
@@ -85,9 +89,9 @@ export function nextClip(deps: NextClipDeps): NextClip {
 
   if (decision === AMBIENT_POOL) {
     const amb = picker.pickAmbient(source, ref)
-    if (!amb) return { kind: 'play', ref }              // 环境池全空：原地重播，链子不断
-    if (amb.pool === ref.pool && amb.name === ref.name && loops(amb)) return { kind: 'loop', ref: amb }
-    return { kind: 'play', ref: amb }
+    if (!amb) return { kind: 'play', ref, ambient: true }              // 环境池全空：原地重播，链子不断
+    if (amb.pool === ref.pool && amb.name === ref.name && loops(amb)) return { kind: 'loop', ref: amb, ambient: true }
+    return { kind: 'play', ref: amb, ambient: true }
   }
 
   if (decision === ref.pool && loops(ref)) return { kind: 'loop', ref }

@@ -15,7 +15,7 @@ import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
-import { clamp } from '../shared/talk.js'
+import { clamp, pickTalk, type TalkReason } from '../shared/talk.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createBubble } from './bubble.js'
@@ -104,6 +104,8 @@ function bootstrap(skin: SkinPayload): void {
         } else {
           current = nxt.ref
         }
+        // 只有交出决策权那一拍才是宠物自己闲逛，这时候才考虑开口
+        if (nxt.ambient) maybeSayIdle()
       }
     })()
   }
@@ -123,8 +125,10 @@ function bootstrap(skin: SkinPayload): void {
 
   const panel = createPanel(root, defaultActions(), settings, {
     action: (a) => {
+      lastInteractionAt = Date.now()
       rules.feed('interacted')
       requestClip(a.pool)
+      sayFor(a.id === 'feed' ? 'feed' : a.id === 'game' ? 'game' : 'status')
     },
     setting: (patch) => {
       settings = { ...settings, ...patch }
@@ -176,6 +180,13 @@ function bootstrap(skin: SkinPayload): void {
     }, ms)
   }
 
+  /** 上次开口是什么时候。冷却的基准，六个 reason 都受它管。 */
+  let lastTalkAt = 0
+  /** 上次「用户动了」是什么时候。idle 那句要看它，规则层那把钟不对外露。 */
+  let lastInteractionAt = Date.now()
+  /** 随机源。e2e 换成定值，概率这条才测得准。 */
+  let talkRng = Math.random
+
   /**
    * 开口说一句。文本在这里 clamp，调用方不必各自记得截断。
    * 空文本（clamp 之后变空串）直接不显示——挂一个空气泡比不说话更怪。
@@ -184,8 +195,24 @@ function bootstrap(skin: SkinPayload): void {
     const clean = clamp(text)
     if (clean === '') return false
     bubble.show(clean, bubbleAnchorNow())
+    lastTalkAt = Date.now()
     armBubble(ms)
     return bubble.isOpen
+  }
+
+  /**
+   * 闲下来那一拍考虑开口。概率与冷却都在 `pickTalk` 里，这里只把运行时状态递进去。
+   * 不新增计时器：这一拍本来就是「一条播完」的节奏，20s 的门槛由规则层决定。
+   */
+  function maybeSayIdle(): void {
+    const line = pickTalk('idle', { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng)
+    if (line !== null) say(line)
+  }
+
+  /** 事件驱动的台词：用户做了动作就必说（只受冷却约束），不看概率。 */
+  function sayFor(reason: TalkReason): void {
+    const line = pickTalk(reason, { now: Date.now(), idleMs: 0, lastTalkAt }, talkRng)
+    if (line !== null) say(line)
   }
 
   /** 身体、面板、气泡、拖拽四者之一成立就要接住鼠标。 */
@@ -358,6 +385,10 @@ function bootstrap(skin: SkinPayload): void {
     // 屏幕内了，不需要再吸附。（启动时落地仍由 bootstrap 里的 snapToBottom 负责）
     rules.feed('dragged')
     requestClip('drag')
+    lastInteractionAt = Date.now()
+    // 点身体在当前实现里走的就是这条路（pointerdown 立刻算拖起，pointerup 收尾），
+    // 所以台词只有 drag——原来列过 click，但它没有任何触发点，留着就是死数据。
+    sayFor('drag')
   })
 
   /** 人工排查与 e2e 用的钩子；Task 13 把它换成 F9 全局快捷键。 */
@@ -399,6 +430,20 @@ function bootstrap(skin: SkinPayload): void {
     },
     /** 把气泡叫出来。ms 可缩短，免得 e2e 为了验收起要睡满 5 秒。 */
     say: (text: string, ms?: number): boolean => say(text, ms),
+    /** 随机源换成定值：概率这条要在 e2e 里测准，不能靠真随机。 */
+    setTalkRng: (v: number): number => {
+      talkRng = () => v
+      return v
+    },
+    /** 冷却时钟。e2e 传 0 表示「很久没说了」，传 Date.now() 还原。 */
+    setLastTalk: (v: number): number => (lastTalkAt = v),
+    /** 交互时钟。传 0 让 idle 的「闲够了」成立，传 Date.now() 还原。 */
+    setLastInteraction: (v: number): number => (lastInteractionAt = v),
+    /** 直接走一次「闲下来那一拍」的接缝，不改行为链的正常运行。 */
+    tickAmbientForTalk: (): boolean => {
+      maybeSayIdle()
+      return bubble.isOpen
+    },
     /** 立刻收掉气泡。e2e 用它收尾，免得残留的气泡影响后面几条检查的命中判定。 */
     hideBubble: (): boolean => {
       bubble.hide()

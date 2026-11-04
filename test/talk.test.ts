@@ -13,7 +13,7 @@ const ctx = (over: Partial<{ now: number; idleMs: number; lastTalkAt: number }> 
   lastTalkAt: 0,
   ...over,
 })
-const REASONS: TalkReason[] = ['idle', 'feed', 'game', 'status', 'drag', 'click']
+const REASONS: TalkReason[] = ['idle', 'feed', 'game', 'status', 'drag']
 
 describe('pickTalk', () => {
   for (const r of REASONS) {

@@ -8,7 +8,7 @@
 
 import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_IDLE_PROB, TALK_MAX_CHARS } from './config.js'
 
-export type TalkReason = 'idle' | 'feed' | 'game' | 'status' | 'drag' | 'click'
+export type TalkReason = 'idle' | 'feed' | 'game' | 'status' | 'drag'
 
 export type TalkCtx = {
   /** 现在（同一时间基准由调用方给）。 */
@@ -25,7 +25,6 @@ export const TALK_LINES: Record<TalkReason, string[]> = {
   game: ['玩什么？我准备好了', '来呀来呀', '我手气一向不错'],
   status: ['我精神好得很', '有点想睡觉', '今天状态满分'],
   drag: ['呀——要去哪', '轻一点啦', '被拎着走好丢人'],
-  click: ['嗯？', '叫我干嘛', '在呢在呢'],
 }
 
 /** 折叠换行、去首尾空白，超长按码点截断加省略号。空的一律变空串。 */
