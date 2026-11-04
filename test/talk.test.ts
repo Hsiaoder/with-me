@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { clamp, pickTalk, TALK_LINES, type TalkReason } from '../src/shared/talk.js'
+import { clamp, pickTalk, REPLY_MAX_WIDTH, TALK_LINES, type TalkReason } from '../src/shared/talk.js'
+import { labelWidth } from '../src/shared/text.js'
 import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_MAX_CHARS } from '../src/shared/config.js'
 
 /** rng 用队列桩：pickTalk 先掷概率（仅 idle）再抽句子，调用次数与顺序是契约的一部分。 */
@@ -15,15 +16,32 @@ const ctx = (over: Partial<{ now: number; idleMs: number; lastTalkAt: number }> 
 })
 const REASONS: TalkReason[] = ['idle', 'feed', 'game', 'status', 'drag']
 
-describe('pickTalk', () => {
+describe('台词表', () => {
   for (const r of REASONS) {
-    it(`${r} 组有台词，且每句都不超上限`, () => {
+    it(`${r} 组有台词，每句都带一句主人的短回复`, () => {
       expect(TALK_LINES[r].length).toBeGreaterThan(0)
-      for (const line of TALK_LINES[r]) expect([...line].length).toBeLessThanOrEqual(TALK_MAX_CHARS)
+      for (const line of TALK_LINES[r]) {
+        expect([...line.say].length).toBeLessThanOrEqual(TALK_MAX_CHARS)
+        expect(line.reply.length).toBeGreaterThan(0)
+      }
     })
   }
 
-  it('冷却期内六个 reason 一律闭嘴', () => {
+  it('回复放得进气泡里那颗按钮（按宽度算，不是字数）', () => {
+    for (const r of REASONS) {
+      for (const line of TALK_LINES[r]) {
+        expect(labelWidth(line.reply), `${r}「${line.reply}」太宽`).toBeLessThanOrEqual(REPLY_MAX_WIDTH)
+      }
+    }
+  })
+
+  it('每组都不止一句，否则连着两次互动会听到同一句', () => {
+    for (const r of REASONS) expect(TALK_LINES[r].length, r).toBeGreaterThan(1)
+  })
+})
+
+describe('pickTalk', () => {
+  it('冷却期内各组一律闭嘴', () => {
     for (const r of REASONS) {
       expect(pickTalk(r, ctx({ lastTalkAt: 100000 - TALK_COOLDOWN_MS + 1 }), seq(0, 0))).toBeNull()
     }
@@ -41,12 +59,16 @@ describe('pickTalk', () => {
   })
 
   it('rng 决定组内哪一句，且不会越界', () => {
-    const n = TALK_LINES.feed.length
-    const a = pickTalk('feed', ctx(), seq(0, 0))
-    const b = pickTalk('feed', ctx(), seq(0, 0.999))
-    expect(a).toBe(TALK_LINES.feed[0])
-    expect(TALK_LINES.feed).toContain(b)
-    expect(n).toBeGreaterThan(1)
+    expect(pickTalk('feed', ctx(), seq(0, 0))).toEqual(TALK_LINES.feed[0])
+    expect(TALK_LINES.feed).toContain(pickTalk('feed', ctx(), seq(0, 0.999)))
+    expect(TALK_LINES.feed.length).toBeGreaterThan(1)
+  })
+
+  it('返回的是整条 Line，回复跟着台词一起走', () => {
+    const line = pickTalk('game', ctx(), seq(0, 0))
+    expect(line).toEqual(TALK_LINES.game[0])
+    expect(typeof line!.say).toBe('string')
+    expect(typeof line!.reply).toBe('string')
   })
 })
 

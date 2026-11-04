@@ -160,6 +160,32 @@ body.pet-over {
   pointer-events: none;
 }
 
+/* 回应按钮：白色区底部那一行。文字区只占 24..104，而白色区实际到 128，
+   所以它放得下、也不压尾巴。必须 pointer-events:auto——底图与文字层都是 none。 */
+.pet-bubble-reply {
+  position: absolute;
+  left: 24px;
+  top: 106px;
+  width: 80px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2b2f36;
+  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+  pointer-events: auto;
+  cursor: var(--pet-cursor);
+}
+
+.pet-bubble-reply[hidden] {
+  display: none;
+}
+
+.pet-bubble-reply:hover {
+  background: #eef6f4;
+}
+
 .pet-bubble-text {
   position: absolute;
   left: 24px;

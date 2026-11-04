@@ -343,6 +343,37 @@ check('气泡：显示、覆盖、到点收起、悬停续命、跟着宠物走�
   await page.evaluate(() => window.__petDebug.hideBubble())
 })
 
+check('气泡里的回应按钮：看得见、点得到、点完收掉', async () => {
+  await feed({ x: 4, y: 4 })
+  await page.evaluate(() => {
+    window.__petDebug.setLastTalk(0)
+    window.__petDebug.say({ text: '哇，是吃的！', reply: '吃吧吃吧' }, 60000)
+  })
+  const btn = page.locator('.pet-bubble-reply')
+  assert.equal(await btn.textContent(), '吃吧吃吧', '按钮上不是那句短回应')
+  const box = await btn.boundingBox()
+  assert.ok(box && box.width >= 40 && box.height >= 14, `按钮小到点不到：${JSON.stringify(box)}`)
+  // 按钮正中命中的必须是按钮自己：jsdom 量不到命中，只有 Chromium 的命中测试算数
+  assert.equal(await page.evaluate((b) => {
+    const el = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)
+    return el !== null && el.closest('.pet-bubble-reply') !== null
+  }, box), true, '按钮被别层盖住了，用户点不到')
+
+  await btn.click()
+  assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), false, '点了回应按钮气泡没收')
+  assert.equal(await page.evaluate(() => window.__petDebug.bubbleText), '', '收了还留着字')
+  // 定时器归装配层管：点完不该还挂着一条 60 秒的尾巴
+  assert.equal(await page.evaluate(() => window.__petDebug.bubbleDeadlinePending), false,
+    '点完按钮定时器还挂着')
+
+  // 没配回复就不该有颗点不动的按钮占位
+  await page.evaluate(() => window.__petDebug.say({ text: '嗯？' }, 60000))
+  assert.equal(await page.evaluate(() => document.querySelector('.pet-bubble-reply').hidden), true)
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pet-bubble-reply')).display), 'none',
+    'hidden 没真的移出布局——作者样式又把 UA 那条顶掉了（面板的老坑）')
+  await page.evaluate(() => window.__petDebug.hideBubble())
+})
+
 check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连点', async () => {
   const tick = () => page.evaluate(() => window.__petDebug.tickAmbientForTalk())
   const text = () => page.evaluate(() => window.__petDebug.bubbleText)

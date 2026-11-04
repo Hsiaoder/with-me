@@ -1,13 +1,14 @@
 /**
- * 喂食列表的内容与它的排版契约。
+ * 喂食列表的内容。
  *
- * 从 config.ts 搬出来是因为这里要带一个函数（`labelWidth`），而 config 的规矩是
- * 「只有常量」。尺寸常量（格子边长、间距、一屏几格）仍留在 config。
+ * 从 config.ts 搬出来是因为 config 的规矩是「只放常量」，而这里带一条排版规则；
+ * 尺寸常量（格子边长、间距、一屏几格）仍留在 config。
+ * 宽度估算本身在 `shared/text.ts`——气泡按钮的回复上限用同一把尺，别两处各写一份。
  */
 
 export type Food = {
   id: string
-  /** 格子里显示的字。上限是**宽度**而不是字数——见 labelWidth。 */
+  /** 格子里显示的字。上限是**宽度**而不是字数——见 text.ts 的 labelWidth。 */
   name: string
   /**
    * 吃这种东西播哪条动画。名字是皮肤里的 clip 名（ascii slug），
@@ -19,18 +20,6 @@ export type Food = {
 
 /** 一格 56px、字号 13px，汉字约 13px 宽 → 上限按「几个汉字」算。 */
 export const FOOD_LABEL_WIDTH = 4
-
-/**
- * 估算显示宽度，单位是「一个汉字」。
- *
- * 为什么不直接数字符：`大闸蟹` 三个汉字比 `Token` 五个拉丁字母还宽，
- * 按码点数卡 4 会把 Token 挡在门外、却放过大闸蟹——量错了东西。
- */
-export function labelWidth(text: string): number {
-  let w = 0
-  for (const ch of text) w += /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFF60]/.test(ch) ? 1 : 0.55
-  return w
-}
 
 export const FOODS: readonly Food[] = [
   { id: 'token', name: 'Token', anim: { pool: 'eat', name: 'token' } },

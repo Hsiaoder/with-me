@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { FOODS, labelWidth, FOOD_LABEL_WIDTH } from '../src/shared/food.js'
+import { FOODS, FOOD_LABEL_WIDTH } from '../src/shared/food.js'
+import { labelWidth } from '../src/shared/text.js'
 import { CLIP_NAME, POOL_NAME } from '../src/shared/skin.js'
 
 /**

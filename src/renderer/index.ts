@@ -18,7 +18,7 @@ import { createRuleEngine } from '../shared/rules.js'
 import { clamp, pickTalk, type TalkReason } from '../shared/talk.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
-import { createBubble } from './bubble.js'
+import { createBubble, type BubbleContent } from './bubble.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
 import { createVideoPlayer } from './player/video-backend.js'
@@ -164,7 +164,14 @@ function bootstrap(skin: SkinPayload): void {
   })
 
   // ---- 气泡 ----
-  const bubble = createBubble(root)
+  const bubble = createBubble(root, {
+    // 点完回应按钮气泡自己收了，但定时器还在装配层手里：不清掉它，下一次 say
+    // 之前的空档里它会再 firing 一次（hide 是幂等的，但留着就是条没人认领的尾巴）。
+    onReply: () => {
+      if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
+      bubbleDeadline = null
+    },
+  })
   /** 气泡自己的一次性定时器。不挂 rAF：覆盖层没焦点时 rAF 会被节流，定时器才准（心跳那条踩过）。 */
   let bubbleDeadline: ReturnType<typeof setTimeout> | null = null
   /** 气泡显示尺寸。底图 32×38 等比放大 4 倍，非等比会把朝下的尾巴扯宽。 */
@@ -203,11 +210,13 @@ function bootstrap(skin: SkinPayload): void {
   /**
    * 开口说一句。文本在这里 clamp，调用方不必各自记得截断。
    * 空文本（clamp 之后变空串）直接不显示——挂一个空气泡比不说话更怪。
+   * 传字符串就没有按钮；传 Line（台词表给的）会带上主人那句短回应。
    */
-  function say(text: string, ms: number = BUBBLE_SHOW_MS): boolean {
-    const clean = clamp(text)
+  function say(content: BubbleContent | string, ms: number = BUBBLE_SHOW_MS): boolean {
+    const line = typeof content === 'string' ? { text: content } : content
+    const clean = clamp(line.text)
     if (clean === '') return false
-    bubble.show(clean, bubbleAnchorNow())
+    bubble.show({ text: clean, reply: line.reply }, bubbleAnchorNow())
     lastTalkAt = Date.now()
     armBubble(ms)
     return bubble.isOpen
@@ -216,16 +225,18 @@ function bootstrap(skin: SkinPayload): void {
   /**
    * 闲下来那一拍考虑开口。概率与冷却都在 `pickTalk` 里，这里只把运行时状态递进去。
    * 不新增计时器：这一拍本来就是「一条播完」的节奏，20s 的门槛由规则层决定。
+   *
+   * Line 是 {say, reply}，气泡要的是 {text, reply}——在这儿换名，别把两套叫法漏进组件里。
    */
   function maybeSayIdle(): void {
     const line = pickTalk('idle', { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng)
-    if (line !== null) say(line)
+    if (line !== null) say({ text: line.say, reply: line.reply })
   }
 
   /** 事件驱动的台词：用户做了动作就必说（只受冷却约束），不看概率。 */
   function sayFor(reason: TalkReason): void {
     const line = pickTalk(reason, { now: Date.now(), idleMs: 0, lastTalkAt }, talkRng)
-    if (line !== null) say(line)
+    if (line !== null) say({ text: line.say, reply: line.reply })
   }
 
   /** 身体、面板、气泡、拖拽四者之一成立就要接住鼠标。 */
@@ -468,6 +479,10 @@ function bootstrap(skin: SkinPayload): void {
     },
     get bubbleText(): string {
       return bubble.el.querySelector('.pet-bubble-text')?.textContent ?? ''
+    },
+    /** 还有没有挂起的自动收起定时器。点完按钮该是 false，否则就是条没人认领的尾巴。 */
+    get bubbleDeadlinePending(): boolean {
+      return bubbleDeadline !== null
     },
     get hitBox(): Rect {
       return hitBox()
