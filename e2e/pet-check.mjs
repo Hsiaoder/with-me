@@ -481,7 +481,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   const labels = await page.locator('.pet-panel button').evaluateAll((bs) =>
     bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
   assert.deepEqual(labels,
-    ['喂食=icons/rice.svg', '小游戏=icons/activity.svg', '状态=icons/heart.svg', '设置=icons/settings.svg',
+    ['喂食=icons/rice.svg', '小游戏=icons/game.svg', '状态=icons/heart.svg', '设置=icons/settings.svg',
       '说话=emotes/dots3.png'],
     `按钮的文字/图标不对：${JSON.stringify(labels)}`)
   // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空片。
@@ -493,7 +493,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true', 'true/true'],
     `图标没解码成功：${JSON.stringify(decoded)}`)
 
-  // 圆底（Kenney button_round_line）：计算样式里有 url 不算数——404 也照样在样式里，
+  // 圆底（Kenney button_round_depth_line）：计算样式里有 url 不算数——404 也照样在样式里，
   // 必须真的把它 decode 出来。这条同时钉住两条白名单（protocol 的 MIME 表 + copy-static 的 STATIC_EXT）。
   const disc = await page.evaluate(async () => {
     const b = document.querySelector('.pet-panel button[data-id]')
@@ -510,13 +510,16 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
     return { url: m[1], ok: img.naturalWidth > 0, w: img.naturalWidth }
   })
   assert.ok(disc.ok, `圆底没加载出来：${JSON.stringify(disc)}`)
+  // 钉住具体那一枚：只 decode 成功的话，素材换错名（line / depth_line 都在包里）也照样绿。
+  assert.match(disc.url, /icons\/button_round_depth_line\.svg$/, `圆底不是 depth_line 那枚：${disc.url}`)
   // 圆底只给动作按钮：切进设置视图，那里的按钮有自己的方形底板，叠两层会像画歪了。
   // 要真的切过去看——动作视图里没有 .pet-setting 按钮，选择器写错就是一条永远为真的断言。
   await page.click('.pet-panel button[data-id="settings"]')
   await page.waitForSelector('.pet-panel .pet-setting')
   const plateBtn = await page.evaluate(() =>
     getComputedStyle(document.querySelector('.pet-panel .pet-setting button')).backgroundImage)
-  assert.ok(!/button_round_line/.test(plateBtn), `设置视图的按钮也被套上圆底了：${plateBtn}`)
+  // 匹配整个 button_round_* 家族而不是具体一枚：素材换了名（line → depth_line）这条还得是真检查
+  assert.ok(!/button_round/.test(plateBtn), `设置视图的按钮也被套上圆底了：${plateBtn}`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 
   // 点击开的东西就得能点击关：重新点一下叫出来，再点一下收掉
@@ -636,6 +639,16 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await page.waitForSelector('.pet-panel .pet-food')
   assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '点喂食没进食物视图')
   assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), 6)
+  // 底板是裁过的蓝线版（外层灰框 + 白高光已裁掉）：slice 必须等于素材蓝线的 2px，
+  // 写成 8 就把裁掉的装饰又请回来了；计算样式里留着 url 本身查不出画错。
+  const plate = await page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector('.pet-panel'))
+    return { src: cs.borderImageSource, slice: cs.borderImageSlice, w: cs.borderTopWidth, pad: cs.paddingTop }
+  })
+  assert.match(plate.src, /icons\/button_rectangle_line_blue\.png/, `食物底板不是裁过的蓝线素材：${plate.src}`)
+  assert.equal(plate.slice, '2 fill', `九宫格切片不对：${plate.slice}`)
+  assert.equal(plate.w, '2px', `边框厚度不对：${plate.w}`)
+  assert.equal(plate.pad, '9px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
   // 一屏只露 4 格：视口是 overflow:hidden，其余靠滚
   // 12 格全在条上（视口只是没露出来），滚动才有东西可滚
   assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-food-strip > *').length), 6)
@@ -658,7 +671,10 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
 })
 
 check('食物列表：整屏步进、到底置灰、拖横条、收起后复位', async () => {
-  // 上一条检查现在会把列表收掉（选完即收），所以这条自己把列表叫出来，别接上一家的残局
+  // 上一条检查现在会把列表收掉（选完即收），所以这条自己把列表叫出来，别接上一家的残局。
+  // 先 hidePanel 再叫：上一条如果中途失败（比如底板素材断言炸了），列表会留在打开状态，
+  // 那时点身体是「收起」而不是「叫出」，接下来的 feed 按钮就等 30 秒超时。
+  await page.evaluate(() => window.__petDebug.hidePanel())
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')

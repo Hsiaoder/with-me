@@ -131,7 +131,7 @@ describe('设置视图', () => {
     const { panel } = mountWithSettings()
     const buttons = [...panel.el.querySelectorAll('button')]
     expect(buttons.map((b) => b.querySelector('img')?.getAttribute('src'))).toEqual([
-      'icons/rice.svg', 'icons/activity.svg', 'icons/heart.svg', 'icons/settings.svg', 'emotes/dots3.png',
+      'icons/rice.svg', 'icons/game.svg', 'icons/heart.svg', 'icons/settings.svg', 'emotes/dots3.png',
     ])
     expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])
     expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])

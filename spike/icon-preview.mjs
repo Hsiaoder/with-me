@@ -1,5 +1,5 @@
 /**
- * 一次性预览：把五枚手绘 SVG 摆在真实圆底（button_round_line）上，
+ * 一次性预览：把五枚手绘 SVG 摆在真实圆底（button_round_depth_line）上，
  * 浅色与深色桌面各一行，另加一行「只有图标没有圆底」的对照，用无头 Chromium 截图。
  * 图标这种 26px 的东西，看代码想象等于没看。
  * 跑法：node spike/icon-preview.mjs → spike/out/icon-preview.png
@@ -13,7 +13,7 @@ import { _electron as electron } from 'playwright'
 // 要预览哪几枚：路径相对 src/renderer，这样 svg 和 png 都能进来
 const ICONS = [
   { file: 'icons/rice.svg', label: '喂食' },
-  { file: 'icons/activity.svg', label: '小游戏' },
+  { file: 'icons/game.svg', label: '小游戏' },
   { file: 'icons/heart.svg', label: '状态' },
   { file: 'icons/settings.svg', label: '设置' },
   { file: 'emotes/dots3.png', label: '说话' },
@@ -25,7 +25,7 @@ const cell = (icon, disc, bg) => {
   // 圆底这里用 img 叠层而不是 CSS background：file:// 页面的 CSS 背景图在这台机器上没画出来
   // （应用里走 app:// 是好的，上一轮真实截图 + e2e 的 decode 检查都验过），
   // 预览工具不该为一个渲染差异分神，img 一定出图。
-  const frame = disc ? `<img class="disc" src="${url('icons/button_round_line.svg')}" alt="">` : ''
+  const frame = disc ? `<img class="disc" src="${url('icons/button_round_depth_line.svg')}" alt="">` : ''
   return `<div class="slot" style="background:${bg}">
     <div class="btn">${frame}<img src="${url(icon.file)}" alt=""></div>
     <div class="cap">${icon.label}</div>

@@ -1,5 +1,5 @@
 /**
- * 一次性截图探针：把食物列表叫出来，量底板四边的实际厚度是否等于素材里的 2+2+2+2。
+ * 一次性截图探针：把食物列表叫出来，数底板四边在屏幕上占几个像素。
  * 「看着对不算对」——border-image 拉伸后边框会不会变粗/不等厚，只能数屏幕像素。
  * 跑法：node spike/foods-shot.mjs → spike/out/foods-shot.png + foods-corner.png
  */
@@ -62,6 +62,20 @@ try {
   }
 
   await hitBody()
+  mkdirSync(join('spike', 'out'), { recursive: true })
+  // 先截一张动作视图：圆底（button_round_depth_line）和五枚图标是不是真的画出来了，只能看像素
+  const shot = async (name) => {
+    const buf = Buffer.from(
+      await app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows()[0]
+        return w.capturePage().then((img) => img.toPNG().toString('base64'))
+      }),
+      'base64',
+    )
+    writeFileSync(join('spike', 'out', name), buf)
+    return buf
+  }
+  await shot('actions-shot.png')
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')
   await page.waitForTimeout(400)
@@ -79,15 +93,8 @@ try {
   })
   console.log(JSON.stringify(geo))
 
-  const png = Buffer.from(
-    await app.evaluate(({ BrowserWindow }) => {
-      const w = BrowserWindow.getAllWindows()[0]
-      return w.capturePage().then((img) => img.toPNG().toString('base64'))
-    }),
-    'base64',
-  )
   mkdirSync(join('spike', 'out'), { recursive: true })
-  writeFileSync(join('spike', 'out', 'foods-shot.png'), png)
+  const png = await shot('foods-shot.png')
   const { w: imgW, h: imgH } = pngSize(png)
   const scale = imgW / geo.inner.w
   console.log(`截图 ${imgW}x${imgH}，scale=${scale.toFixed(3)}，面板 CSS ${geo.panel.w.toFixed(0)}x${geo.panel.h.toFixed(0)}`)

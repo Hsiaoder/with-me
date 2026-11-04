@@ -134,7 +134,7 @@ export type PanelButton = {
 
 export const PANEL_BUTTONS: readonly PanelButton[] = [
   { id: 'feed', label: '喂食', icon: 'icons/rice.svg', view: 'foods' },
-  { id: 'game', label: '小游戏', icon: 'icons/activity.svg', pool: 'click' },
+  { id: 'game', label: '小游戏', icon: 'icons/game.svg', pool: 'click' },
   { id: 'status', label: '状态', icon: 'icons/heart.svg', view: 'stats' },
   { id: 'settings', label: '设置', icon: 'icons/settings.svg', view: 'settings' },
   // 调试气泡用：点一次按顺序放一条台词（含那颗回应按钮），绕开冷却与概率。
