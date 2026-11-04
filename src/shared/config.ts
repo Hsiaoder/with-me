@@ -95,25 +95,26 @@ export const TALK_IDLE_PROB = 0.35
 /** 文字区实测 120×74（下面还有回应按钮那一行），13px 字号一行约 9 字、放得下 3 行；24 字留了余量。 */
 export const TALK_MAX_CHARS = 24
 /**
- * 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。
- * 现在是 Vector Style 2 那枚，但**不是原图**：原图描边有 2 个源像素厚，放大后太粗，
- * 用 `spike/emote-thin.mjs` 把内半圈刷白，只留最外 1 层（白色内腔同时变大到 28×28）。
+ * 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。**不是原图**，两步改出来的：
+ * ① `spike/emote-thin.mjs` 把 2 层厚的描边削到只剩最外 1 层（放大后 10px 太粗，要一半）；
+ * ② `spike/emote-shorten.mjs` 删掉身子中段 6 行均匀像素（32×38 → 32×32）——
+ *    圆角、描边、尾巴一行没动，所以只是变矮，不变形、描边也不会跟着变细。
  */
 export const BUBBLE_IMAGE = 'emotes/bubble.png'
 /**
- * 显示尺寸 = 原图 32×38 的 5 倍。挑 5 倍是为了描边：1 个源像素 × 5 = 5px，
+ * 显示尺寸 = 改过的原图 32×32 的 5 倍。挑 5 倍是为了描边：1 个源像素 × 5 = 5px，
  * 正好是 Pixel Style 6 那版（1px × 10 倍 = 10px）的一半。
  * Vector 图不要求整数倍（不是格子画），取整数只是让这几个数好核对。
  * style.css 里的 width/height 要和这两个数一致（有测试钉住，照 CLIP_FADE_MS 那条老规矩）。
  */
 export const BUBBLE_W = 160
-export const BUBBLE_H = 190
+export const BUBBLE_H = 160
 /**
- * 身子占原图第 0..30 行（尾巴 31..37），描边占第 0 行与第 30 行整条，
- * 纯白内腔是第 1..30 行的末尾 → 换算到显示尺寸就是 5..155。
- * 文字与回应按钮的下界只能到 155：越过它就压在描边上，字看起来要掉出气泡。
+ * 身子占原图第 0..24 行（尾巴 25..31），第 0 行与第 24 行是描边，
+ * 纯白内腔是第 1..23 行 → 换算到显示尺寸就是 5..120。
+ * 文字与回应按钮的下界只能到 120：越过它就压在描边上，字看起来要掉出气泡。
  */
-export const BUBBLE_INNER_BOTTOM = 155
+export const BUBBLE_INNER_BOTTOM = 120
 /** 气泡与它下面那块（面板或身体）之间的间隙。 */
 export const BUBBLE_GAP = 12
 
