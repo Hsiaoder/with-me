@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CLIP_FADE_MS, PANEL_HIDE_MS, SETTING_HIDE_MS } from '../src/shared/config.ts'
+import { CLIP_FADE_MS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -596,8 +596,8 @@ check('设置视图：切视图、改一项、当场落盘、收起延时更宽�
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   await feed({ x: h.x + h.w / 2, y: h.y + h.h + 400 })
   await page.waitForTimeout(PANEL_HIDE_MS + 300)
-  assert.equal((await dbg()).open, true, `设置视图在 ${PANEL_HIDE_MS}ms 后就收了，SETTING_HIDE_MS 没生效`)
-  await page.waitForTimeout(SETTING_HIDE_MS)
+  assert.equal((await dbg()).open, true, `设置视图在 ${PANEL_HIDE_MS}ms 后就收了，VIEW_HIDE_MS 没生效`)
+  await page.waitForTimeout(VIEW_HIDE_MS)
   assert.equal((await dbg()).open, false, '设置视图最终也没收，收起逻辑被绕过了')
 
   // 收起后回动作视图；重新打开时看到的应该是按钮而不是设置页

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createHoverTimer } from '../src/shared/hover.js'
-import { HOVER_DWELL_MS, PANEL_HIDE_MS, SETTING_HIDE_MS } from '../src/shared/config.js'
+import { HOVER_DWELL_MS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.js'
 
 const on = { x: 1, y: 1 }
 const off = { x: 9, y: 9 }
@@ -191,10 +191,10 @@ describe('收起延时可切换', () => {
     const c = clock()
     const h = openedThenLeft(c)
     expect(h.onPoint(off, false, false)).toBe('none')
-    h.setHideMs(SETTING_HIDE_MS)
+    h.setHideMs(VIEW_HIDE_MS)
     c.set(901 + PANEL_HIDE_MS)
     expect(h.onPoint(off, false, false)).toBe('none')
-    c.set(901 + SETTING_HIDE_MS)
+    c.set(901 + VIEW_HIDE_MS)
     expect(h.onPoint(off, false, false)).toBe('close')
   })
 
@@ -202,14 +202,14 @@ describe('收起延时可切换', () => {
     const c = clock()
     const h = openedThenLeft(c)
     expect(h.pendingMs(c.now())).toBe(PANEL_HIDE_MS)
-    h.setHideMs(SETTING_HIDE_MS)
-    expect(h.pendingMs(c.now())).toBe(SETTING_HIDE_MS)
+    h.setHideMs(VIEW_HIDE_MS)
+    expect(h.pendingMs(c.now())).toBe(VIEW_HIDE_MS)
   })
 
   it('换回 PANEL_HIDE_MS 就恢复原行为', () => {
     const c = clock()
     const h = openedThenLeft(c)
-    h.setHideMs(SETTING_HIDE_MS)
+    h.setHideMs(VIEW_HIDE_MS)
     h.setHideMs(PANEL_HIDE_MS)
     c.set(901 + PANEL_HIDE_MS)
     expect(h.onPoint(off, false, false)).toBe('close')

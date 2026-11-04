@@ -25,7 +25,7 @@ export interface HoverTimer {
    */
   pendingMs(now: number): number | null
   /**
-   * 换收起延时。设置视图需要更宽裕的时间挑选项（见 SETTING_HIDE_MS），
+   * 换收起延时。设置视图需要更宽裕的时间挑选项（见 VIEW_HIDE_MS），
    * 回动作视图时换回来。只影响收起，不影响弹出的停留门槛。
    */
   setHideMs(ms: number): void

@@ -5,6 +5,7 @@ import {
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, HOVER_DWELL_MS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE,
+  FOODS, FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
 } from '../src/shared/config.js'
 import { mimeOf } from '../src/main/protocol.js'
 
@@ -60,5 +61,35 @@ describe('气泡素材', () => {
 
   it('app:// 的 MIME 表认得 .png', () => {
     expect(mimeOf('a/b.png')).toBe('image/png')
+  })
+})
+
+describe('食物表', () => {
+  it('id 唯一', () => {
+    const ids = FOODS.map((f) => f.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('名字不超过一格能放下的 4 个汉字', () => {
+    for (const f of FOODS) expect([...f.name].length).toBeLessThanOrEqual(4)
+  })
+
+  it('配了 anim 的必须落在皮肤契约保证存在的池里', () => {
+    for (const f of FOODS) {
+      if (f.anim === undefined) continue
+      expect(REQUIRED_POOLS as readonly string[]).toContain(f.anim.pool)
+    }
+  })
+
+  it('尺寸契约：一屏正好 4 格，视口 236', () => {
+    expect(FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP).toBe(236)
+  })
+})
+
+describe('操作型视图共用宽裕的收起延时', () => {
+  it('VIEW_HIDE_MS 是 5000，旧名字 SETTING_HIDE_MS 已经不存在', () => {
+    expect(VIEW_HIDE_MS).toBe(5000)
+    const src = readFileSync('src/shared/config.ts', 'utf8')
+    expect(src).not.toContain('SETTING_HIDE_MS')
   })
 })

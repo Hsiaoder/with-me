@@ -5,7 +5,7 @@ import {
   IDLE_LONG_MS,
   PANEL_GAP,
   PANEL_HIDE_MS,
-  SETTING_HIDE_MS,
+  VIEW_HIDE_MS,
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
@@ -138,8 +138,9 @@ function bootstrap(skin: SkinPayload): void {
       if (panel.isOpen) placePanel()
     },
     view: (v) => {
-      // 设置视图要连点两行开关，1500ms 的收起延时不够用，换宽裕的值并重挂自动收起的定时器
-      hover.setHideMs(v === 'settings' ? SETTING_HIDE_MS : PANEL_HIDE_MS)
+      // 操作型视图（设置要连点两行开关、食物列表要拖横条逐个挑）用宽裕的收起延时，
+      // 1500ms 不够操作完；回动作视图换回快档。顺带重挂自动收起的定时器。
+      hover.setHideMs(v === 'actions' ? PANEL_HIDE_MS : VIEW_HIDE_MS)
       scheduleHover()
       if (panel.isOpen) placePanel()
     },
