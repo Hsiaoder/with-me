@@ -13,12 +13,14 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, bubbleAnchor, panelAnchor, rectContains, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, panelAnchor, rectContains, statsAnchor, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
 import { clamp, nextTalkIndex, pickTalk, TALK_FLOW, type TalkReason } from '../shared/talk.js'
+import { isBlue, isHungry } from '../shared/stats.js'
+import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createBubble, type BubbleContent } from './bubble.js'
@@ -138,6 +140,8 @@ function bootstrap(skin: SkinPayload): void {
       requestClip(a.pool)
       if (a.id === 'talk') sayNextDebugLine()
       else sayFor(a.id === 'game' ? 'game' : 'status')
+      // 逗玩算一次养成动作。给多少由主进程算，这里只报「发生了什么」。
+      if (a.id === 'game') window.petBridge?.statEvent({ kind: 'play' })
     },
     /**
      * 点了一格食物。播哪条动画由食物自己说了算；皮肤里没有那个池（自带的 block
@@ -148,11 +152,19 @@ function bootstrap(skin: SkinPayload): void {
       rules.feed('interacted')
       if (!requestClip(f.anim?.pool ?? 'click')) requestClip('click')
       sayFor('feed')
+      window.petBridge?.statEvent({ kind: 'feed', food: f.id })
       // 选完即收：列表就压在宠物脚底那块，不收的话你点完看不到它吃。
       // 必须先 hover.reset() 再 panel.hide()：状态机自己那份「开着」的标记不会因为
       // 你直接收面板而消失，不复位的话鼠标停在原地就再也弹不出来了（拖拽那条路同样这么做）。
       hover.reset()
       panel.hide()
+    },
+    /**
+     * 状态栏里点性别。本地不预置反馈：它要写进存档，回灌一下也就是一帧的事，
+     * 而先改本地就会出现「主进程拒收但界面已经改了」的假成功。
+     */
+    identity: (patch) => {
+      window.petBridge?.setIdentity(patch)
     },
     setting: (patch) => {
       settings = { ...settings, ...patch }
@@ -175,6 +187,13 @@ function bootstrap(skin: SkinPayload): void {
     panel.setSettings(s)
   })
 
+  /** 主进程推来的数值快照。状态视图直接吃它，台词档也要看它。 */
+  let snap: StatsSnapshot | null = null
+  window.petBridge?.onStats((s) => {
+    snap = s
+    panel.setStats(s)
+  })
+
   // ---- 气泡 ----
   const bubble = createBubble(root, {
     // 点完回应按钮气泡自己收了，但定时器还在装配层手里：不清掉它，下一次 say
@@ -182,6 +201,8 @@ function bootstrap(skin: SkinPayload): void {
     onReply: () => {
       if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
       bubbleDeadline = null
+      // 「你理它了」是养成里最该有反馈的一次点击：它同时涨心情与亲密。
+      window.petBridge?.statEvent({ kind: 'reply' })
     },
   })
   /** 气泡自己的一次性定时器。不挂 rAF：覆盖层没焦点时 rAF 会被节流，定时器才准（心跳那条踩过）。 */
@@ -241,7 +262,15 @@ function bootstrap(skin: SkinPayload): void {
    * Line 是 {say, reply}，气泡要的是 {text, reply}——在这儿换名，别把两套叫法漏进组件里。
    */
   function maybeSayIdle(): void {
-    const line = pickTalk('idle', { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng)
+    // 数值决定它这一拍说哪一档的话：饿了就讨食，蔫了就蔫着，否则才是闲得慌。
+    // 三档共用同一道门（闲够 + 概率，见 talk.ts 的 SELF_TALK_REASONS），
+    // 所以饿与蔫不会让它变成复读机，只是把内容换掉。
+    const reason: TalkReason = snap !== null && isHungry(snap.stats)
+      ? 'hungry'
+      : snap !== null && isBlue(snap.stats)
+        ? 'blue'
+        : 'idle'
+    const line = pickTalk(reason, { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng)
     if (line !== null) say({ text: line.say, reply: line.reply })
   }
 
@@ -286,7 +315,12 @@ function bootstrap(skin: SkinPayload): void {
     panel.show({ x: body.x, y: body.y + body.h + PANEL_GAP })
     const size = panel.size()
     if (!size) return
-    panel.show(panelAnchor(body, size, screen, PANEL_GAP))
+    // 状态栏走另一条锚点：它竖在宠物**右侧**，不去挤脚下那一横条——那是按钮面板的地盘，
+    // 两者叠在一起的话状态栏会挡住按钮，或者被按钮挡住，两个都读不到。
+    const at = panel.view === 'stats'
+      ? statsAnchor(body, size, screen, PANEL_GAP)
+      : panelAnchor(body, size, screen, PANEL_GAP)
+    panel.show(at)
   }
 
   /**
@@ -385,7 +419,12 @@ function bootstrap(skin: SkinPayload): void {
      */
     const overPanel = hit !== null && hit.closest('.pet-panel') !== null
     const ev = hover.onPoint(p, over || dragging, overPanel)
-    if (ev === 'open') placePanel()
+    if (ev === 'open') {
+      placePanel()
+      // 每次打开都报，主进程按「20 小时内只算一次」发亲密。
+      // 渲染层不自己判日界：它没有存档里的 lastEventAt，判了就是两份状态。
+      window.petBridge?.statEvent({ kind: 'daily-open' })
+    }
     if (ev === 'close') panel.hide()
     /**
      * 交互区 = 身体框、开着的面板框、开着的气泡框三者的外接矩形。用外接矩形而不是并集，
@@ -518,6 +557,17 @@ function bootstrap(skin: SkinPayload): void {
     hideBubble: (): boolean => {
       bubble.hide()
       if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
+      bubbleDeadline = null
+      return true
+    },
+    /**
+     * 立刻收起面板并复位悬停。e2e 用它收尾：状态栏这类视图留在打开状态会把下一条
+     * 检查的「点某个按钮」变成等一个不该存在的节点（30 秒超时）。
+     * 必须连 hover.reset() 一起，理由见 problem/05 §5.12。
+     */
+    hidePanel: (): boolean => {
+      hover.reset()
+      panel.hide()
       return true
     },
     get bubbleOpen(): boolean {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { applyCare, applySettings, defaultSave, migrate, toSaveFile } from '../src/shared/save.js'
+import { applyIdentity, applySettings, applyStats, DEFAULT_IDENTITY, defaultSave, IDENTITY_NAME_MAX, migrate, toSaveFile } from '../src/shared/save.js'
+import { INITIAL_STATS } from '../src/shared/stats.js'
 import { SAVE_VERSION } from '../src/shared/config.js'
 
 const NOW = 1_762_000_000_000
@@ -9,7 +10,8 @@ describe('defaultSave', () => {
     const s = defaultSave(NOW)
     expect(s.version).toBe(SAVE_VERSION)
     expect(s.lastSeenAt).toBe(NOW)
-    expect(s.stats).toEqual({ hunger: 80, mind: 80, clean: 80, mood: 80 })
+    expect(s.stats).toEqual(INITIAL_STATS)
+    expect(s.identity).toEqual(DEFAULT_IDENTITY)
     expect(s.warnings).toEqual([])
   })
 })
@@ -19,14 +21,14 @@ describe('migrate', () => {
     const s = migrate(null, NOW)
     expect(s.version).toBe(SAVE_VERSION)
     expect(s.skin).toBe('block')
-    expect(s.stats).toEqual({ hunger: 80, mind: 80, clean: 80, mood: 80 })
+    expect(s.stats).toEqual(INITIAL_STATS)
   })
 
   it('保留已有字段，补齐缺失字段', () => {
-    const s = migrate({ version: 1, skin: 'block', stats: { hunger: 30 } }, NOW)
+    const s = migrate({ version: 2, skin: 'block', stats: { hunger: 30 } }, NOW)
     expect(s.skin).toBe('block')
     expect(s.stats.hunger).toBe(30)
-    expect(s.stats.mood).toBe(80)
+    expect(s.stats.mood).toBe(INITIAL_STATS.mood)
   })
 
   it('版本高于支持范围时不猜字段含义，记 warning 并按默认值继续', () => {
@@ -56,37 +58,67 @@ describe('migrate', () => {
   })
 
   it('非有限数值不采信，避免 NaN 渗进存档', () => {
-    const s = migrate({ version: 1, stats: { hunger: 'x', mind: NaN, clean: Infinity } }, NOW)
-    expect(s.stats).toEqual({ hunger: 80, mind: 80, clean: 80, mood: 80 })
+    const s = migrate({ version: 2, stats: { hunger: 'x', mood: NaN, weight: Infinity } }, NOW)
+    expect(s.stats).toEqual(INITIAL_STATS)
   })
 
   it('空字符串 skin 回默认，防止渲染层拿到空目录名', () => {
-    expect(migrate({ version: 1, skin: '' }, NOW).skin).toBe('block')
+    expect(migrate({ version: 2, skin: '' }, NOW).skin).toBe('block')
   })
 
   it('stats 是数组或 null 时不炸', () => {
-    expect(migrate({ version: 1, stats: [1, 2] }, NOW).stats.hunger).toBe(80)
-    expect(migrate({ version: 1, stats: null }, NOW).stats.mood).toBe(80)
+    expect(migrate({ version: 2, stats: [1, 2] }, NOW).stats.hunger).toBe(INITIAL_STATS.hunger)
+    expect(migrate({ version: 2, stats: null }, NOW).stats.mood).toBe(INITIAL_STATS.mood)
+  })
+
+  it('越界的数值夹回 0..100，别把 999 当真实读数', () => {
+    const s = migrate({ version: 2, stats: { hunger: 999, mood: -50 } }, NOW)
+    expect(s.stats.hunger).toBe(100)
+    expect(s.stats.mood).toBe(0)
+  })
+
+  it('v1 旧档：hunger/mood 接着用，mind/clean 那两条占位丢弃，体重与亲密给默认', () => {
+    // v1 的 stats 是占位形状（{hunger,mind,clean,mood} 全 80，且没有任何生产调用方改过它），
+    // 所以旧值可以放心沿用；认不出的键直接丢，不必记 warning 吓用户。
+    const s = migrate({ version: 1, stats: { hunger: 42, mind: 10, clean: 20, mood: 33 } }, NOW)
+    expect(s.stats).toEqual({ hunger: 42, mood: 33, weight: 50, bond: 0 })
+    expect(s.identity).toEqual(DEFAULT_IDENTITY)
+    expect(s.warnings).toEqual([])
+  })
+
+  it('identity：认得的性别保留，认不出回默认；名字去空白、超长截断、空回默认', () => {
+    expect(migrate({ version: 2, identity: { name: '  肥肥  ', gender: 'male' } }, NOW).identity).toEqual({
+      name: '肥肥', gender: 'male',
+    })
+    expect(migrate({ version: 2, identity: { name: '', gender: '外星人' } }, NOW).identity).toEqual(DEFAULT_IDENTITY)
+    const long = migrate({ version: 2, identity: { name: '一'.repeat(30) } }, NOW)
+    expect([...long.identity.name].length).toBe(IDENTITY_NAME_MAX)
+  })
+
+  it('identity 是垃圾形状时不炸', () => {
+    for (const bad of [null, 42, [], 'x']) {
+      expect(() => migrate({ version: 2, identity: bad }, NOW)).not.toThrow()
+    }
   })
 })
 
-describe('applyCare', () => {
-  it('按增量累加并夹在 0..100', () => {
-    const s = defaultSave(NOW)
-    expect(applyCare(s, { hunger: -30 }).stats.hunger).toBe(50)
-    expect(applyCare(s, { hunger: 99 }).stats.hunger).toBe(100)
-    expect(applyCare(s, { hunger: -500 }).stats.hunger).toBe(0)
+describe('applyStats / applyIdentity', () => {
+  it('写入整份数值时逐条夹在 0..100，非有限值保持原样', () => {
+    const s = applyStats(defaultSave(NOW), { hunger: 500, mood: -3, weight: Number.NaN, bond: 12 })
+    expect(s.stats).toEqual({ ...INITIAL_STATS, hunger: 100, mood: 0, bond: 12 })
   })
 
-  it('忽略非数值增量，也不动没提到的字段', () => {
-    const s = applyCare(defaultSave(NOW), { mood: 5, hunger: Number.NaN })
-    expect(s.stats).toEqual({ hunger: 80, mind: 80, clean: 80, mood: 85 })
+  it('只认得的两档性别，其余丢弃；返回新对象不改原存档', () => {
+    const s = defaultSave(NOW)
+    expect(applyIdentity(s, { name: '团子', gender: 'female' }).identity).toEqual({ name: '团子', gender: 'female' })
+    expect(applyIdentity(s, { gender: '外星人' }).identity.gender).toBe(DEFAULT_IDENTITY.gender)
+    expect(s.identity.name).toBe(DEFAULT_IDENTITY.name)
   })
 
-  it('返回新对象，不改原存档', () => {
-    const s = defaultSave(NOW)
-    applyCare(s, { mood: 1 })
-    expect(s.stats.mood).toBe(80)
+  it('名字去空白并截到上限（状态栏那一行宽度是死的）', () => {
+    const s = applyIdentity(defaultSave(NOW), { name: '  超长名字测试测试测试  ' })
+    expect([...s.identity.name].length).toBeLessThanOrEqual(IDENTITY_NAME_MAX)
+    expect(applyIdentity(defaultSave(NOW), { name: '   ' }).identity.name).toBe(DEFAULT_IDENTITY.name)
   })
 })
 
@@ -94,8 +126,8 @@ describe('toSaveFile', () => {
   it('去掉 warnings，它属于本次读档的诊断而不是持久数据', () => {
     const file = toSaveFile(migrate({ version: 99 }, NOW))
     expect(file).toEqual({
-      version: SAVE_VERSION, skin: 'block', stats: defaultSave(NOW).stats,
-      settings: defaultSave(NOW).settings, lastSeenAt: NOW,
+      version: SAVE_VERSION, skin: 'block', identity: defaultSave(NOW).identity,
+      stats: defaultSave(NOW).stats, settings: defaultSave(NOW).settings, lastSeenAt: NOW,
     })
     expect('warnings' in file).toBe(false)
     expect('fromFuture' in file).toBe(false)

@@ -41,6 +41,8 @@ export function registerIpc(
   platform: Platform,
   bridge: ClickThroughBridge,
   onSettings: (patch: Partial<Settings>) => void,
+  onStatEvent: (raw: unknown) => void,
+  onIdentity: (raw: unknown) => void,
 ): void {
   ipcMain.on(IPC.clickThroughRequest, (_e, p: unknown) => {
     const grab = toBool((p as ClickThroughPayload | null | undefined)?.grab)
@@ -51,4 +53,8 @@ export function registerIpc(
     const next = toSettings(s)
     if (next !== null) onSettings(next)
   })
+  // 数值与身份的形状校验在持有存档的那一侧（main/stats.ts）做：
+  // 它才知道哪些食物真的有效、哪些值写进存档才不会把状态栏弄坏。
+  ipcMain.on(IPC.statsEvent, (_e, raw: unknown) => onStatEvent(raw))
+  ipcMain.on(IPC.identity, (_e, raw: unknown) => onIdentity(raw))
 }

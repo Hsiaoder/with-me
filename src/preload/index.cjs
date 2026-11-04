@@ -18,4 +18,10 @@ contextBridge.exposeInMainWorld('petBridge', {
   setSettings: (s) => ipcRenderer.send('pet:settings', s),
   /** 开局把存档里的可见性设置推过来，面板的选中态要用它。 */
   onSettings: (cb) => ipcRenderer.on('pet:settings-loaded', (_e, s) => cb(s)),
+  /** 上报一次养成动作（喂 / 玩 / 回应 / 开面板）。算多少由主进程说了算。 */
+  statEvent: (e) => ipcRenderer.send('pet:stats-event', e),
+  /** 改名与改性别。 */
+  setIdentity: (patch) => ipcRenderer.send('pet:identity', patch),
+  /** 开局推一次数值快照，之后每次 tick 或动作都会再推一次。 */
+  onStats: (cb) => ipcRenderer.on('pet:stats-loaded', (_e, s) => cb(s)),
 })

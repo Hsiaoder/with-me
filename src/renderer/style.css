@@ -256,6 +256,89 @@ body.pet-over {
   gap: 4px;
 }
 
+/* 状态栏：竖一条，名字在上、四条读数在下。宽度定死 150px——它站在宠物右侧，
+   再宽就会在宠物贴右边缘时顶出屏幕，那时它只能翻到左边，反而压住宠物。 */
+.pet-panel.is-stats {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  width: 150px;
+}
+
+.pet-panel.is-stats button {
+  width: auto;
+  height: auto;
+  padding: 3px 7px;
+  border-radius: 6px;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.9);
+  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+}
+
+.pet-panel.is-stats button:hover {
+  background: #eef6f4;
+}
+
+.pet-stats-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pet-stats-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  font: 600 13px/1.4 "Microsoft YaHei UI", sans-serif;
+  color: #2b2f36;
+}
+
+.pet-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pet-stat-label {
+  flex: 0 0 auto;
+  min-width: 40px;
+  color: rgba(0, 0, 0, 0.62);
+  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+}
+
+.pet-stat-bar {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+/* 颜色分档（>60 蓝 / >20 黄 / 否则红，见 shared/stats.ts 的 statBand）。
+   只靠颜色表意不够，右边还并排写着数字——色觉障碍或桌面壁纸花的时候还能读。 */
+.pet-stat-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: #5aa0e6;
+}
+
+.pet-stat-bar.is-mid > i {
+  background: #e6c15a;
+}
+
+.pet-stat-bar.is-low > i {
+  background: #e6572c;
+}
+
+.pet-stat-value {
+  flex: 0 0 auto;
+  min-width: 20px;
+  text-align: right;
+  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+  color: #2b2f36;
+}
+
 /* 食物列表 */
 .pet-foods {
   display: flex;

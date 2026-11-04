@@ -121,9 +121,9 @@ export const BUBBLE_GAP = 12
 /**
  * 面板上的功能按钮，顺序即显示顺序。
  *
- * `pool` 是点下去播哪一类反应；`view` 是切到哪个视图。业务功能（喂食扣饥饿值、
- * 小游戏、状态面板）还没接，带 pool 的三条都指向 click 池，因为它是皮肤契约保证存在的反应池。
- * 图标是 SVG 文件，相对渲染层页面（`app://assets/renderer/index.html`）解析。
+ * `pool` 是点下去播哪一类反应；`view` 是切到哪个视图。喂食与状态已经接上真功能
+ * （一个出列表并扣饥饿，一个出数值状态栏），小游戏与状态按钮仍指向 click 池，
+ * 因为它是皮肤契约保证存在的反应池。图标相对渲染层页面（`app://assets/renderer/index.html`）解析。
  */
 export type PanelButton = {
   id: string
@@ -131,13 +131,13 @@ export type PanelButton = {
   label: string
   icon: string
   pool?: string
-  view?: 'settings' | 'foods'
+  view?: 'settings' | 'foods' | 'stats'
 }
 
 export const PANEL_BUTTONS: readonly PanelButton[] = [
   { id: 'feed', label: '喂食', icon: 'icons/rice.svg', view: 'foods' },
   { id: 'game', label: '小游戏', icon: 'icons/activity.svg', pool: 'click' },
-  { id: 'status', label: '状态', icon: 'icons/status.svg', pool: 'click' },
+  { id: 'status', label: '状态', icon: 'icons/status.svg', view: 'stats' },
   { id: 'settings', label: '设置', icon: 'icons/settings.svg', view: 'settings' },
   // 调试气泡用：点一次按顺序放一条台词（含那颗回应按钮），绕开冷却与概率。
   { id: 'talk', label: '说话', icon: 'emotes/dots3.png', pool: 'click' },
@@ -152,7 +152,12 @@ export const FOOD_VISIBLE = 4
 /** 食物表本体在 `shared/food.ts`——那里要带排版宽度函数，config 只放常量。 */
 
 // ---- 存档 ----
-export const SAVE_VERSION = 1
+/**
+ * v2：加了 identity（名字/性别）与养成数值四条。v1 的 stats 是占位形状
+ * （{hunger,mind,clean,mood} 全 80，且没有任何生产调用方改过它），迁移时 hunger/mood 沿用、
+ * mind/clean 丢弃，见 shared/save.ts 的 migrate。
+ */
+export const SAVE_VERSION = 2
 export const SAVE_FILE = 'save.json'
 
 // ---- 窗口 ----

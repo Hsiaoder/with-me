@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadFrom, saveTo } from '../src/main/storage.js'
 import { defaultSave } from '../src/shared/save.js'
-import { SAVE_FILE } from '../src/shared/config.js'
+import { SAVE_FILE, SAVE_VERSION } from '../src/shared/config.js'
 
 const NOW = 1_762_000_000_000
 let dir = ''
@@ -91,14 +91,14 @@ describe('loadFrom', () => {
   it('主文件是合法 JSON 但内容是垃圾时走迁移，而不是当损坏', () => {
     writeFileSync(main(), '"just a string"', 'utf8')
     const s = loadFrom(dir, NOW)
-    expect(s.version).toBe(1)
+    expect(s.version).toBe(SAVE_VERSION)
     expect(s.skin).toBe('block')
   })
 
   it('写完立刻读回，字段一致', () => {
-    saveTo(dir, { ...defaultSave(NOW), skin: 'block', stats: { hunger: 12, mind: 34, clean: 56, mood: 78 } }, NOW)
+    saveTo(dir, { ...defaultSave(NOW), skin: 'block', stats: { hunger: 12, mood: 34, weight: 56, bond: 78 } }, NOW)
     const s = loadFrom(dir, NOW)
-    expect(s.stats).toEqual({ hunger: 12, mind: 34, clean: 56, mood: 78 })
+    expect(s.stats).toEqual({ hunger: 12, mood: 34, weight: 56, bond: 78 })
   })
 
   it('主文件是个目录时也不崩（existsSync 会放过它）', () => {

@@ -105,3 +105,23 @@ export function panelAnchor(body: Rect, size: { w: number; h: number }, screen: 
   const y = Math.min(Math.max(y0, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
   return { x, y }
 }
+
+/**
+ * 状态栏该摆在宠物哪一侧（覆盖层 CSS 坐标）。
+ *
+ * **右侧优先**：按钮面板占着脚下那一横条，状态栏再去那儿就会和面板叠住；
+ * 而纵向读数天然是竖的一条，挂右边既不压宠物也不压按钮。
+ * 右边放不下（宠物贴右边缘）才翻到左边——**不是夹进屏幕**：夹过来会压在宠物身上，
+ * 那正是气泡那条踩过的坑（见 problem/05 §5.10）。两边都不行才夹回屏幕内。
+ *
+ * 纵向与身体中线对齐后夹回屏幕内：宠物站在地上时状态栏有一半在屏幕外是没用的。
+ */
+export function statsAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Point {
+  const right = body.x + body.w + gap
+  const left = body.x - gap - size.w
+  const x0 = right + size.w <= screen.x + screen.w ? right : left
+  const x = Math.min(Math.max(x0, screen.x), Math.max(screen.x, screen.x + screen.w - size.w))
+  const centered = body.y + body.h / 2 - size.h / 2
+  const y = Math.min(Math.max(centered, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
+  return { x, y }
+}

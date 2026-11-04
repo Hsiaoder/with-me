@@ -1,5 +1,6 @@
 import type { Point } from '../shared/types.js'
 import type { SkinLoadedPayload } from '../shared/ipc.js'
+import type { StatsSnapshot } from '../shared/save.js'
 import type { Settings } from '../shared/visibility.js'
 
 /**
@@ -17,6 +18,10 @@ declare global {
       setFocusable(on: boolean): void
       setSettings(s: Settings): void
       onSettings(cb: (s: Settings) => void): void
+      /** 上报一次养成动作。给多少由主进程算，渲染层不猜。 */
+      statEvent(e: unknown): void
+      setIdentity(patch: { name?: string; gender?: string }): void
+      onStats(cb: (s: StatsSnapshot) => void): void
     }
   }
 }

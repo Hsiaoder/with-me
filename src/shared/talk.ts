@@ -12,7 +12,10 @@
 import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_IDLE_PROB, TALK_MAX_CHARS } from './config.js'
 import { labelWidth } from './text.js'
 
-export type TalkReason = 'idle' | 'feed' | 'game' | 'status' | 'drag'
+export type TalkReason = 'idle' | 'hungry' | 'blue' | 'feed' | 'game' | 'status' | 'drag'
+
+/** 自己搭话的几档：都要过「闲够了 + 概率」那道门。事件驱动的（喂/玩/拖）不受它管。 */
+export const SELF_TALK_REASONS: readonly TalkReason[] = ['idle', 'hungry', 'blue']
 
 /** 宠物说一句，按钮上是主人那句短回应。 */
 export type Line = { say: string; reply: string }
@@ -35,6 +38,18 @@ export const TALK_LINES: Record<TalkReason, Line[]> = {
     { say: '你回来陪我玩嘛', reply: '来了来了' },
     { say: '一个人待着好安静', reply: '我在呢' },
     { say: '要不要一起干点啥', reply: '好啊' },
+  ],
+  // 数值低了它自己提。这两档和 idle 一样属于「自己搭话」，都过闲够 + 概率那道门，
+  // 不然饿一句蔫一句会把气泡刷成噪音。
+  hungry: [
+    { say: '肚子叫了，有吃的吗', reply: '这就喂你' },
+    { say: '好饿，趴一会儿', reply: '等着我去拿' },
+    { say: '你闻闻，我饿了', reply: '拿你没办法' },
+  ],
+  blue: [
+    { say: '有点提不起劲', reply: '陪你歇会儿' },
+    { say: '不太想动', reply: '那歇着吧' },
+    { say: '你在吗，我闷', reply: '在呢在呢' },
   ],
   feed: [
     { say: '哇，是吃的！', reply: '吃吧吃吧' },
@@ -70,14 +85,15 @@ export function clamp(text: string): string {
 /**
  * 该不该开口、说什么。返回 null 就是这句不说。
  *
- * 概率只作用于 idle：用户做了动作（喂、拖、点）就该有回应，掷骰子决定「要不要理你」
- * 会把反馈丢掉。冷却对两者都生效，否则连点按钮会一句话接一句话刷屏。
+ * 概率只作用于「自己搭话」那几档（idle / hungry / blue）：用户做了动作（喂、拖、点）
+ * 就该有回应，掷骰子决定「要不要理你」会把反馈丢掉。冷却对两者都生效，
+ * 否则连点按钮会一句话接一句话刷屏。
  *
- * rng 的调用顺序是契约：idle 先掷概率再抽句子，其余 reason 只抽句子。
+ * rng 的调用顺序是契约：自己搭话的先掷概率再抽句子，其余 reason 只抽句子。
  */
 export function pickTalk(reason: TalkReason, ctx: TalkCtx, rng: () => number): Line | null {
   if (ctx.now - ctx.lastTalkAt < TALK_COOLDOWN_MS) return null
-  if (reason === 'idle') {
+  if (SELF_TALK_REASONS.includes(reason)) {
     if (ctx.idleMs <= IDLE_LONG_MS) return null
     if (rng() >= TALK_IDLE_PROB) return null
   }

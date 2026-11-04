@@ -4,6 +4,7 @@ import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
 import { PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
 import { FOODS } from '../src/shared/food.js'
+import type { StatsSnapshot } from '../src/shared/save.js'
 
 /**
  * jsdom 没有排版引擎，offsetWidth/offsetHeight 恒为 0，而「打开后量自身尺寸用来
@@ -18,8 +19,9 @@ beforeAll(() => {
 const mount = (onClick = vi.fn()) => {
   const root = document.createElement('div')
   document.body.replaceChildren(root)
-  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn() })
-  return { panel, root, onClick }
+  const identity = vi.fn()
+  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), identity })
+  return { panel, root, onClick, identity }
 }
 
 afterEach(() => { document.body.replaceChildren() })
@@ -40,9 +42,9 @@ describe('defaultActions', () => {
 
   it('带反应池的按钮只能用皮肤契约保证存在的池', () => {
     // 反应来自 click 池，而 click 是 REQUIRED_POOLS 之一，任何合法皮肤都有它。
-    // 喂食与设置都不带 pool——它们切视图，不点歌。
+    // 喂食、状态、设置都不带 pool——它们切视图，不点歌。
     const withPool = defaultActions().filter((a) => a.pool !== undefined)
-    expect(withPool).toHaveLength(3)
+    expect(withPool).toHaveLength(2)
     for (const a of withPool) expect(REQUIRED_POOLS).toContain(a.pool)
   })
 })
@@ -120,7 +122,7 @@ describe('设置视图', () => {
     const action = vi.fn()
     const set = vi.fn()
     const view = vi.fn()
-    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn() })
+    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     return { panel, root, action, set, view }
   }
@@ -205,7 +207,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick })
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setView('foods')
     return { panel, pick }
@@ -288,10 +290,11 @@ describe('食物视图', () => {
     expect((panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform).toBe('translateX(0px)')
   })
 
-  it('喂食按钮切视图而不是直接播动画，带反应池的是小游戏、状态和说话', () => {
+  it('喂食与状态都切视图，不直接播动画；带反应池的只剩小游戏和说话', () => {
     const withPool = defaultActions().filter((a) => a.pool !== undefined)
-    expect(withPool.map((a) => a.id)).toEqual(['game', 'status', 'talk'])
+    expect(withPool.map((a) => a.id)).toEqual(['game', 'talk'])
     expect(defaultActions().find((a) => a.id === 'feed')?.view).toBe('foods')
+    expect(defaultActions().find((a) => a.id === 'status')?.view).toBe('stats')
   })
 
   it('点喂食走 view 回调，不走 action 回调', () => {
@@ -299,10 +302,85 @@ describe('食物视图', () => {
     const view = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     ;(panel.el.querySelector('button[data-id="feed"]') as HTMLElement).click()
     expect(action).not.toHaveBeenCalled()
     expect(view).toHaveBeenCalledWith('foods')
+  })
+})
+
+describe('状态视图', () => {
+  const snap = (hunger = 82): StatsSnapshot => ({
+    stats: { hunger, mood: 45, weight: 20, bond: 97 },
+    identity: { name: '小鲸', gender: 'female' },
+  })
+  const open = (s = snap()) => {
+    const m = mount()
+    m.panel.show({ x: 0, y: 0 })
+    m.panel.setStats(s)
+    m.panel.setView('stats')
+    return m
+  }
+
+  it('四条读数按 STAT_KEYS 顺序：标签、数值、条宽各就各位', () => {
+    const { panel } = open()
+    const rows = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat')]
+    expect(rows.map((r) => r.dataset.key)).toEqual(['hunger', 'mood', 'weight', 'bond'])
+    expect(rows.map((r) => r.querySelector('.pet-stat-label')?.textContent)).toEqual(['饥饿', '心情', '体重', '亲密度'])
+    expect(rows.map((r) => r.querySelector('.pet-stat-value')?.textContent)).toEqual(['82', '45', '20', '97'])
+    expect(rows[1]?.querySelector('.pet-stat-bar > i')?.getAttribute('style')).toContain('width: 45%')
+  })
+
+  it('颜色分档 >60 蓝、>20 黄、否则红：读数一眼能分好坏', () => {
+    const { panel } = open()
+    const bands = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-bar')].map((b) => b.className.replace('pet-stat-bar is-', ''))
+    expect(bands).toEqual(['high', 'mid', 'low', 'high'])
+  })
+
+  it('表头是名字 + 两颗性别按钮，选中态跟着快照走', () => {
+    const { panel } = open()
+    expect(panel.el.querySelector('.pet-stats-name')?.textContent).toBe('小鲸')
+    const g = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-gender')]
+    expect(g.map((b) => b.getAttribute('aria-label'))).toEqual(['雌', '雄'])
+    expect(g[0]?.classList.contains('on')).toBe(true)
+    expect(g[1]?.classList.contains('on')).toBe(false)
+  })
+
+  it('点性别只上报 identity，不顺手播一条动画', () => {
+    const { panel, identity, onClick } = open()
+    panel.el.querySelector<HTMLButtonElement>('.pet-gender[data-gender="male"]')?.click()
+    expect(identity).toHaveBeenCalledWith({ gender: 'male' })
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('快照还没到时不画四条 0：那是编出来的「宠物饿坏了」', () => {
+    const m = mount()
+    m.panel.show({ x: 0, y: 0 })
+    m.panel.setView('stats')
+    expect(m.panel.el.querySelector('.pet-stats-name')?.textContent).toBe('…')
+    expect(m.panel.el.querySelectorAll('.pet-stat')).toHaveLength(0)
+  })
+
+  it('setStats 在状态视图里立刻重绘；在别的视图只存不画', () => {
+    const m = open()
+    m.panel.setStats(snap(10))
+    expect(m.panel.el.querySelector('.pet-stat[data-key="hunger"] .pet-stat-value')?.textContent).toBe('10')
+    const other = mount()
+    other.panel.show({ x: 0, y: 0 })
+    other.panel.setStats(snap())
+    expect(other.panel.el.querySelectorAll('.pet-stat')).toHaveLength(0)
+  })
+
+  it('点状态按钮切到 stats 视图，不走 action 回调', () => {
+    const action = vi.fn()
+    const view = vi.fn()
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), identity: vi.fn() })
+    panel.show({ x: 0, y: 0 })
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="status"]')?.click()
+    expect(action).not.toHaveBeenCalled()
+    expect(view).toHaveBeenCalledWith('stats')
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, bubbleAnchor, panelAnchor, stageRect, unionRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, panelAnchor, stageRect, statsAnchor, unionRect } from '../src/shared/geometry.js'
 import { BUBBLE_H, BUBBLE_W, CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -160,6 +160,38 @@ describe('bubbleAnchor', () => {
     expect(bubbleAnchor(left, null, size, screen, 12).x).toBe(0)
     const right = { x: 1460, y: 700, w: 140, h: 180 }
     expect(bubbleAnchor(right, null, size, screen, 12).x).toBe(1600 - BUBBLE_W)
+  })
+})
+
+describe('statsAnchor', () => {
+  const screen = { x: 0, y: 0, w: 1600, h: 952 }
+  const body = { x: 700, y: 700, w: 140, h: 180 }
+  const size = { w: 150, h: 120 }
+
+  it('默认贴在身体右侧，纵向与身体中线对齐', () => {
+    expect(statsAnchor(body, size, screen, 12)).toEqual({ x: 852, y: 730 })
+  })
+
+  it('右侧放不下时翻到左侧——不是夹进屏幕把状态栏压在宠物身上', () => {
+    const right = { x: 1500, y: 700, w: 140, h: 180 }
+    expect(statsAnchor(right, size, screen, 12)).toEqual({ x: 1338, y: 730 })
+  })
+
+  it('左边也放不下才夹回屏幕内（窄屏幕 + 宽状态栏那种极端组合）', () => {
+    const narrow = { x: 0, y: 0, w: 200, h: 952 }
+    expect(statsAnchor({ x: 60, y: 700, w: 100, h: 180 }, size, narrow, 12).x).toBe(0)
+  })
+
+  it('纵向一律夹回屏幕内：宠物站在地上时状态栏不该有一半在屏幕外', () => {
+    const low = { x: 700, y: 900, w: 140, h: 180 }
+    expect(statsAnchor(low, size, screen, 12).y).toBe(952 - 120)
+    const high = { x: 700, y: 10, w: 140, h: 180 }
+    expect(statsAnchor(high, size, screen, 12).y).toBe(40)
+  })
+
+  it('贴左边缘时右侧仍是首选（左边才是没地方去的那一侧）', () => {
+    const left = { x: 10, y: 700, w: 140, h: 180 }
+    expect(statsAnchor(left, size, screen, 12).x).toBe(10 + 140 + 12)
   })
 })
 

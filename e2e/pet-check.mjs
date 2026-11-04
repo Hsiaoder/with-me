@@ -498,22 +498,27 @@ check('「说话」按钮：按顺序放台词，走完绕回，冷却拦不住�
       seq.push(read())
     }
     const first = seq[0].text
-    // 绕回不写死条数：一直点，直到又回到第一句，看它用了几次
+    // 绕回不写死条数：一路点，把每句都记下来，直到又回到第一句。
+    // 断言用「周期里每句都不重样」，这样加台词不会把这条检查弄红。
     let backAt = 0
-    for (let i = 1; i <= 30; i++) {
+    const cycle = []
+    for (let i = 1; i <= 60; i++) {
       btn.click()
       await sleep(20)
-      if (window.__petDebug.bubbleText === first) { backAt = i; break }
+      const t = window.__petDebug.bubbleText
+      if (t === first) { backAt = i; break }
+      cycle.push(t)
     }
     const tail = read()
     window.__petDebug.setLastTalk(0)
-    return { seq, first, backAt, tail }
+    return { seq, first, backAt, tail, cycle }
   })
   assert.ok(!flow.missing, '面板里没有 data-id="talk" 这颗按钮')
   assert.ok(flow.seq.every((s) => s.open), `点三次有没出气泡的：${JSON.stringify(flow.seq)}`)
   assert.notEqual(flow.seq[0].text, flow.seq[1].text, `连点两次还是同一句：${flow.seq[0].text}`)
   assert.notEqual(flow.seq[1].text, flow.seq[2].text, `连点两次还是同一句：${flow.seq[1].text}`)
-  assert.ok(flow.backAt > 0 && flow.backAt <= 17, `走完没绕回第一句（点了 ${flow.backAt} 次）：${flow.tail.text}`)
+  assert.ok(flow.backAt > 0, `点了 60 次也没绕回第一句，最后一句是：${flow.tail.text}`)
+  assert.equal(new Set(flow.cycle).size, flow.cycle.length, `周期里有重样的句子：${JSON.stringify(flow.cycle)}`)
   await page.evaluate(() => window.__petDebug.hideBubble())
 })
 
@@ -847,6 +852,114 @@ check('设置视图：切视图、改一项、当场落盘、收起延时更宽�
     bs.map((b) => b.getAttribute('aria-label'))), PANEL_BUTTONS.map((b) => b.label))
 })
 
+check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色跟着数值走', async () => {
+  // 先把宠物挪回中间：前面「贴右边缘」那几条会把它留在屏幕边上，
+  // 那种位置下状态栏本来就该翻到左边，右侧断言会变成假失败。
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: Math.round(inner.w / 2) - 90, y: inner.h - 260 })
+  await page.waitForTimeout(150)
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="status"]')
+  await page.waitForSelector('.pet-panel .pet-stat')
+  const g = await page.evaluate(() => {
+    const b = window.__petDebug.hitBox
+    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    return {
+      bodyRight: b.x + b.w, panelLeft: p.x, panelRight: p.right, inner: window.innerWidth,
+      name: document.querySelector('.pet-stats-name')?.textContent,
+      keys: [...document.querySelectorAll('.pet-stat')].map((r) => r.dataset.key),
+      rows: [...document.querySelectorAll('.pet-stat')].map((r) => ({
+        value: Number(r.querySelector('.pet-stat-value')?.textContent),
+        band: r.querySelector('.pet-stat-bar')?.className,
+        fill: r.querySelector('.pet-stat-bar > i')?.style.width,
+      })),
+    }
+  })
+  assert.equal(g.name, '小鲸', `状态栏没显示存档里的名字：${g.name}`)
+  assert.deepEqual(g.keys, ['hunger', 'mood', 'weight', 'bond'], '四条读数的顺序或键名不对')
+  assert.ok(g.panelLeft >= g.bodyRight - 1, `状态栏没在宠物右侧：panelLeft=${g.panelLeft} 身体右沿=${g.bodyRight}`)
+  assert.ok(g.panelRight <= g.inner, `状态栏溢出屏幕右边：${g.panelRight} > ${g.inner}`)
+  // 颜色必须跟着数字：分档写死在渲染里就会出「数值红了、条还是蓝的」那种假读数
+  const bandOf = (v) => (v > 60 ? 'high' : v > 20 ? 'mid' : 'low')
+  for (const r of g.rows) {
+    assert.ok(r.value >= 0 && r.value <= 100, `读数越界：${r.value}`)
+    assert.equal(r.band, `pet-stat-bar is-${bandOf(r.value)}`, `${r.value} 该是 ${bandOf(r.value)} 档：${r.band}`)
+    assert.equal(r.fill, `${Math.round(r.value)}%`, `条宽和读数不一致：${r.fill} vs ${r.value}`)
+  }
+  await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
+check('状态栏贴右边缘时翻到宠物左侧，而不是夹过来压住宠物', async () => {
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: inner.w - 200, y: inner.h - 260 })
+  await page.waitForTimeout(150)
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="status"]')
+  await page.waitForSelector('.pet-panel .pet-stat')
+  const g = await page.evaluate(() => {
+    const b = window.__petDebug.hitBox
+    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    return { bodyLeft: b.x, panelRight: p.right, panelLeft: p.x }
+  })
+  assert.ok(g.panelRight <= g.bodyLeft + 1, `右侧放不下时该翻到左边，现在还压着宠物：panelRight=${g.panelRight} bodyLeft=${g.bodyLeft}`)
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: Math.round(inner.w / 2) - 90, y: inner.h - 260 })
+})
+
+check('喂食真的进了数值并落盘；点性别当场写进存档', async () => {
+  // 断言拿「开机初值 70」比而不是比前后差：本套检查里前面已经喂过几次，
+  // 饥饿可能已经顶到 100，那种时候「再喂一次会涨」是个不该成立的期待。
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  await page.click('.pet-panel .pet-food[data-food="hotpot"]')
+
+  const file = join(userData, 'save.json')
+  let stats = null
+  for (let i = 0; i < 30; i++) {
+    try {
+      stats = JSON.parse(readFileSync(file, 'utf8')).stats
+      if (stats && stats.hunger > 70) break
+    } catch {
+      /* 还没写出来 */
+    }
+    await page.waitForTimeout(100)
+  }
+  assert.ok(stats !== null, '存档里读不到 stats')
+  assert.ok(stats.hunger > 70, `喂了火锅饥饿没涨（初值 70）：${stats.hunger}`)
+  assert.ok(stats.weight > 50, `喂了火锅体重没涨（初值 50）：${stats.weight}`)
+
+  // 性别：状态栏里点一下就该落盘，并且选中态跟着快照走
+  await page.evaluate(() => window.__petDebug.hideBubble())
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  assert.ok(await openOnBody(), '前置：面板叫不回来')
+  await page.click('.pet-panel button[data-id="status"]')
+  await page.waitForSelector('.pet-panel .pet-gender')
+  await page.click('.pet-panel .pet-gender[data-gender="male"]')
+  const on = () => page.locator('.pet-panel .pet-gender').evaluateAll((bs) => bs.map((b) => b.classList.contains('on')))
+  let picked = await on()
+  for (let i = 0; i < 20 && !(picked[1] && !picked[0]); i++) {
+    await page.waitForTimeout(100)
+    picked = await on()
+  }
+  assert.deepEqual(picked, [false, true], `点「雄」之后选中态没换过去：${JSON.stringify(picked)}`)
+  let identity = null
+  for (let i = 0; i < 30; i++) {
+    try {
+      identity = JSON.parse(readFileSync(file, 'utf8')).identity
+      if (identity?.gender === 'male') break
+    } catch {
+      /* 还没写出来 */
+    }
+    await page.waitForTimeout(100)
+  }
+  assert.equal(identity?.gender, 'male', `性别没落盘：${JSON.stringify(identity)}`)
+  assert.equal(identity?.name, '小鲸', `改性别把名字弄丢了：${JSON.stringify(identity)}`)
+  await page.evaluate(() => window.__petDebug.hidePanel())
+})
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {
   // 上一版这里直接喂离开坐标然后断言「收了」——可那时候面板已经被拖拽测试关掉了，
   // 断言的是「本来就没开」，什么都没测到。先把面板叫起来，再验它自己收回去。

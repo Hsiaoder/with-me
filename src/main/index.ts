@@ -5,6 +5,7 @@ import { APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shar
 import { IPC } from '../shared/ipc.js'
 import { toSkinPayload } from '../shared/skin.js'
 import { applySettings } from '../shared/save.js'
+import { startStats, type StatsSnapshot } from './stats.js'
 import { loadFrom, saveTo } from './storage.js'
 import { FALLBACK_SKIN, findSkinDir, platformDataDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
@@ -68,14 +69,33 @@ void app.whenReady().then(() => {
 
   const platform = createWindowsPlatform()
   const bridge = createClickThroughBridge(platform, Date.now)
+
+  /**
+   * 养成的时钟。它拿的是同一份 save：每次变化就地落盘并广播——
+   * 数值丢了比动画错了更疼，所以不能只在退出时写。
+   *
+   * 广播先接到一个空函数上：`platform.send` 要问窗口要句柄，而离线补算发生在建窗之前。
+   * 建窗后换成真的发送；此前那一次并不丢——页面就绪时本来就会推一次快照。
+   */
+  let statsSink: (snapshot: StatsSnapshot) => void = () => {}
+  const stats = startStats({
+    save,
+    persist: (s) => {
+      if (!saveTo(dataDir, s)) console.log('[save] 存档版本比本程序新，跳过写回')
+    },
+    broadcast: (snapshot) => statsSink(snapshot),
+    now: Date.now,
+  })
+
   // 监听必须早于建窗：渲染层首帧就会发消息。
   registerIpc(platform, bridge, (patch) => {
     // 改设置要当场落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查
     save.settings = applySettings(save, patch).settings
     watch.setSettings(save.settings)
     if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
-  })
+  }, (raw) => stats.event(raw), (raw) => stats.identity(raw))
   platform.createWindow()
+  statsSink = (snapshot) => platform.send(IPC.statsLoaded, snapshot)
 
   // 装载失败也要发过去：渲染层会把错误摊在屏幕上，而不是静默换一只默认宠物。
   // 挂在 createWindow 之后——onPageReady 要碰 webContents；同一段同步代码里订阅，
@@ -84,6 +104,7 @@ void app.whenReady().then(() => {
   platform.onPageReady(() => {
     platform.send(IPC.skinLoaded, payload)
     platform.send(IPC.settingsLoaded, save.settings)
+    platform.send(IPC.statsLoaded, stats.snapshot())
   })
 
   // 可见性策略。探测是个常驻 PowerShell 子进程，必须跟着退出收掉。
@@ -113,6 +134,7 @@ void app.whenReady().then(() => {
     closing = true
     stopPolling()
     clearInterval(sweeper)
+    stats.stop()
     watch.stop()
     try {
       if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过退出写回')

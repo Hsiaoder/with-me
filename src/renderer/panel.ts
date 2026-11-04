@@ -1,6 +1,8 @@
 import { FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, PANEL_BUTTONS, type PanelButton } from '../shared/config.js'
 import { FOODS, type Food } from '../shared/food.js'
 import { clampScroll, pageStep, thumbGeometry } from '../shared/scroll.js'
+import { STAT_KEYS, STAT_LABELS, statBand } from '../shared/stats.js'
+import { GENDER_LABELS, type Gender, type StatsSnapshot } from '../shared/save.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
 import type { Point } from '../shared/types.js'
 
@@ -18,7 +20,7 @@ import type { Point } from '../shared/types.js'
 
 /** 按钮的形状完全由 config 的 PANEL_BUTTONS 决定，这里不复制一份。 */
 export type PanelAction = PanelButton
-export type PanelView = 'actions' | 'settings' | 'foods'
+export type PanelView = 'actions' | 'settings' | 'foods' | 'stats'
 
 export interface PanelHandlers {
   /**
@@ -30,6 +32,8 @@ export interface PanelHandlers {
   setting(patch: Partial<Settings>): void
   /** 点了食物列表里的某一格。播哪条动画、说什么话由装配层决定，面板只管「选了哪个」。 */
   pick(f: Food): void
+  /** 点了性别那一档。改名要键盘，这扇窗默认不收键盘，见装配层的说明。 */
+  identity(patch: { name?: string; gender?: string }): void
   /** 视图换了。调用方据此换收起延时（操作型视图要更宽裕的时间）。 */
   view(v: PanelView): void
 }
@@ -46,6 +50,8 @@ export interface Panel {
   size(): { w: number; h: number } | null
   /** 选中态变了（本地立刻反馈，或主进程回灌）时重绘。 */
   setSettings(s: Settings): void
+  /** 主进程推来的数值快照。开着状态视图时立刻重绘，没开就存着。 */
+  setStats(s: StatsSnapshot): void
 }
 
 /** 按钮来自 config 的 PANEL_BUTTONS，顺序即显示顺序；标签也在 config，不在这儿写死。 */
@@ -62,6 +68,9 @@ const ROWS: { key: keyof Settings; label: string }[] = [
   { key: 'onFullscreen', label: '全屏时' },
   { key: 'onPresentation', label: '放映时' },
 ]
+
+/** 性别两档。改名要键盘输入，这扇窗默认不收键盘，所以状态栏先只给能点的部分。 */
+const GENDER_KEYS: Gender[] = ['female', 'male']
 
 function btn(label: string, attrs: Record<string, string>, on: boolean): HTMLButtonElement {
   const b = document.createElement('button')
@@ -104,6 +113,8 @@ export function createPanel(
   let at: Point | null = null
   let current: PanelView = 'actions'
   let values = settings
+  /** 主进程推来的数值快照。null = 还没推到（首帧），此时状态栏只显名字位、不编造读数。 */
+  let snap: StatsSnapshot | null = null
 
   // 滚动状态只属于食物视图，就住在这里：一个数，其余全是纯函数算出来的（shared/scroll.ts）。
   const VIEW_W = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
@@ -212,16 +223,66 @@ export function createPanel(
     syncScroll()
   }
 
+  /**
+   * 状态栏：名字 + 性别在上，四条读数在下。它是 qqpet 那种「一眼看到当前值」的面板，
+   * 不是设置页——每一项都只读，唯一能点的是性别和返回。
+   */
+  function renderStats(): void {
+    const head = document.createElement('div')
+    head.className = 'pet-stats-head'
+    const name = document.createElement('span')
+    name.className = 'pet-stats-name'
+    name.textContent = snap === null ? '…' : snap.identity.name
+    head.append(name)
+    for (const g of GENDER_KEYS) {
+      const b = btn(GENDER_LABELS[g], { gender: g }, snap?.identity.gender === g)
+      b.classList.add('pet-gender')
+      b.addEventListener('click', () => handlers.identity({ gender: g }))
+      head.append(b)
+    }
+    el.append(head)
+
+    // 快照还没到就到此为止：画四条 0 会让用户以为宠物饿坏了，那是编出来的恐慌。
+    if (snap === null) return
+    for (const key of STAT_KEYS) {
+      const v = snap.stats[key]
+      const line = document.createElement('div')
+      line.className = 'pet-stat'
+      line.dataset.key = key
+      const label = document.createElement('span')
+      label.className = 'pet-stat-label'
+      label.textContent = STAT_LABELS[key]
+      const bar = document.createElement('span')
+      bar.className = `pet-stat-bar is-${statBand(v)}`
+      const fill = document.createElement('i')
+      fill.style.width = `${Math.round(v)}%`
+      bar.append(fill)
+      const out = document.createElement('span')
+      out.className = 'pet-stat-value'
+      out.textContent = String(Math.round(v))
+      line.append(label, bar, out)
+      el.append(line)
+    }
+    const back = btn('返回', { view: 'actions' }, false)
+    back.addEventListener('click', () => switchTo('actions'))
+    el.append(back)
+  }
+
   function render(): void {
     el.replaceChildren()
     foodRefs = null                 // 旧节点已经不在了，别让 syncScroll 去摸它们
     el.classList.toggle('is-settings', current === 'settings')
     el.classList.toggle('is-foods', current === 'foods')
+    el.classList.toggle('is-stats', current === 'stats')
     // 操作型视图是一整块可见面板：底板、命中、光标都跟着，文字浮在桌面上读不成句。
     // 动作视图仍然只有按钮吃命中——那里的空隙看不见，不该吞桌面的点击。
     el.classList.toggle('is-plate', current !== 'actions')
     if (current === 'foods') {
       renderFoods()
+      return
+    }
+    if (current === 'stats') {
+      renderStats()
       return
     }
     if (current === 'settings') {
@@ -307,6 +368,12 @@ export function createPanel(
     setSettings(s) {
       values = s
       if (current === 'settings') render()
+    },
+    setStats(s) {
+      snap = s
+      // 数值是主进程每 tick / 每次动作推过来的，状态栏开着就得跟着改；
+      // 只在这里重绘，收起时不重绘——省掉一批没人看的 DOM 操作。
+      if (current === 'stats') render()
     },
   }
 }
