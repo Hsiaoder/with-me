@@ -204,21 +204,94 @@ body.pet-over {
   transform: scale(1.15);
 }
 
-/* 设置视图是文字行，得回到「一块底板 + 方形按钮」，不然文字浮在桌面上读不成句。 */
-.pet-panel.is-settings {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
+/* 操作型视图（设置、食物列表）是一整块可见面板：底板、命中、光标都跟着。
+   不然鼠标停在标签文字或格子缝隙上时显示的是桌面自己的光标，
+   看着像"这块白板和桌宠没关系"。qqpet 也是把光标挂在容器上而不是只挂按钮。
+   动作视图仍然只有按钮吃命中——那里的空隙是看不见的，不该吞桌面的点击。 */
+.pet-panel.is-plate {
   padding: 6px;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-  /* 底板是一整块可见面板，整块都归桌宠：不然鼠标停在标签文字上时显示的是
-     桌面自己的光标，看着像"这块白板和桌宠没关系"。qqpet 也是把光标挂在容器上，
-     不是只挂在按钮上。动作视图仍然只有按钮吃命中——那里的空隙是看不见的。 */
   pointer-events: auto;
   cursor: var(--pet-cursor);
+}
+
+/* 设置视图是文字行，竖排两列。 */
+.pet-panel.is-settings {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+/* 食物列表 */
+.pet-foods {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pet-food-viewport {
+  width: 236px;
+  height: 56px;
+  overflow: hidden;
+}
+
+.pet-food-strip {
+  display: flex;
+  gap: 4px;
+  will-change: transform;
+}
+
+/* 选择器要压过基类 `.pet-panel button`（那条把尺寸和边框都定了），
+   所以这里带上 .pet-panel 一层——单写 .pet-food 权重不够，格子会被打回 34px 无边圆片。 */
+.pet-panel .pet-food {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.pet-panel .pet-page {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 16px;
+}
+
+/* 到边就置灰：能滚的方向没得滚了还亮着，是骗人去点。 */
+.pet-panel .pet-page:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* 横条在长方形下面，是自绘控件不是浏览器滚动条：透明覆盖层里要的是「能画成什么样都行」，
+   而且 ::-webkit-scrollbar 塞不进「矩形下面单独一条」这个形状。 */
+.pet-scroll {
+  position: relative;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.pet-thumb {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.42);
+  cursor: grab;
+  touch-action: none;
 }
 
 .pet-panel.is-settings button {

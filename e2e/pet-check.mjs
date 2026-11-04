@@ -201,7 +201,7 @@ check('光标形状跟着交互区走：身体上是 hand_point，舞台那截�
     for (const sheet of document.styleSheets) {
       for (const r of sheet.cssRules) {
         if (r.selectorText === ':root') out.var = r.style.getPropertyValue('--pet-cursor')
-        if (['body.pet-over', '.pet-panel button', '.pet-panel.is-settings'].includes(r.selectorText)) {
+        if (['body.pet-over', '.pet-panel button', '.pet-panel.is-plate'].includes(r.selectorText)) {
           out.users.push(r.selectorText)
           if (r.style.cursor !== 'var(--pet-cursor)') out.users.push(`${r.selectorText}≠var`)
         }
@@ -212,7 +212,7 @@ check('光标形状跟着交互区走：身体上是 hand_point，舞台那截�
   assert.ok(decl.var, '样式表里没有 --pet-cursor 这条定义')
   assert.match(decl.var, /icons\/hand_point\.svg/, `光标没指向 hand_point：${decl.var}`)
   assert.match(decl.var, /9 2/, `热点不是量出来的指尖：${decl.var}`)
-  assert.deepEqual(decl.users, ['body.pet-over', '.pet-panel button', '.pet-panel.is-settings'],
+  assert.deepEqual(decl.users, ['body.pet-over', '.pet-panel button', '.pet-panel.is-plate'],
     `三处没共用同一枚光标：${JSON.stringify(decl.users)}`)
 
   // 上一轮图标 404 就是栽在 MIME 白名单：文件在磁盘上不等于取得到，光标同理
@@ -462,11 +462,77 @@ check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢�
   assert.ok(pr.y >= 0, `顶部溢出：${pr.y}`)
 })
 
-check('点喂食按钮：宠物给一个 click 池的反应', async () => {
+check('点喂食出食物列表；点一格播 click 池并回一句', async () => {
   assert.ok(await openOnBody(), '前置：面板叫不出来，按钮点不到')
   await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '点喂食没进食物视图')
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), 12)
+  // 一屏只露 4 格：视口是 overflow:hidden，其余靠滚
+  // 12 格全在条上（视口只是没露出来），滚动才有东西可滚
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-food-strip > *').length), 12)
+  assert.ok(await page.evaluate(() => {
+    const v = document.querySelector('.pet-food-viewport')
+    return v.getBoundingClientRect().width < v.scrollWidth
+  }), '视口没把内容夹住，滚动条就没有意义')
+
+  // 点一格 → 播 click 池 + 出气泡（feed 台词）
+  await page.evaluate(() => window.__petDebug.setLastTalk(0))
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
   assert.equal((await dbg()).pool, 'click')
+  assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), true, '点了食物没回话')
+})
+
+check('食物列表：整屏步进、到底置灰、拖横条、收起后复位', async () => {
+  const strip = () => page.evaluate(() => document.querySelector('.pet-food-strip').style.transform)
+  const disabled = (dir) => page.evaluate((d) => document.querySelector(`.pet-page[data-page="${d}"]`).disabled, dir)
+
+  assert.equal(await strip(), 'translateX(0px)', '前置：列表该从第一格开始')
+  assert.equal(await disabled('prev'), true, '到顶了 prev 还亮着')
+  assert.equal(await disabled('next'), false)
+
+  await page.click('.pet-page[data-page="next"]')
+  assert.equal(await strip(), 'translateX(-240px)', '翻一屏该是 240（4 格 ×（56+4））')
+
+  // 按到置灰为止，不是盲目按 8 次：到底之后 next 就该 disabled（上一条断言要的就是它），
+  // 拿 page.click 去点一个 disabled 的按钮只会 30 秒超时——那是在等一个不该发生的事。
+  for (let i = 0; i < 6 && !(await disabled('next')); i++) await page.click('.pet-page[data-page="next"]')
+  assert.equal(await strip(), 'translateX(-480px)', '最大滚动该是 716−236=480')
+  assert.equal(await disabled('next'), true, '到底了 next 还亮着，骗人去点')
+
+  // 拖滑块：位移按轨道比例换算回去，所以拖 100px 不等于按一次翻页
+  const box = await page.evaluate(() => {
+    const t = document.querySelector('.pet-thumb').getBoundingClientRect()
+    return { x: Math.round(t.x + t.width / 2), y: Math.round(t.y + t.height / 2) }
+  })
+  await page.evaluate((p) => {
+    const thumb = document.querySelector('.pet-thumb')
+    thumb.dispatchEvent(new MouseEvent('pointerdown', { clientX: p.x, clientY: p.y, bubbles: true }))
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: p.x - 100, clientY: p.y, bubbles: true }))
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: p.x - 100, clientY: p.y, bubbles: true }))
+  }, box)
+  const moved = await strip()
+  assert.notEqual(moved, 'translateX(-480px)', '拖横条没动内容')
+  assert.notEqual(moved, 'translateX(-240px)', '拖 100px 不该正好等于按一次翻页')
+
+  // 收起再打开 → 复位，不该停在用户上次看一半的位置
+  await feed({ x: 4, y: 4 })
+  await page.waitForTimeout(VIEW_HIDE_MS + 400)
+  assert.ok(await openOnBody(), '前置：面板第二次叫不出来')
+  await page.click('.pet-panel button[data-id="feed"]')
+  assert.equal(await strip(), 'translateX(0px)', '重新打开还停在上次看一半的位置')
+
+  // 交互区覆盖整块列表：两格之间那 4px 缝也该是手形（列表是 is-plate，整块吃命中）
+  const seam = await page.evaluate(() => {
+    const a = document.querySelector('.pet-food').getBoundingClientRect()
+    const b = document.querySelectorAll('.pet-food')[1].getBoundingClientRect()
+    return { x: Math.round((a.right + b.left) / 2), y: Math.round(a.top + a.height / 2) }
+  })
+  await feed(seam)
+  assert.equal(await overClass(), true, `两格之间的缝掉出了交互区 @${JSON.stringify(seam)}`)
+
+  await page.evaluate(() => window.__petDebug.hideBubble())
 })
 
 check('心跳：光标不动时仍在持续续期租约', async () => {

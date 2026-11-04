@@ -106,11 +106,11 @@ export type PanelButton = {
   label: string
   icon: string
   pool?: string
-  view?: 'settings'
+  view?: 'settings' | 'foods'
 }
 
 export const PANEL_BUTTONS: readonly PanelButton[] = [
-  { id: 'feed', label: '喂食', icon: 'icons/rice.svg', pool: 'click' },
+  { id: 'feed', label: '喂食', icon: 'icons/rice.svg', view: 'foods' },
   { id: 'game', label: '小游戏', icon: 'icons/activity.svg', pool: 'click' },
   { id: 'status', label: '状态', icon: 'icons/status.svg', pool: 'click' },
   { id: 'settings', label: '设置', icon: 'icons/settings.svg', view: 'settings' },

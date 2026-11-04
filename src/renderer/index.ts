@@ -128,7 +128,17 @@ function bootstrap(skin: SkinPayload): void {
       lastInteractionAt = Date.now()
       rules.feed('interacted')
       requestClip(a.pool)
-      sayFor(a.id === 'feed' ? 'feed' : a.id === 'game' ? 'game' : 'status')
+      sayFor(a.id === 'game' ? 'game' : 'status')
+    },
+    /**
+     * 点了一格食物。播哪条动画由食物自己说了算，没配就回落到 click 池——
+     * 逐食物专属动画是以后的事，现在只留这个接缝。
+     */
+    pick: (f) => {
+      lastInteractionAt = Date.now()
+      rules.feed('interacted')
+      requestClip(f.anim?.pool ?? 'click')
+      sayFor('feed')
     },
     setting: (patch) => {
       settings = { ...settings, ...patch }
@@ -465,6 +475,10 @@ function bootstrap(skin: SkinPayload): void {
     },
     get panelOpen(): boolean {
       return panel.isOpen
+    },
+    /** 现在显示的是哪个视图。喂食/设置都改成切视图，光看 open 分不出是哪个。 */
+    get panelView(): string {
+      return panel.view
     },
     get grabRequested(): boolean {
       return wantGrab

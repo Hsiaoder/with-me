@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
-import { PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
+import { FOODS, PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
 
 /**
  * jsdom 没有排版引擎，offsetWidth/offsetHeight 恒为 0，而「打开后量自身尺寸用来
@@ -17,7 +17,7 @@ beforeAll(() => {
 const mount = (onClick = vi.fn()) => {
   const root = document.createElement('div')
   document.body.replaceChildren(root)
-  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn() })
+  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn() })
   return { panel, root, onClick }
 }
 
@@ -36,11 +36,10 @@ describe('defaultActions', () => {
   })
 
   it('带反应池的按钮只能用皮肤契约保证存在的池', () => {
-    // 业务功能还没接，按钮只做「给个反应」。反应来自 click 池，
-    // 而 click 是 REQUIRED_POOLS 之一，任何合法皮肤都有它。
-    // 设置那颗不带 pool——它切视图，不点歌。
+    // 反应来自 click 池，而 click 是 REQUIRED_POOLS 之一，任何合法皮肤都有它。
+    // 喂食与设置都不带 pool——它们切视图，不点歌。
     const withPool = defaultActions().filter((a) => a.pool !== undefined)
-    expect(withPool).toHaveLength(3)
+    expect(withPool).toHaveLength(2)
     for (const a of withPool) expect(REQUIRED_POOLS).toContain(a.pool)
   })
 })
@@ -81,11 +80,12 @@ describe('createPanel', () => {
   it('点按钮回调带上被点的动作', () => {
     const { panel, onClick } = mount()
     panel.show({ x: 0, y: 0 })
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="feed"]')!.dispatchEvent(
+    // 用小游戏而不是喂食：喂食现在切视图，不带 pool 了（食物视图那条路另有测试）
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="game"]')!.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     )
     expect(onClick).toHaveBeenCalledTimes(1)
-    expect(onClick.mock.calls[0]![0]).toMatchObject({ id: 'feed', pool: 'click' })
+    expect(onClick.mock.calls[0]![0]).toMatchObject({ id: 'game', pool: 'click' })
   })
 
   it('面板自身必须可点：不能继承舞台那层 pointer-events:none', () => {
@@ -117,7 +117,7 @@ describe('设置视图', () => {
     const action = vi.fn()
     const set = vi.fn()
     const view = vi.fn()
-    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view })
+    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn() })
     panel.show({ x: 0, y: 0 })
     return { panel, root, action, set, view }
   }
@@ -185,5 +185,105 @@ describe('设置视图', () => {
     expect(panel.el).toBe(el)
     expect(root.lastElementChild).toBe(el)
     expect(el.dataset.hit).toBe('')
+  })
+})
+
+/**
+ * jsdom 没有 PointerEvent 构造函数，但事件监听只认 type 字符串，
+ * 所以用 MouseEvent 发 'pointerdown'/'pointermove'，处理器里读的 clientX 一样拿得到。
+ * 真实指针拖拽由 e2e 在 Chromium 里验。
+ */
+const pointer = (type: string, x: number): MouseEvent =>
+  new MouseEvent(type, { clientX: x, bubbles: true })
+
+describe('食物视图', () => {
+  const mountFoods = () => {
+    const pick = vi.fn()
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick })
+    panel.show({ x: 0, y: 0 })
+    panel.setView('foods')
+    return { panel, pick }
+  }
+
+  it('切到 foods 后是底板态：整块吃命中，格子数等于 FOODS 长度', () => {
+    const { panel } = mountFoods()
+    expect(panel.view).toBe('foods')
+    expect(panel.el.classList.contains('is-plate')).toBe(true)
+    expect(panel.el.querySelectorAll('.pet-food').length).toBe(FOODS.length)
+  })
+
+  it('点一格把整个 food 报给 pick，并且不切视图', () => {
+    const { panel, pick } = mountFoods()
+    ;(panel.el.querySelector('.pet-food') as HTMLElement).click()
+    expect(pick).toHaveBeenCalledTimes(1)
+    expect(pick.mock.calls[0]![0].id).toBe('rice')
+    expect(panel.view).toBe('foods')
+  })
+
+  it('点 ‹ › 改变滚动，内容条跟着平移，且不会滚出边界', () => {
+    const { panel } = mountFoods()
+    const strip = () => (panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform
+    const next = panel.el.querySelector('.pet-page[data-page="next"]') as HTMLElement
+    const prev = panel.el.querySelector('.pet-page[data-page="prev"]') as HTMLElement
+    expect(strip()).toBe('translateX(0px)')
+    next.click(); expect(strip()).toBe('translateX(-240px)')
+    for (let i = 0; i < 10; i++) next.click()
+    expect(strip()).toBe('translateX(-480px)')      // 最大滚动 716−236
+    for (let i = 0; i < 10; i++) prev.click()
+    expect(strip()).toBe('translateX(0px)')
+  })
+
+  it('到底时 next 置灰、到顶时 prev 置灰', () => {
+    const { panel } = mountFoods()
+    const next = panel.el.querySelector('.pet-page[data-page="next"]') as HTMLButtonElement
+    const prev = panel.el.querySelector('.pet-page[data-page="prev"]') as HTMLButtonElement
+    expect(prev.disabled).toBe(true)
+    expect(next.disabled).toBe(false)
+    for (let i = 0; i < 5; i++) next.click()
+    expect(next.disabled).toBe(true)
+    expect(prev.disabled).toBe(false)
+  })
+
+  it('横条滑块按 thumbGeometry 摆，拖它等于改滚动位置', () => {
+    const { panel } = mountFoods()
+    const thumb = panel.el.querySelector('.pet-thumb') as HTMLElement
+    expect(thumb).not.toBeNull()
+    expect(thumb.style.width).not.toBe('')
+    thumb.dispatchEvent(pointer('pointerdown', 40))
+    window.dispatchEvent(pointer('pointermove', 140))
+    window.dispatchEvent(pointer('pointerup', 140))
+    const moved = (panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform
+    expect(moved).not.toBe('translateX(0px)')
+    expect(moved).not.toBe('translateX(-240px)')     // 拖 100px 不该等于按一次翻页
+  })
+
+  it('收起再打开时滚动复位，不会停在用户上次看一半的地方', () => {
+    const { panel } = mountFoods()
+    ;(panel.el.querySelector('.pet-page[data-page="next"]') as HTMLElement).click()
+    panel.hide()
+    panel.show({ x: 0, y: 0 })
+    panel.setView('foods')
+    expect((panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform).toBe('translateX(0px)')
+  })
+
+  it('喂食按钮切视图而不是直接播动画，带反应池的只剩小游戏和状态', () => {
+    const withPool = defaultActions().filter((a) => a.pool !== undefined)
+    expect(withPool.map((a) => a.id)).toEqual(['game', 'status'])
+    expect(defaultActions().find((a) => a.id === 'feed')?.view).toBe('foods')
+  })
+
+  it('点喂食走 view 回调，不走 action 回调', () => {
+    const action = vi.fn()
+    const view = vi.fn()
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn() })
+    panel.show({ x: 0, y: 0 })
+    ;(panel.el.querySelector('button[data-id="feed"]') as HTMLElement).click()
+    expect(action).not.toHaveBeenCalled()
+    expect(view).toHaveBeenCalledWith('foods')
   })
 })
