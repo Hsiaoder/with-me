@@ -25,14 +25,16 @@ const mount = (onClick = vi.fn()) => {
 afterEach(() => { document.body.replaceChildren() })
 
 describe('defaultActions', () => {
-  it('四个按钮：喂食/小游戏/状态/设置，顺序即 PANEL_BUTTONS', () => {
-    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status', 'settings'])
-    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态', '设置'])
+  it('五个按钮：喂食/小游戏/状态/设置/说话，顺序即 PANEL_BUTTONS', () => {
+    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status', 'settings', 'talk'])
+    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])
   })
 
-  it('每个按钮都带一个 icons/ 下的 SVG', () => {
+  it('每个按钮都带一张能进 dist 的图：icons/ 下的 SVG 或 emotes/ 下的 PNG', () => {
+    // 两条白名单（protocol 的 MIME 表 + copy-static 的 STATIC_EXT）都只放 svg/png，
+    // 路径写错就是 404、按钮变空片，所以这里按目录+后缀钉住。
     for (const a of defaultActions()) {
-      expect(a.icon, `${a.id} 没有图标`).toMatch(/^icons\/[a-z-]+\.svg$/)
+      expect(a.icon, `${a.id} 没有图标`).toMatch(/^(icons\/[a-z-]+\.svg|emotes\/[a-z0-9]+\.png)$/)
     }
   })
 
@@ -40,7 +42,7 @@ describe('defaultActions', () => {
     // 反应来自 click 池，而 click 是 REQUIRED_POOLS 之一，任何合法皮肤都有它。
     // 喂食与设置都不带 pool——它们切视图，不点歌。
     const withPool = defaultActions().filter((a) => a.pool !== undefined)
-    expect(withPool).toHaveLength(2)
+    expect(withPool).toHaveLength(3)
     for (const a of withPool) expect(REQUIRED_POOLS).toContain(a.pool)
   })
 })
@@ -123,14 +125,14 @@ describe('设置视图', () => {
     return { panel, root, action, set, view }
   }
 
-  it('动作视图是四枚图标：图在按钮里，文字退成 title 与 aria-label', () => {
+  it('动作视图是五枚图标：图在按钮里，文字退成 title 与 aria-label', () => {
     const { panel } = mountWithSettings()
     const buttons = [...panel.el.querySelectorAll('button')]
     expect(buttons.map((b) => b.querySelector('img')?.getAttribute('src'))).toEqual([
-      'icons/rice.svg', 'icons/activity.svg', 'icons/status.svg', 'icons/settings.svg',
+      'icons/rice.svg', 'icons/activity.svg', 'icons/status.svg', 'icons/settings.svg', 'emotes/dots3.png',
     ])
-    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '设置'])
-    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '设置'])
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])
+    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])
     expect(panel.view).toBe('actions')
   })
 
@@ -286,9 +288,9 @@ describe('食物视图', () => {
     expect((panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform).toBe('translateX(0px)')
   })
 
-  it('喂食按钮切视图而不是直接播动画，带反应池的只剩小游戏和状态', () => {
+  it('喂食按钮切视图而不是直接播动画，带反应池的是小游戏、状态和说话', () => {
     const withPool = defaultActions().filter((a) => a.pool !== undefined)
-    expect(withPool.map((a) => a.id)).toEqual(['game', 'status'])
+    expect(withPool.map((a) => a.id)).toEqual(['game', 'status', 'talk'])
     expect(defaultActions().find((a) => a.id === 'feed')?.view).toBe('foods')
   })
 

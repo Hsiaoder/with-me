@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CLIP_FADE_MS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { CLIP_FADE_MS, PANEL_BUTTONS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -456,7 +456,7 @@ const dbg = () => page.evaluate(() => ({
   inner: { w: window.innerWidth, h: window.innerHeight },
 }))
 
-check('悬停满 400ms 自动出现面板，四个按钮齐全', async () => {
+check('悬停满 400ms 自动出现面板，五个按钮齐全', async () => {
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   const center = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
   await feed(center)
@@ -468,7 +468,8 @@ check('悬停满 400ms 自动出现面板，四个按钮齐全', async () => {
   const labels = await page.locator('.pet-panel button').evaluateAll((bs) =>
     bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
   assert.deepEqual(labels,
-    ['喂食=icons/rice.svg', '小游戏=icons/activity.svg', '状态=icons/status.svg', '设置=icons/settings.svg'],
+    ['喂食=icons/rice.svg', '小游戏=icons/activity.svg', '状态=icons/status.svg', '设置=icons/settings.svg',
+      '说话=emotes/dots3.png'],
     `按钮的文字/图标不对：${JSON.stringify(labels)}`)
   // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空圆片。
   // 先等 decode 落地再断言，否则抢到的是「还没解完」而不是「解不出来」。
@@ -476,8 +477,44 @@ check('悬停满 400ms 自动出现面板，四个按钮齐全', async () => {
     await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
     return imgs.map((i) => `${i.naturalWidth > 0}/${i.complete}`)
   })
-  assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true'],
+  assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true', 'true/true'],
     `图标没解码成功：${JSON.stringify(decoded)}`)
+})
+
+check('「说话」按钮：按顺序放台词，走完绕回，冷却拦不住它', async () => {
+  // 这颗按钮是给调试气泡用的：必须**每点必出**，且能逐条把台词表走一遍。
+  // 走 pickTalk 那条路就会被 25 秒冷却吞掉，点下去没反应——所以它绕开冷却，这条要钉住。
+  const flow = await page.evaluate(async () => {
+    const btn = document.querySelector('.pet-panel button[data-id="talk"]')
+    if (!btn) return { missing: true }
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+    const read = () => ({ open: window.__petDebug.bubbleOpen, text: window.__petDebug.bubbleText })
+    // 把冷却拧成「刚刚说过」：正式链路这会儿绝不会开口
+    window.__petDebug.setLastTalk(Date.now())
+    const seq = []
+    for (let i = 0; i < 3; i++) {
+      btn.click()
+      await sleep(40)
+      seq.push(read())
+    }
+    const first = seq[0].text
+    // 绕回不写死条数：一直点，直到又回到第一句，看它用了几次
+    let backAt = 0
+    for (let i = 1; i <= 30; i++) {
+      btn.click()
+      await sleep(20)
+      if (window.__petDebug.bubbleText === first) { backAt = i; break }
+    }
+    const tail = read()
+    window.__petDebug.setLastTalk(0)
+    return { seq, first, backAt, tail }
+  })
+  assert.ok(!flow.missing, '面板里没有 data-id="talk" 这颗按钮')
+  assert.ok(flow.seq.every((s) => s.open), `点三次有没出气泡的：${JSON.stringify(flow.seq)}`)
+  assert.notEqual(flow.seq[0].text, flow.seq[1].text, `连点两次还是同一句：${flow.seq[0].text}`)
+  assert.notEqual(flow.seq[1].text, flow.seq[2].text, `连点两次还是同一句：${flow.seq[1].text}`)
+  assert.ok(flow.backAt > 0 && flow.backAt <= 17, `走完没绕回第一句（点了 ${flow.backAt} 次）：${flow.tail.text}`)
+  await page.evaluate(() => window.__petDebug.hideBubble())
 })
 
 check('面板以角色的对称轴居中，不是贴着身体左沿', async () => {
@@ -796,8 +833,9 @@ check('设置视图：切视图、改一项、当场落盘、收起延时更宽�
   // 收起后回动作视图；重新打开时看到的应该是按钮而不是设置页
   assert.ok(await openOnBody(), '前置：面板叫不回来')
   assert.equal(await page.locator('.pet-panel .pet-setting').count(), 0, '收起再开还停在设置视图')
+  // 标签直接由 PANEL_BUTTONS 推：这里再抄一份清单，加按钮时就会多一处要记的账
   assert.deepEqual(await page.locator('.pet-panel button').evaluateAll((bs) =>
-    bs.map((b) => b.getAttribute('aria-label'))), ['喂食', '小游戏', '状态', '设置'])
+    bs.map((b) => b.getAttribute('aria-label'))), PANEL_BUTTONS.map((b) => b.label))
 })
 
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {

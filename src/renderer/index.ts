@@ -18,7 +18,7 @@ import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
-import { clamp, pickTalk, type TalkReason } from '../shared/talk.js'
+import { clamp, nextTalkIndex, pickTalk, TALK_FLOW, type TalkReason } from '../shared/talk.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createBubble, type BubbleContent } from './bubble.js'
@@ -136,7 +136,8 @@ function bootstrap(skin: SkinPayload): void {
       lastInteractionAt = Date.now()
       rules.feed('interacted')
       requestClip(a.pool)
-      sayFor(a.id === 'game' ? 'game' : 'status')
+      if (a.id === 'talk') sayNextDebugLine()
+      else sayFor(a.id === 'game' ? 'game' : 'status')
     },
     /**
      * 点了一格食物。播哪条动画由食物自己说了算；皮肤里没有那个池（自带的 block
@@ -243,6 +244,25 @@ function bootstrap(skin: SkinPayload): void {
   function sayFor(reason: TalkReason): void {
     const line = pickTalk(reason, { now: Date.now(), idleMs: 0, lastTalkAt }, talkRng)
     if (line !== null) say({ text: line.say, reply: line.reply })
+  }
+
+  /** 调试台词的游标。-1 = 还没放过，第一次点给第一条。 */
+  let talkCursor = -1
+
+  /**
+   * 面板「说话」按钮：按顺序放下一条台词，**绕开冷却与概率**。
+   * 这颗按钮的用途是把台词表逐条搬到气泡上看（装不装得下、按钮压不压边），
+   * 「点了必出」是它的第一要求——走 `pickTalk` 会被 25 秒冷却吞掉，看着像按钮坏了。
+   * 调完删这颗按钮，这段跟着删。
+   */
+  function sayNextDebugLine(): void {
+    talkCursor = nextTalkIndex(talkCursor)
+    const line = TALK_FLOW[talkCursor]
+    // 下标由 nextTalkIndex 取模保证在范围内，这句只是 TS 对口径的要求（同 pickTalk 的 ?? null）
+    if (!line) return
+    say({ text: line.say, reply: line.reply })
+    // 记成「刚说过」：免得刚放完这条，idle 那一拍又压一句上去把画面搅了。
+    lastTalkAt = Date.now()
   }
 
   /** 身体、面板、气泡、拖拽四者之一成立就要接住鼠标。 */

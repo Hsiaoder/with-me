@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clamp, pickTalk, REPLY_MAX_WIDTH, TALK_LINES, type TalkReason } from '../src/shared/talk.js'
+import { clamp, nextTalkIndex, pickTalk, REPLY_MAX_WIDTH, replyFits, TALK_FLOW, TALK_LINES, type TalkReason } from '../src/shared/talk.js'
 import { labelWidth } from '../src/shared/text.js'
 import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_MAX_CHARS } from '../src/shared/config.js'
 
@@ -93,5 +93,31 @@ describe('clamp', () => {
   it('按码点数算，不是 UTF-16 长度', () => {
     const emoji = '😀'.repeat(TALK_MAX_CHARS)
     expect(clamp(emoji)).toBe(emoji)
+  })
+})
+
+describe('调试台词流（面板「说话」按钮按顺序放）', () => {
+  const total = Object.values(TALK_LINES).reduce((n, l) => n + l.length, 0)
+
+  it('摊平覆盖每条台词、不重不漏，顺序就是 reason 表的顺序', () => {
+    // 现在是 17 条。这里钉「覆盖全部」而不是钉死数字，加一句台词不该把这条测试弄红。
+    expect(TALK_FLOW.length).toBe(total)
+    expect(new Set(TALK_FLOW.map((l) => l.say)).size).toBe(total)
+    expect(TALK_FLOW[0]).toEqual(TALK_LINES.idle[0])
+    expect(TALK_FLOW.at(-1)).toEqual(TALK_LINES.drag.at(-1))
+  })
+
+  it('每条都装得进气泡：正文不超上限，回复放得下那颗按钮', () => {
+    for (const line of TALK_FLOW) {
+      expect(line.say, `正文需要截断才放得下：${line.say}`).toBe(clamp(line.say))
+      expect([...clamp(line.say)].length).toBeLessThanOrEqual(TALK_MAX_CHARS)
+      expect(replyFits(line), `回复太宽放不下：${line.reply}`).toBe(true)
+    }
+  })
+
+  it('游标从 -1 起步走第一条，走完绕回 0', () => {
+    expect(nextTalkIndex(-1)).toBe(0)
+    expect(nextTalkIndex(0)).toBe(1)
+    expect(nextTalkIndex(TALK_FLOW.length - 1)).toBe(0)
   })
 })

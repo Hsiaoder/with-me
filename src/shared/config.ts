@@ -138,6 +138,8 @@ export const PANEL_BUTTONS: readonly PanelButton[] = [
   { id: 'game', label: '小游戏', icon: 'icons/activity.svg', pool: 'click' },
   { id: 'status', label: '状态', icon: 'icons/status.svg', pool: 'click' },
   { id: 'settings', label: '设置', icon: 'icons/settings.svg', view: 'settings' },
+  // 调试气泡用：点一次按顺序放一条台词（含那颗回应按钮），绕开冷却与概率。
+  { id: 'talk', label: '说话', icon: 'emotes/dots3.png', pool: 'click' },
 ]
 
 // ---- 喂食列表 ----

@@ -87,3 +87,16 @@ export function pickTalk(reason: TalkReason, ctx: TalkCtx, rng: () => number): L
 
 /** 回复放得下那颗按钮吗（装配层不需要问，测试与内容校准入用）。 */
 export const replyFits = (line: Line): boolean => labelWidth(line.reply) <= REPLY_MAX_WIDTH
+
+/**
+ * 台词表摊平成一条有序流：面板「说话」按钮按顺序逐条放，走完绕回。
+ * 顺序就是 `TALK_LINES` 里 reason 的书写顺序（idle → feed → game → status → drag），
+ * 再按各池里的行序——调试时要能预期「下一条是哪句」，所以这里刻意不用随机。
+ */
+export const TALK_FLOW: readonly Line[] = (Object.keys(TALK_LINES) as TalkReason[])
+  .flatMap((r) => TALK_LINES[r])
+
+/** 游标推进：-1 起步给第一条，走到末尾绕回 0。 */
+export function nextTalkIndex(cur: number): number {
+  return (cur + 1) % TALK_FLOW.length
+}
