@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, HOVER_DWELL_MS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
-  GRAB_HEARTBEAT_MS,
+  GRAB_HEARTBEAT_MS, BUBBLE_IMAGE,
 } from '../src/shared/config.js'
+import { mimeOf } from '../src/main/protocol.js'
 
 describe('素材合同', () => {
   it('画布是 16:9', () => {
@@ -41,5 +44,21 @@ describe('皮肤必需池', () => {
     for (const pool of ['idle', 'move', 'turn', 'click', 'drag']) {
       expect(REQUIRED_POOLS).toContain(pool)
     }
+  })
+})
+
+describe('气泡素材', () => {
+  it('.png 在 copy-static 的白名单里：文件在仓库里不等于进得了 dist，上一轮图标就是这么 404 的', () => {
+    const src = readFileSync('tools/copy-static.mjs', 'utf8')
+    const exts = [...src.matchAll(/'\.(html|css|svg|png|webm)'/g)].map((m) => m[1])
+    expect(exts).toContain('png')
+  })
+
+  it('BUBBLE_IMAGE 指向的文件真的在仓库里', () => {
+    expect(existsSync(join('src/renderer', BUBBLE_IMAGE))).toBe(true)
+  })
+
+  it('app:// 的 MIME 表认得 .png', () => {
+    expect(mimeOf('a/b.png')).toBe('image/png')
   })
 })
