@@ -258,6 +258,24 @@ body.pet-over {
   cursor: var(--pet-cursor);
 }
 
+/* 食物列表的底板换成 Kenney UI Pack 的 button_rectangle_border（CC0，Blue/Default 那张）。
+   素材是 192×64 的整块板：四边各 6 个源像素是蓝色斜面边框，中间浅灰蓝填充 + 一道白色内高光。
+
+   为什么用 border-image 而不是 background-size:100% 100%：列表的实际尺寸（约 304×80）
+   和素材比例（3:1）不一样，整张拉过去会把圆角拉成椭圆，左右边框变成 9.5px 而上下只有 7.5px，
+   一眼就看得出歪。九宫格只拉伸中间那片纯色，四个角原样保留。
+   slice 用 6 = 素材里边框的实测厚度。
+
+   border-image 不吃 border-radius（圆角由素材自己画），所以这里显式把半径归零，
+   免得留着 10px 让人以为还有人在管圆角。这条必须排在 is-plate 后面：两者权重相同，靠顺序压过它。 */
+.pet-panel.is-foods {
+  padding: 5px;
+  background: none;
+  border: 6px solid transparent;
+  border-image: url("icons/button_rectangle_border.png") 6 fill;
+  border-radius: 0;
+}
+
 /* 设置视图是文字行，竖排两列。 */
 .pet-panel.is-settings {
   flex-direction: column;
