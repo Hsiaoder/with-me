@@ -119,6 +119,63 @@ body.pet-over {
   }
 }
 
+/* 头顶气泡。收起 = 真的移出布局，和面板同一条规矩（problem/05 §5.3）：
+   作者样式必须显式写出 [hidden]{display:none}，否则 .pet-bubble{display:block}
+   会把 UA 那条顶掉，「收起」退化成透明度 0，一块看不见的空气泡照样吃点击。 */
+.pet-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  width: 128px;
+  height: 152px;
+  pointer-events: auto;
+  cursor: var(--pet-cursor);
+  will-change: transform;
+  opacity: 0;
+  transition: opacity 0.18s ease, display 0.18s allow-discrete;
+}
+
+.pet-bubble[hidden] {
+  display: none;
+}
+
+.pet-bubble:not([hidden]) {
+  opacity: 1;
+}
+
+@starting-style {
+  .pet-bubble:not([hidden]) {
+    opacity: 0;
+  }
+}
+
+/* 底图铺满整块，文字层单独定位在白色区里。两层分开才不会被彼此的尺寸绑死：
+   以后换成切片拉伸或换图片，只有 bg 这一层要动。 */
+.pet-bubble-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.pet-bubble-text {
+  position: absolute;
+  left: 24px;
+  top: 24px;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font: 13px/1.5 "Microsoft YaHei UI", sans-serif;
+  color: #2b2f36;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 /* 动作视图只有图标，不画圆片。34px 的方块留着当命中区——图标才 22px，
    按图标本身点太费眼睛。 */
 .pet-panel button {

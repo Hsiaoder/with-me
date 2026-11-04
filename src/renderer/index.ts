@@ -1,4 +1,6 @@
 import {
+  BUBBLE_GAP,
+  BUBBLE_SHOW_MS,
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
   PANEL_GAP,
@@ -8,13 +10,15 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, panelAnchor, rectContains, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, panelAnchor, rectContains, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
+import { clamp } from '../shared/talk.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
+import { createBubble } from './bubble.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
 import { createVideoPlayer } from './player/video-backend.js'
@@ -142,7 +146,49 @@ function bootstrap(skin: SkinPayload): void {
     panel.setSettings(s)
   })
 
-  /** 身体、面板、拖拽三者之一成立就要接住鼠标。 */
+  // ---- 气泡 ----
+  const bubble = createBubble(root)
+  /** 气泡自己的一次性定时器。不挂 rAF：覆盖层没焦点时 rAF 会被节流，定时器才准（心跳那条踩过）。 */
+  let bubbleDeadline: ReturnType<typeof setTimeout> | null = null
+  /** 气泡显示尺寸。底图 32×38 等比放大 4 倍，非等比会把朝下的尾巴扯宽。 */
+  const BUBBLE_SIZE = { w: 128, h: 152 }
+
+  const screenRect = (): Rect => ({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight })
+
+  const bubbleAnchorNow = (): Point =>
+    bubbleAnchor(hitBox(), panel.isOpen ? rectOf(panel.el) : null, BUBBLE_SIZE, screenRect(), BUBBLE_GAP)
+
+  function placeBubble(): void {
+    bubble.place(bubbleAnchorNow())
+  }
+
+  /** 光标压在气泡上就算「还在读」。判据用坐标，不用 CSS :hover：穿透一开就收不到 mouseleave。 */
+  function overBubble(p: Point): boolean {
+    const r = bubble.rect()
+    return r !== null && rectContains(r, p)
+  }
+
+  function armBubble(ms: number): void {
+    if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
+    bubbleDeadline = setTimeout(() => {
+      if (bubble.isOpen && lastCursor !== null && overBubble(lastCursor)) armBubble(ms)
+      else bubble.hide()
+    }, ms)
+  }
+
+  /**
+   * 开口说一句。文本在这里 clamp，调用方不必各自记得截断。
+   * 空文本（clamp 之后变空串）直接不显示——挂一个空气泡比不说话更怪。
+   */
+  function say(text: string, ms: number = BUBBLE_SHOW_MS): boolean {
+    const clean = clamp(text)
+    if (clean === '') return false
+    bubble.show(clean, bubbleAnchorNow())
+    armBubble(ms)
+    return bubble.isOpen
+  }
+
+  /** 身体、面板、气泡、拖拽四者之一成立就要接住鼠标。 */
   let wantGrab = false
   let lastGrabSent = 0
   /** 上一次真正发出去的值。null = 还没发过，所以首次一定会发。 */
@@ -184,6 +230,7 @@ function bootstrap(skin: SkinPayload): void {
     const walking = current.pool === 'move'
     sprite.setFlip(motion.facing() === 'left' && walking && isMirrorable(manifest, current.name))
     if (panel.isOpen) placePanel()          // 宠物走动时面板要跟着，不然飘在旧位置
+    if (bubble.isOpen) placeBubble()        // 气泡同理：话说到一半宠物走开了，气泡不能钉在原地
     if (outlineOn) sprite.showOutline(hitBox())
   }
 
@@ -249,20 +296,25 @@ function bootstrap(skin: SkinPayload): void {
     // 面板那块不自报矩形，直接问 DOM：命中的元素（或其祖先）带 data-hit 才算。
     // 收起的面板不在布局里，问不到，所以不存在「看不见却抢鼠标」的中间状态。
     const hit = document.elementFromPoint(p.x, p.y)
-    const overPanel = hit !== null && hit.closest('[data-hit]') !== null
+    /**
+     * 悬停计时只认**面板**，不认任何 `data-hit`：气泡也带 data-hit（要抢鼠标、要手形），
+     * 但「停在气泡上读那句话」不该把按钮面板叫出来——那是用户没做过的动作。
+     * 抢鼠标与光标形状归 zone 管（下面的 unionRect），两件事分开。
+     */
+    const overPanel = hit !== null && hit.closest('.pet-panel') !== null
     const ev = hover.onPoint(p, over || dragging, overPanel)
     if (ev === 'open') placePanel()
     if (ev === 'close') panel.hide()
     /**
-     * 交互区 = 身体框与（开着的面板框）的外接矩形。用外接矩形而不是并集，
-     * 因为要的是**连续**：身体和面板之间那截空隙、以及四个按钮之间那 8px，
-     * 按各自矩形判都会落空，光标就会一路闪回桌面的样子。
+     * 交互区 = 身体框、开着的面板框、开着的气泡框三者的外接矩形。用外接矩形而不是并集，
+     * 因为要的是**连续**：身体和面板之间那截空隙、四个按钮之间那 8px、面板与气泡之间
+     * 那 12px，按各自矩形判都会落空，光标就会一路闪回桌面的样子。
      *
-     * 空隙的点击归我们（按下不反应），这是连续的代价；但区域只在面板开着时
+     * 空隙的点击归我们（按下不反应），这是连续的代价；但区域只在面板或气泡开着时
      * 才放大，而"算不算有人在使用"仍然只问 DOM 命中——停在看不见的空隙里不算活动，
-     * 1500ms 收起照旧跑，所以这段吞点击的时间有上界。
+     * 收起延时照旧跑，所以这段吞点击的时间有上界。
      */
-    const zone = unionRect(hitBox(), panel.isOpen ? rectOf(panel.el) : null)
+    const zone = unionRect(hitBox(), panel.isOpen ? rectOf(panel.el) : null, bubble.rect())
     const inZone = rectContains(zone, p)
     setOverClass(inZone || dragging)
     wantGrab = inZone || dragging
@@ -344,6 +396,20 @@ function bootstrap(skin: SkinPayload): void {
       outlineOn = on
       if (!on) sprite.showOutline(null)
       return outlineOn
+    },
+    /** 把气泡叫出来。ms 可缩短，免得 e2e 为了验收起要睡满 5 秒。 */
+    say: (text: string, ms?: number): boolean => say(text, ms),
+    /** 立刻收掉气泡。e2e 用它收尾，免得残留的气泡影响后面几条检查的命中判定。 */
+    hideBubble: (): boolean => {
+      bubble.hide()
+      if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
+      return true
+    },
+    get bubbleOpen(): boolean {
+      return bubble.isOpen
+    },
+    get bubbleText(): string {
+      return bubble.el.querySelector('.pet-bubble-text')?.textContent ?? ''
     },
     get hitBox(): Rect {
       return hitBox()

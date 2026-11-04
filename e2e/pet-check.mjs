@@ -254,6 +254,78 @@ check('交互区是连续的：身体—空隙—按钮一路不掉', async () =
   assert.equal((await dbg()).open, false, '停在空隙里把面板续住了')
   assert.equal(await overClass(), false, '面板收起后区域没缩回身体')
 })
+
+const bubbleCenter = () => page.evaluate(() => {
+  const r = document.querySelector('.pet-bubble').getBoundingClientRect()
+  return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+})
+
+check('气泡：显示、覆盖、到点收起、悬停续命、跟着宠物走、长按码点截断', async () => {
+  const open = () => page.evaluate(() => window.__petDebug.bubbleOpen)
+  const text = () => page.evaluate(() => window.__petDebug.bubbleText)
+
+  assert.equal(await open(), false, '前置：开局不该有气泡')
+  /**
+   * 先把光标挪到空地上。续命判据读的是「最后已知光标」，而上一条检查留下的坐标
+   * 正好落在新气泡底下（面板原本就在头顶，气泡也往上摆），不清干净的话气泡会被
+   * 一根根本不存在的手指一直续着——上一轮 e2e 就是因为这类残留状态飘红过。
+   */
+  await feed({ x: 4, y: 4 })
+  await page.evaluate(() => window.__petDebug.say('今天也想玩', 400))
+  assert.equal(await open(), true, 'say 之后没显示')
+  assert.equal(await text(), '今天也想玩')
+
+  // 覆盖而不是叠加：同一时刻只许有一个气泡
+  await page.evaluate(() => window.__petDebug.say('在呢在呢', 400))
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-bubble').length), 1, '叠了两个气泡')
+  assert.equal(await text(), '在呢在呢')
+
+  // 收起 = 真的移出布局（和面板同一条规矩，problem/05 §5.3）
+  await page.waitForTimeout(500)
+  assert.equal(await open(), false, '到点没收起')
+  await page.waitForTimeout(300)          // 等淡出的离散过渡走完，display 才真的换掉
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pet-bubble')).display), 'none',
+    '收起的气泡还在布局里，会照样吃点击')
+
+  // 超长按码点截断加省略号（24 字上限）
+  const long = await page.evaluate(() => {
+    window.__petDebug.say('一'.repeat(40), 300)
+    return window.__petDebug.bubbleText
+  })
+  assert.equal([...long].length, 25, `该截到 24 字 + 省略号，实际 ${long}`)
+  assert.ok(long.endsWith('…'), `没加省略号：${long}`)
+
+  // 空文本等于不显示
+  assert.equal(await page.evaluate(() => window.__petDebug.say('   ', 300)), false, '空白文本也挂了个空气泡')
+
+  // 悬停续命：光标压在气泡上，到点不该收
+  await page.evaluate(() => window.__petDebug.say('别走别走', 400))
+  await feed(await bubbleCenter())
+  await page.waitForTimeout(900)
+  assert.equal(await open(), true, '光标还压在气泡上就收走了')
+  // 但停在气泡上不该把按钮面板叫出来：气泡是内容不是控件（读一句话就把按钮弹出来很怪）
+  assert.equal((await dbg()).open, false, '停在气泡上把面板叫出来了')
+
+  // 离开后续命停止
+  await feed({ x: 4, y: 4 })
+  await page.waitForTimeout(900)
+  assert.equal(await open(), false, '离开气泡后也没收')
+
+  // 跟随：宠物挪走，气泡得跟着挪
+  await page.evaluate(() => window.__petDebug.say('跟我走', 4000))
+  const before = await page.evaluate(() => document.querySelector('.pet-bubble').style.transform)
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: h.x - 260, y: h.y })
+  await page.waitForTimeout(150)
+  const after = await page.evaluate(() => document.querySelector('.pet-bubble').style.transform)
+  assert.notEqual(after, before, '宠物走了气泡还钉在原地')
+
+  // 交互区覆盖气泡：光标停在气泡正中时 pet-over 为真（位置已经跟着挪过，要重新量）
+  await feed(await bubbleCenter())
+  assert.equal(await overClass(), true, '光标在气泡上却没进交互区')
+
+  await page.evaluate(() => window.__petDebug.hideBubble())
+})
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
   pool: window.__petDebug.current.pool,
