@@ -3,6 +3,7 @@ import {
   BUBBLE_H,
   BUBBLE_SHOW_MS,
   BUBBLE_W,
+  DRAG_START_PX,
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
   PANEL_GAP,
@@ -72,6 +73,9 @@ function bootstrap(skin: SkinPayload): void {
   let current: ClipRef = picker.pickFrom(source, 'idle', null) ?? { pool: 'idle', name: '' }
   let dragging = false
   let dragOffset: Point = { x: 0, y: 0 }
+  /** 按下点与「真的拖起来了」的判定结果：没过阈值的那次是「点」，不是拖。 */
+  let pressPoint: Point = { x: 0, y: 0 }
+  let dragStarted = false
   let outlineOn = false
   /** 行为链的令牌：换目标时递增，旧链在 await 醒来后自己退出，保证同时只有一条链在播。 */
   let chainToken = 0
@@ -389,6 +393,8 @@ function bootstrap(skin: SkinPayload): void {
       return            // 调试点击不该同时开始拖拽
     }
     dragging = true
+    dragStarted = false
+    pressPoint = p
     const pos = stagePos()
     dragOffset = { x: p.x - pos.x, y: p.y - pos.y }
     hover.reset()
@@ -401,20 +407,33 @@ function bootstrap(skin: SkinPayload): void {
   })
   window.addEventListener('pointermove', (e) => {
     if (!dragging) return
-    motion.setPosition({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y })
+    const p = { x: e.clientX, y: e.clientY }
+    motion.setPosition({ x: p.x - dragOffset.x, y: p.y - dragOffset.y })
+    // 动画挂在「真的拖起来」那一刻，不是挂在松手：原来 pointerup 才 requestClip('drag')，
+    // 于是按住的全过程它一直在呼吸，松手反倒演「被拎着」——量过是 929ms 的整段延迟（problem/05 §5.11）。
+    // 没越过阈值之前不动画，是为了不把「点一下」也判成拖拽（那条路以前是 click 没有触发点的根因）。
+    if (dragStarted) return
+    if (Math.hypot(p.x - pressPoint.x, p.y - pressPoint.y) < DRAG_START_PX) return
+    dragStarted = true
+    requestClip('drag')
+    sayFor('drag')
   })
   window.addEventListener('pointerup', () => {
     if (!dragging) return
     dragging = false
+    lastInteractionAt = Date.now()
     // 停在松手的地方。这里原来调了 snapToBottom()，把高度强行拉回地面，
     // 于是把宠物拖到右上角松手后它会"跳回原位"。setPosition 已经把 y 夹在
     // 屏幕内了，不需要再吸附。（启动时落地仍由 bootstrap 里的 snapToBottom 负责）
+    if (!dragStarted) {
+      // 没过阈值就是「点了一下」。点了必须有反应，所以给它 click 动画；
+      // 台词这一轮先不配（click 那一档等喂食回复一起补）。
+      requestClip('click')
+      return
+    }
     rules.feed('dragged')
-    requestClip('drag')
-    lastInteractionAt = Date.now()
-    // 点身体在当前实现里走的就是这条路（pointerdown 立刻算拖起，pointerup 收尾），
-    // 所以台词只有 drag——原来列过 click，但它没有任何触发点，留着就是死数据。
-    sayFor('drag')
+    // 放下就回到环境链：grab 素材有 10 秒，不切回去它会继续演「被拎着」演到完。
+    requestClip('idle')
   })
 
   /** 人工排查与 e2e 用的钩子；Task 13 把它换成 F9 全局快捷键。 */

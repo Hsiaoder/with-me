@@ -39,6 +39,12 @@ export const LEASE_TIMEOUT_MS = 500
  * requestGrab 原本只在光标移动时发，手停在面板上不动就会让租约悄悄过期、鼠标被放开。
  */
 export const GRAB_HEARTBEAT_MS = 250
+/**
+ * 按下之后要走够这么多像素才算「拖起来」。小于它松手算「点」。
+ * 这条线存在的理由：pointerdown 立刻算拖起，于是点身体走的也是拖拽那条路，
+ * click 池（皮肤契约里的必需池）一直没有触发点，而拖拽动画只能在松手后看见。
+ */
+export const DRAG_START_PX = 4
 
 // ---- 行为 ----
 /**

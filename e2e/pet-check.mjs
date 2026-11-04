@@ -687,6 +687,56 @@ check('拖拽跟随光标，松手停在原地不回弹', async () => {
   assert.ok(drag.after.y < drag.bottom - 200, `松手后被吸回地面：y=${drag.after.y} 屏高=${drag.bottom}`)
 })
 
+check('拖拽动画挂在「真的拖起来了」那一刻，松手就切回环境链', async () => {
+  const seen = await page.evaluate(async () => {
+    const h = window.__petDebug.hitBox
+    const from = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    const to = { x: from.x + 120, y: from.y - 60 }
+    const fire = (type, p) => window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
+    const front = () => {
+      const v = document.querySelector('.pet-video.is-front')
+      return v ? v.src.split('/').slice(-2).join('/') : ''
+    }
+    fire('pointerdown', from)
+    fire('pointermove', { x: from.x + 10, y: from.y })
+    fire('pointermove', to)
+    // 池是同步换的（requestClip 里就赋了 current），前台画面要等 loadeddata，所以先记下池再等一拍
+    const poolAtMove = window.__petDebug.current.pool
+    await new Promise((r) => setTimeout(r, 250))
+    const during = { pool: poolAtMove, front: front(), talk: window.__petDebug.bubbleText }
+    fire('pointerup', to)
+    await new Promise((r) => setTimeout(r, 300))
+    return { during, after: { pool: window.__petDebug.current.pool, front: front() } }
+  })
+  assert.strictEqual(seen.during.pool, 'drag', `拖拽中途还没换到 drag 池（现在是松手才换）：${JSON.stringify(seen.during)}`)
+  assert.match(seen.during.front, /^drag\//, `拖拽中途前台还播着这条：${seen.during.front}`)
+  assert.notStrictEqual(seen.after.pool, 'drag', `松手后仍停在 drag：${JSON.stringify(seen.after)}`)
+  assert.match(seen.after.front, /^idle\//, `松手后前台没回到环境链：${seen.after.front}`)
+})
+
+check('点一下不动是「点」：走 click 池，绝不碰 drag', async () => {
+  // 按下立刻算拖起是老逻辑的副产品：点身体也吃 drag 动画。加了位移阈值之后，
+  // 没过阈值的那次必须是 click，否则「点一下」没有任何反应（点了必须有反应）。
+  const seen = await page.evaluate(async () => {
+    const h = window.__petDebug.hitBox
+    const p = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    const fire = (type, q) => window.dispatchEvent(new PointerEvent(type, { clientX: q.x, clientY: q.y, bubbles: true }))
+    const pools = [window.__petDebug.current.pool]
+    fire('pointerdown', p)
+    pools.push(window.__petDebug.current.pool)
+    await new Promise((r) => setTimeout(r, 120))
+    pools.push(window.__petDebug.current.pool)
+    fire('pointerup', p)
+    await new Promise((r) => setTimeout(r, 300))
+    const v = document.querySelector('.pet-video.is-front')
+    pools.push(window.__petDebug.current.pool)
+    return { pools, front: v ? v.src.split('/').slice(-2).join('/') : '' }
+  })
+  assert.ok(!seen.pools.includes('drag'), `只按下没移动就判成拖拽了：${JSON.stringify(seen.pools)}`)
+  assert.strictEqual(seen.pools.at(-1), 'click', `松手后当前池不是 click：${JSON.stringify(seen.pools)}`)
+  assert.match(seen.front, /^click\//, `点一下前台没播 click 素材：${seen.front}`)
+})
+
 check('Ctrl+Shift+点身体切换命中框', async () => {
   // F9 走不通：这扇窗 focusable:false，收不到键盘事件。改用带修饰键的点击。
   const toggle = () => page.evaluate(() => {
