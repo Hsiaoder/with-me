@@ -258,21 +258,27 @@ body.pet-over {
   cursor: var(--pet-cursor);
 }
 
-/* 食物列表的底板换成 Kenney UI Pack 的 button_rectangle_border（CC0，Blue/Default 那张）。
-   素材是 192×64 的整块板：四边各 6 个源像素是蓝色斜面边框，中间浅灰蓝填充 + 一道白色内高光。
+/* 食物列表的底板用 Kenney UI Pack 的 button_rectangle_line（CC0，Blue/Default，192×64）。
 
-   为什么用 border-image 而不是 background-size:100% 100%：列表的实际尺寸（约 304×80）
-   和素材比例（3:1）不一样，整张拉过去会把圆角拉成椭圆，左右边框变成 9.5px 而上下只有 7.5px，
-   一眼就看得出歪。九宫格只拉伸中间那片纯色，四个角原样保留。
-   slice 用 6 = 素材里边框的实测厚度。
+   素材从外到内是四层（实测列切片）：2px 灰色外框 → 2px 白色内高光 → 2px 浅灰蓝留白 →
+   2px 蓝色内框（蓝色实心矩形，bbox 6..185 × 6..57，直角），其余全是 218,220,231 的填充。
+   所以 slice 必须取 8：把四层整段切进边框区，中间 8..183 × 8..55 是纯填充，
+   拉伸时不会把蓝框拉歪，也不会把外框的圆角抗锯齿拉成椭圆。
+   取 2（只切外框）会让蓝框落进中间区，被按比例拉成两条不等距的杂线。
 
-   border-image 不吃 border-radius（圆角由素材自己画），所以这里显式把半径归零，
+   为什么用 border-image 而不是 background-size:100% 100%：列表的实际尺寸（实测 314×90，约 3.5:1）
+   和素材比例（3:1）不一样，整张拉过去四个角全会变形；九宫格只拉伸中间那片纯色。
+   截图量过（scale=2）：上/下/左三条扫描线跑出来完全一样——灰 4、浅 1、白 3、浅 3、过渡 1、蓝 4
+   个设备像素，四边等厚，每条线正好是素材的 2 CSS px，没被拉伸。
+
+   border:8px + padding:3px = 11px，和上一版（6+5）留白一致，格子尺寸契约没动。
+   border-image 不吃 border-radius（圆角由素材自己画），这里显式归零，
    免得留着 10px 让人以为还有人在管圆角。这条必须排在 is-plate 后面：两者权重相同，靠顺序压过它。 */
 .pet-panel.is-foods {
-  padding: 5px;
+  padding: 3px;
   background: none;
-  border: 6px solid transparent;
-  border-image: url("icons/button_rectangle_border.png") 6 fill;
+  border: 8px solid transparent;
+  border-image: url("icons/button_rectangle_line.png") 8 fill;
   border-radius: 0;
 }
 
