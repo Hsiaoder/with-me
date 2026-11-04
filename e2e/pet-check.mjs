@@ -189,16 +189,25 @@ check('光标形状跟着命中区走：身体上是 hand_point，舞台那截�
   await feed({ x: stage.x + 2, y: stage.y + 2 })
   assert.equal(await overClass(), false, '舞台左上角那截透明空白也换了光标')
 
-  // 规则本身：指向图标文件，热点是指尖那一格（PNG alpha 实测量出顶边 y=2、x 跨 8..11）
-  const cur = await page.evaluate(() => {
+  // 规则本身：光标只定义一次（:root 的 --pet-cursor），身体命中区和按钮共用它。
+  // 热点是指尖那一格（PNG alpha 实测量出顶边 y=2、x 跨 8..11）。
+  const decl = await page.evaluate(() => {
+    const out = { var: null, users: [] }
     for (const sheet of document.styleSheets) {
-      for (const r of sheet.cssRules) if (r.selectorText === 'body.pet-over') return r.style.cursor
+      for (const r of sheet.cssRules) {
+        if (r.selectorText === ':root') out.var = r.style.getPropertyValue('--pet-cursor')
+        if (r.selectorText === 'body.pet-over' || r.selectorText === '.pet-panel button') {
+          out.users.push([r.selectorText, r.style.cursor])
+        }
+      }
     }
-    return null
+    return out
   })
-  assert.ok(cur, '样式表里没有 body.pet-over 这条规则')
-  assert.match(cur, /icons\/hand_point\.svg/, `光标没指向 hand_point：${cur}`)
-  assert.match(cur, /9 2/, `热点不是量出来的指尖：${cur}`)
+  assert.ok(decl.var, '样式表里没有 --pet-cursor 这条定义')
+  assert.match(decl.var, /icons\/hand_point\.svg/, `光标没指向 hand_point：${decl.var}`)
+  assert.match(decl.var, /9 2/, `热点不是量出来的指尖：${decl.var}`)
+  assert.deepEqual(decl.users, [['body.pet-over', 'var(--pet-cursor)'], ['.pet-panel button', 'var(--pet-cursor)']],
+    `两处没共用同一枚光标：${JSON.stringify(decl.users)}`)
 
   // 上一轮图标 404 就是栽在 MIME 白名单：文件在磁盘上不等于取得到，光标同理
   const got = await page.evaluate(async () => {

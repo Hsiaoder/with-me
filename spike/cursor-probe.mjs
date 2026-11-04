@@ -73,26 +73,48 @@ try {
   }
   if (scale === 0) throw new Error('三种倍率都没能走进命中区，探针到此为止')
 
-  const empty = { x: 40, y: 40 }
-  const base = dump(empty.x, empty.y)
-  await page.waitForTimeout(120)
-  const baseOver = await page.evaluate(() => document.body.classList.contains('pet-over'))
-  console.log(`空地处   ${base}  pet-over=${baseOver}`)
-
   const bodyPt = { x: (disp.wa.x + center.x) * scale, y: (disp.wa.y + center.y) * scale }
   const on = dump(bodyPt.x, bodyPt.y, join(OUT, 'cursor-on-pet.png'))
   await page.waitForTimeout(120)
   const onOver = await page.evaluate(() => document.body.classList.contains('pet-over'))
   console.log(`命中区里 ${on}  pet-over=${onOver}`)
 
-  const off = dump(empty.x, empty.y)
+  /**
+   * 面板要静止悬停 400ms 才出，所以量完身体就地等着，别先把鼠标挪开——
+   * 挪开那一刻 1500ms 的收起倒计时就起了，走到按钮上时面板正好已经消失，
+   * 读到的是**底下那个窗口**的光标（实测读到过一枚 32x64 的纵向缩放手）。
+   * 穿透开着时我们这扇窗收不到 WM_SETCURSOR，那种读数跟 CSS 一点关系都没有。
+   */
+  await page.waitForTimeout(520)
+  const open = await page.evaluate(() => window.__petDebug.panelOpen)
+  const btn = await page.evaluate(() => {
+    const r = document.querySelector('.pet-panel button').getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })
+  const onBtn = dump((disp.wa.x + btn.x) * scale, (disp.wa.y + btn.y) * scale, join(OUT, 'cursor-on-button.png'))
+  const dom = await page.evaluate((p) => {
+    const b = document.querySelector('.pet-panel button')
+    const el = document.elementFromPoint(p.x, p.y)
+    return {
+      computed: getComputedStyle(b).cursor,
+      at: el ? `${el.tagName}.${el.className}` : 'null',
+      overPanel: el !== null && el.closest('[data-hit]') !== null,
+      open: window.__petDebug.panelOpen,
+    }
+  }, btn)
+  console.log(`按钮上    ${onBtn}（面板开着=${open}，该点命中=${dom.at} overPanel=${dom.overPanel} 现在开着=${dom.open}）`)
+  console.log(`按钮 computed cursor = ${dom.computed}`)
+
+  const empty = { x: 40, y: 40 }
+  const base = dump(empty.x, empty.y)
   await page.waitForTimeout(120)
-  const offOver = await page.evaluate(() => document.body.classList.contains('pet-over'))
-  console.log(`回到空地 ${off}  pet-over=${offOver}`)
+  const baseOver = await page.evaluate(() => document.body.classList.contains('pet-over'))
+  console.log(`回到空地 ${base}  pet-over=${baseOver}`)
 
   const h = (s) => /h=(-?\d+)/.exec(s)?.[1]
-  console.log(`\n句柄是否变了：${h(base) !== h(on)}（${h(base)} → ${h(on)}）`)
-  console.log(`光标图已存：${join(OUT, 'cursor-on-pet.png')}`)
+  console.log(`\n句柄：身体 ${h(on)} → 按钮 ${h(onBtn)} → 空地 ${h(base)}`)
+  console.log(`身体与按钮同一枚光标：${h(on) === h(onBtn)}；空地是系统箭头：${h(base) === '65539'}`)
+  console.log(`光标图已存：${join(OUT, 'cursor-on-pet.png')}、${join(OUT, 'cursor-on-button.png')}`)
   await app.close()
 } catch (e) {
   code = 1

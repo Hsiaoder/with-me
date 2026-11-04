@@ -30,12 +30,19 @@ body {
   overflow: visible;
 }
 
-/* 鼠标进到宠物身体命中区时换成 Kenney 的 hand_point（CC0）。
+/* 交互区的光标只定义一次：身体命中区、面板按钮共用同一枚 hand_point。
+   以前按钮写的是 `cursor: pointer`（Windows 自己的手形），所以从宠物走到按钮上
+   会换一套手，看着像"移开就变回原来的光标"。 */
+:root {
+  --pet-cursor: url("icons/hand_point.svg") 9 2, pointer;
+}
+
+/* 鼠标进到宠物身体命中区时换成 hand_point（Kenney，CC0）。
    规则挂在 body 上，不挂舞台：`.pet-sprite` 是 pointer-events:none，
    它自己那层的 cursor 永远轮不到——命中测试直接跳过它。
    热点 (9,2) 是指尖那一格，按 PNG 的 alpha 实测量出来的（顶边 y=2，x 跨 8..11）。 */
 body.pet-over {
-  cursor: url("icons/hand_point.svg") 9 2, pointer;
+  cursor: var(--pet-cursor);
 }
 
 .pet-video {
@@ -125,7 +132,7 @@ body.pet-over {
   padding: 0;
   border: none;
   background: none;
-  cursor: pointer;
+  cursor: var(--pet-cursor);
 }
 
 .pet-icon {
@@ -151,6 +158,11 @@ body.pet-over {
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  /* 底板是一整块可见面板，整块都归桌宠：不然鼠标停在标签文字上时显示的是
+     桌面自己的光标，看着像"这块白板和桌宠没关系"。qqpet 也是把光标挂在容器上，
+     不是只挂在按钮上。动作视图仍然只有按钮吃命中——那里的空隙是看不见的。 */
+  pointer-events: auto;
+  cursor: var(--pet-cursor);
 }
 
 .pet-panel.is-settings button {
