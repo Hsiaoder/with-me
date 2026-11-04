@@ -43,8 +43,11 @@ try {
   await page.evaluate((p) => window.__petDebug.cursor(p), { x: h.x + h.w / 2, y: h.y + h.h / 2 })
   await page.waitForTimeout(500)
 
-  // 说一句接近 24 字上限的话，专门看白色区装不装得下
-  await page.evaluate(() => window.__petDebug.say('无聊到数地板纹路了，你回来陪我玩嘛', 60000))
+  // 说一句接近 24 字上限的话 + 带回应按钮，专门看白色区装不装得下、按钮压不压尾巴
+  await page.evaluate(() => window.__petDebug.say({ text: '无聊到数地板纹路了，你回来陪我玩嘛', reply: '别数我陪你' }, 60000))
+  // 等淡入走完再抓：0.18s 的 @starting-style 过渡中间 opacity 还是 0，
+  // 那种帧上"气泡没显示"和"气泡真没显示"长得一模一样。
+  await page.waitForTimeout(400)
   await grab('bubble-shot.png')
 
   // 再截一张带食物列表的（气泡收掉，免得两层叠在一起看不出列表）
