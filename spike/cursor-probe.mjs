@@ -87,33 +87,59 @@ try {
    */
   await page.waitForTimeout(520)
   const open = await page.evaluate(() => window.__petDebug.panelOpen)
-  const btn = await page.evaluate(() => {
-    const r = document.querySelector('.pet-panel button').getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
-  })
-  const onBtn = dump((disp.wa.x + btn.x) * scale, (disp.wa.y + btn.y) * scale, join(OUT, 'cursor-on-button.png'))
-  const dom = await page.evaluate((p) => {
-    const b = document.querySelector('.pet-panel button')
-    const el = document.elementFromPoint(p.x, p.y)
+  console.log(`面板开着=${open}`)
+
+  /** 身体↔面板之间那段、两个按钮之间那 8px、按钮正中——三个点都该是同一枚手。 */
+  const pts = await page.evaluate(() => {
+    const b = window.__petDebug.hitBox
+    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const bs = [...document.querySelectorAll('.pet-panel button')].map((x) => x.getBoundingClientRect())
+    const mid = (r) => ({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) })
+    const between = p.y > b.y + b.h
+      ? { x: Math.round(b.x + b.w / 2), y: Math.round(b.y + b.h + (p.y - b.y - b.h) / 2) }
+      : { x: Math.round(b.x + b.w / 2), y: Math.round(p.y + p.height + (b.y - p.y - p.height) / 2) }
     return {
-      computed: getComputedStyle(b).cursor,
-      at: el ? `${el.tagName}.${el.className}` : 'null',
-      overPanel: el !== null && el.closest('[data-hit]') !== null,
-      open: window.__petDebug.panelOpen,
+      between,
+      gap: { x: Math.round((bs[0].right + bs[1].left) / 2), y: Math.round(bs[0].top + bs[0].height / 2) },
+      button: mid(bs[0]),
     }
-  }, btn)
-  console.log(`按钮上    ${onBtn}（面板开着=${open}，该点命中=${dom.at} overPanel=${dom.overPanel} 现在开着=${dom.open}）`)
-  console.log(`按钮 computed cursor = ${dom.computed}`)
+  })
+
+  const seen = []
+  for (const [label, pt] of Object.entries(pts)) {
+    /**
+     * 每个点都先把面板重新叫出来。面板从打开那一刻就在起 1500ms 的收起倒计时，
+     * 连着量三个点的话，量到第三个时面板正好已经消失——那点变成穿透区，
+     * 读到的是底下窗口的光标（实测又碰到一次那枚 32x64 缩放手）。
+     */
+    dump(bodyPt.x, bodyPt.y)
+    await page.waitForTimeout(520)
+    const opened = await page.evaluate(() => window.__petDebug.panelOpen)
+    const out = label === 'button' ? join(OUT, 'cursor-on-button.png') : undefined
+    const line = dump((disp.wa.x + pt.x) * scale, (disp.wa.y + pt.y) * scale, out)
+    const dom = await page.evaluate((p) => {
+      const el = document.elementFromPoint(p.x, p.y)
+      return {
+        at: el ? `${el.tagName}.${el.className}` : 'null',
+        inZone: document.body.classList.contains('pet-over'),
+        computed: el ? getComputedStyle(el).cursor : 'n/a',
+      }
+    }, pt)
+    seen.push([label, /h=(-?\d+)/.exec(line)?.[1]])
+    console.log(`${label.padEnd(7)} ${line}  面板=${opened} pet-over=${dom.inZone} 该点=${dom.at}`)
+    console.log(`        computed=${dom.computed}`)
+  }
 
   const empty = { x: 40, y: 40 }
   const base = dump(empty.x, empty.y)
   await page.waitForTimeout(120)
   const baseOver = await page.evaluate(() => document.body.classList.contains('pet-over'))
-  console.log(`回到空地 ${base}  pet-over=${baseOver}`)
+  console.log(`空地     ${base}  pet-over=${baseOver}`)
 
   const h = (s) => /h=(-?\d+)/.exec(s)?.[1]
-  console.log(`\n句柄：身体 ${h(on)} → 按钮 ${h(onBtn)} → 空地 ${h(base)}`)
-  console.log(`身体与按钮同一枚光标：${h(on) === h(onBtn)}；空地是系统箭头：${h(base) === '65539'}`)
+  const handles = [h(on), ...seen.map(([, x]) => x)]
+  console.log(`\n句柄：身体 ${handles.join(' = 按钮/空隙 ')}`)
+  console.log(`一路同一枚：${new Set(handles).size === 1}；空地是系统箭头：${h(base) === '65539'}`)
   console.log(`光标图已存：${join(OUT, 'cursor-on-pet.png')}、${join(OUT, 'cursor-on-button.png')}`)
   await app.close()
 } catch (e) {

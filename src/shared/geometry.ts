@@ -43,6 +43,23 @@ export function anyContains(rects: Rect[], p: Point): boolean {
 }
 
 /**
+ * 并集的外接矩形。交互区就靠它把「身体 — 空隙 — 面板」连成一块：
+ * 两个矩形各自命中时，中间那截空隙会闪回桌面的光标，因为并集本身是不连通的。
+ * `b` 传 null 表示那块不在布局里（面板收起），区域就退回只剩身体。
+ */
+export function unionRect(a: Rect, b: Rect | null): Rect {
+  if (!b) return a
+  const x = Math.min(a.x, b.x)
+  const y = Math.min(a.y, b.y)
+  return {
+    x,
+    y,
+    w: Math.max(a.x + a.w, b.x + b.w) - x,
+    h: Math.max(a.y + a.h, b.y + b.h) - y,
+  }
+}
+
+/**
  * 按钮面板该摆在宠物身边的哪个位置（覆盖层 CSS 坐标）。
  *
  * **脚底下优先**——一排按钮跟着脚走，视觉上是从宠物身上「递出来」的，

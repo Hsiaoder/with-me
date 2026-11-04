@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, panelAnchor, stageRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, panelAnchor, stageRect, unionRect } from '../src/shared/geometry.js'
 import { CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -91,5 +91,32 @@ describe('anyContains', () => {
   it('边界点算命中，含右下角', () => {
     expect(anyContains(rects, { x: 0, y: 0 })).toBe(true)
     expect(anyContains(rects, { x: 10, y: 10 })).toBe(true)
+  })
+})
+
+describe('unionRect', () => {
+  const body = { x: 100, y: 200, w: 120, h: 140 }
+
+  it('b 为 null 时退回只剩 a：面板收起，区域不该把看不见的地方也圈进来', () => {
+    expect(unionRect(body, null)).toEqual(body)
+  })
+
+  it('取外接矩形，中间那段空隙也算在内', () => {
+    // 面板在头顶，和身体之间隔着 10px 空隙。并集是两块不连通的矩形，
+    // 光标要连续就得用外接矩形把空隙一起圈进来。
+    const panel = { x: 90, y: 150, w: 160, h: 40 }
+    expect(unionRect(body, panel)).toEqual({ x: 90, y: 150, w: 160, h: 190 })
+  })
+
+  it('谁在外面就取谁的边，四个方向都算', () => {
+    const below = { x: 110, y: 350, w: 40, h: 20 }
+    expect(unionRect(body, below)).toEqual({ x: 100, y: 200, w: 120, h: 170 })
+    const left = { x: 60, y: 250, w: 20, h: 20 }
+    expect(unionRect(body, left)).toEqual({ x: 60, y: 200, w: 160, h: 140 })
+  })
+
+  it('完全包含时不放大', () => {
+    const inner = { x: 120, y: 220, w: 20, h: 20 }
+    expect(unionRect(body, inner)).toEqual(body)
   })
 })

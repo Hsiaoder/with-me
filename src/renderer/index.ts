@@ -8,7 +8,7 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, panelAnchor } from '../shared/geometry.js'
+import { anyContains, bodyRect, panelAnchor, rectContains, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
@@ -73,6 +73,11 @@ function bootstrap(skin: SkinPayload): void {
   const stagePos = (): Point => motion.pos()
   const hitBox = (): Rect => bodyRect({ bodyBox: bodyBoxOf(manifest, current.name) }, stagePos())
   const overBody = (p: Point): boolean => anyContains([hitBox()], p)
+  /** 布局里某个元素现在的矩形。面板的位置由 placePanel 决定，问布局比让它自报准。 */
+  const rectOf = (el: HTMLElement): Rect => {
+    const r = el.getBoundingClientRect()
+    return { x: r.x, y: r.y, w: r.width, h: r.height }
+  }
   const loopsOf = (r: ClipRef): boolean => isLooping(manifest, r.pool, r.name)
 
   function startChain(): void {
@@ -248,13 +253,19 @@ function bootstrap(skin: SkinPayload): void {
     const ev = hover.onPoint(p, over || dragging, overPanel)
     if (ev === 'open') placePanel()
     if (ev === 'close') panel.hide()
-    // 光标形状跟着命中区走，不跟着舞台矩形走：舞台左右各有一截透明空白，
-    // 在那儿显示「可以点」的手形是骗人的。判据用同一个 over，和抢鼠标准则一致。
-    setOverClass(over || dragging)
-    // 「面板还开着」不参与判定：穿透是整窗粒度，多扣一秒鼠标就多吞一秒全桌点击。
-    // 面板的 400ms 收起延时只管可见性。光标要回来点按钮时，进到面板矩形里
-    // 下一拍（≤33ms）就把鼠标接住，人手从移到位到按下远不止这点时间。
-    wantGrab = over || overPanel || dragging
+    /**
+     * 交互区 = 身体框与（开着的面板框）的外接矩形。用外接矩形而不是并集，
+     * 因为要的是**连续**：身体和面板之间那截空隙、以及四个按钮之间那 8px，
+     * 按各自矩形判都会落空，光标就会一路闪回桌面的样子。
+     *
+     * 空隙的点击归我们（按下不反应），这是连续的代价；但区域只在面板开着时
+     * 才放大，而"算不算有人在使用"仍然只问 DOM 命中——停在看不见的空隙里不算活动，
+     * 1500ms 收起照旧跑，所以这段吞点击的时间有上界。
+     */
+    const zone = unionRect(hitBox(), panel.isOpen ? rectOf(panel.el) : null)
+    const inZone = rectContains(zone, p)
+    setOverClass(inZone || dragging)
+    wantGrab = inZone || dragging
     sendGrab()
     scheduleHover()
   }

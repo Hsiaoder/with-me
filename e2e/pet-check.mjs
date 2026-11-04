@@ -174,30 +174,36 @@ async function openOnBody(retry = 3) {
 
 const overClass = () => page.evaluate(() => document.body.classList.contains('pet-over'))
 
-check('光标形状跟着命中区走：身体上是 hand_point，舞台那截透明空白不是', async () => {
-  // 判据必须是身体框而不是舞台矩形——画布四周那截透明空白还归桌面，
+check('光标形状跟着交互区走：身体上是 hand_point，舞台那截透明空白不是', async () => {
+  // 判据必须是交互区而不是舞台矩形——画布四周那截透明空白还归桌面，
   // 在那儿显示「可以点」的手形是骗人的。这条只验到 DOM 层：
   // 系统真换了光标是操作系统口径的事，由 spike/cursor-probe.mjs 拿 GetCursorInfo 证。
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  assert.equal(await overClass(), true, '进到身体命中区没换光标')
+  // 先确认面板是收着的：区域只在面板开着时才放大，否则这条会随上一条检查的状态飘。
+  await feed({ x: 4, y: 4 })
+  await page.waitForTimeout(PANEL_HIDE_MS + 400)
+  assert.equal((await dbg()).open, false, '前置：面板该已收起')
 
   const stage = await page.evaluate(() => {
     const r = document.querySelector('.pet-stage').getBoundingClientRect()
     return { x: Math.round(r.x), y: Math.round(r.y) }
   })
   await feed({ x: stage.x + 2, y: stage.y + 2 })
-  assert.equal(await overClass(), false, '舞台左上角那截透明空白也换了光标')
+  assert.equal(await overClass(), false, '面板没开时，舞台左上角那截透明空白也算进了区域')
 
-  // 规则本身：光标只定义一次（:root 的 --pet-cursor），身体命中区和按钮共用它。
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  assert.equal(await overClass(), true, '进到身体命中区没换光标')
+
+  // 规则本身：值只有 --pet-cursor 一份，用的地方三处（body 状态、按钮、设置底板）。
   // 热点是指尖那一格（PNG alpha 实测量出顶边 y=2、x 跨 8..11）。
   const decl = await page.evaluate(() => {
     const out = { var: null, users: [] }
     for (const sheet of document.styleSheets) {
       for (const r of sheet.cssRules) {
         if (r.selectorText === ':root') out.var = r.style.getPropertyValue('--pet-cursor')
-        if (r.selectorText === 'body.pet-over' || r.selectorText === '.pet-panel button') {
-          out.users.push([r.selectorText, r.style.cursor])
+        if (['body.pet-over', '.pet-panel button', '.pet-panel.is-settings'].includes(r.selectorText)) {
+          out.users.push(r.selectorText)
+          if (r.style.cursor !== 'var(--pet-cursor)') out.users.push(`${r.selectorText}≠var`)
         }
       }
     }
@@ -206,8 +212,8 @@ check('光标形状跟着命中区走：身体上是 hand_point，舞台那截�
   assert.ok(decl.var, '样式表里没有 --pet-cursor 这条定义')
   assert.match(decl.var, /icons\/hand_point\.svg/, `光标没指向 hand_point：${decl.var}`)
   assert.match(decl.var, /9 2/, `热点不是量出来的指尖：${decl.var}`)
-  assert.deepEqual(decl.users, [['body.pet-over', 'var(--pet-cursor)'], ['.pet-panel button', 'var(--pet-cursor)']],
-    `两处没共用同一枚光标：${JSON.stringify(decl.users)}`)
+  assert.deepEqual(decl.users, ['body.pet-over', '.pet-panel button', '.pet-panel.is-settings'],
+    `三处没共用同一枚光标：${JSON.stringify(decl.users)}`)
 
   // 上一轮图标 404 就是栽在 MIME 白名单：文件在磁盘上不等于取得到，光标同理
   const got = await page.evaluate(async () => {
@@ -216,6 +222,37 @@ check('光标形状跟着命中区走：身体上是 hand_point，舞台那截�
   })
   assert.equal(got.status, 200, `光标素材取不到：${JSON.stringify(got)}`)
   assert.equal(got.type, 'image/svg+xml', `MIME 不对：${JSON.stringify(got)}`)
+})
+
+check('交互区是连续的：身体—空隙—按钮一路不掉', async () => {
+  // 用户要的是"一路都是同一枚手"。两个矩形各自命中时中间那截会落空，
+  // 所以区域取身体与开着的面板的外接矩形。
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  await page.waitForTimeout(460)
+  assert.equal((await dbg()).open, true, '前置：面板该开着')
+
+  const geo = await page.evaluate(() => {
+    const b = window.__petDebug.hitBox
+    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const bs = [...document.querySelectorAll('.pet-panel button')].map((x) => x.getBoundingClientRect())
+    const bx = b.x + b.w / 2
+    // 身体与面板之间那段：面板在脚下就取两者中间，在头顶也一样
+    const between = p.y > b.y + b.h
+      ? { x: bx, y: b.y + b.h + (p.y - b.y - b.h) / 2 }
+      : { x: bx, y: p.y + p.height + (b.y - p.y - p.height) / 2 }
+    return { between, gap: { x: (bs[0].right + bs[1].left) / 2, y: bs[0].top + bs[0].height / 2 } }
+  })
+  await feed(geo.between)
+  assert.equal(await overClass(), true, `身体与面板中间那段掉出了区域 @${JSON.stringify(geo.between)}`)
+  await feed(geo.gap)
+  assert.equal(await overClass(), true, `两个按钮之间的空隙掉出了区域 @${JSON.stringify(geo.gap)}`)
+
+  // 区域放大了，但"算不算有人在使用"仍然只问 DOM 命中：停在看不见的空隙里不该续命，
+  // 否则吞掉桌面点击的那段时间就没有上界了。
+  await page.waitForTimeout(PANEL_HIDE_MS + 400)
+  assert.equal((await dbg()).open, false, '停在空隙里把面板续住了')
+  assert.equal(await overClass(), false, '面板收起后区域没缩回身体')
 })
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,

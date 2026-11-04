@@ -30,16 +30,15 @@ body {
   overflow: visible;
 }
 
-/* 交互区的光标只定义一次：身体命中区、面板按钮共用同一枚 hand_point。
-   以前按钮写的是 `cursor: pointer`（Windows 自己的手形），所以从宠物走到按钮上
-   会换一套手，看着像"移开就变回原来的光标"。 */
+/* 交互区的光标只在这一处定义，用的地方只有 body.pet-over。 */
 :root {
   --pet-cursor: url("icons/hand_point.svg") 9 2, pointer;
 }
 
-/* 鼠标进到宠物身体命中区时换成 hand_point（Kenney，CC0）。
-   规则挂在 body 上，不挂舞台：`.pet-sprite` 是 pointer-events:none，
-   它自己那层的 cursor 永远轮不到——命中测试直接跳过它。
+/* 交互区（身体 + 开着的面板的外接矩形）里是同一枚 hand_point，值只有 --pet-cursor 一份。
+   挂三处而不是只挂 body 等它继承：`.pet-sprite` 是 pointer-events:none，它那层的 cursor
+   永远轮不到；按钮这类表单控件也不该赌 UA 不会覆盖 cursor。
+   以前按钮写的是 `cursor: pointer`（Windows 自己的手形），从宠物走到按钮上就换了一套。
    热点 (9,2) 是指尖那一格，按 PNG 的 alpha 实测量出来的（顶边 y=2，x 跨 8..11）。 */
 body.pet-over {
   cursor: var(--pet-cursor);
