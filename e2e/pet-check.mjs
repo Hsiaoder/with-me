@@ -506,6 +506,7 @@ check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连�
 })
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
+  view: window.__petDebug.panelView,
   pool: window.__petDebug.current.pool,
   // 「点哪格播哪条」要的是整条引用：只看池子内随机播一条也算过，那是这个 bug 的原样
   current: window.__petDebug.current,
@@ -814,19 +815,34 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
 
   // 点一格 → 播**它自己那一条**吃相（不是池里随机一条）+ 出气泡（feed 台词）
   await page.evaluate(() => window.__petDebug.setLastTalk(0))
+  // 先把光标"停"在要点的格子上：e2e 冻住了系统光标轮询，喂进去的坐标就是渲染层最后收到的那点。
+  // 后面断言「点完还接得住」用的就是这个位置——真实用户点完食物，手就是停在那儿不动的。
+  const rice = await page.evaluate(() => {
+    const r = document.querySelector('.pet-panel .pet-food[data-food="rice"]').getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })
+  await feed(rice)
+  assert.equal((await dbg()).grab, true, '前置：光标压在格子上，该接住鼠标')
   await page.click('.pet-panel .pet-food[data-food="rice"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
   assert.equal((await dbg()).pool, 'eat')
   assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'rice' }, '点白饭没播白饭那一条')
   assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), true, '点了食物没回话')
-  // 选完即收：列表压在宠物脚底那块，不收就看不到它吃。连喂的代价只是再悬停一次，
-  // 而连喂的第二样本来会被 25 秒冷却吞掉台词，留着列表换不到什么。
-  assert.equal((await dbg()).open, false, '点了食物但列表没收起')
-  assert.ok(await openOnBody(), '前置：列表收掉之后面板叫不回来')
-  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'actions', '重新叫出来还停在食物列表')
+  // 选完**不收**（2026-11-05 改）：吃饭那几秒用户的手就停在这块区域上，要连喂、要点着玩。
+  // 列表和五颗按钮都留在布局里，光标也还在交互区——手没动的用户不该当场看到箭头。
+  // 旧的「选完即收」理由是「列表压在宠物脚底看不到它吃」，两块拆分后副板长在按钮条**外侧**，
+  // 那条理由已经由上面的 stackAnchor 检查证伪。
+  const after = await dbg()
+  assert.equal(after.open, true, '点了食物把整个面板收掉了：按钮跟着消失')
+  assert.equal(after.view, 'foods', '点了食物没留在食物视图（连喂得重新叫列表）')
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-actions button[data-id]').length), 5,
+    '点完食物按钮条不在布局里')
+  const parked = await dbg()
+  assert.deepEqual({ grab: parked.grab, over: await overClass() }, { grab: true, over: true },
+    '手停在那块格子上没动，点完之后交互区却把它吐出去了（光标变回系统箭头）')
 })
 
-check('吃饭期间点身体：菜单照样弹出，但动画不许被抢走', async () => {
+check('吃饭期间点身体：动画不许被抢走，菜单跟着这一次点击开关', async () => {
   // 自己叫一遍，别接上一条的残局（它收不收都不影响这条）。
   await page.evaluate(() => window.__petDebug.hidePanel())
   assert.ok(await openOnBody(), '前置：面板叫不出来')
@@ -835,13 +851,21 @@ check('吃饭期间点身体：菜单照样弹出，但动画不许被抢走', a
   await page.waitForSelector('.pet-panel .pet-food')
   await page.click('.pet-panel .pet-food[data-food="rice"]')
   await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 3000 })
+  assert.equal((await dbg()).open, true, '前置：选完食物面板该留着（吃饭期间按钮不许消失）')
 
   // 立刻点身体：以前这里会把嘴边那口饭换成 click 动画，用户看到的就是「一口没吃完就改动作」。
+  // 面板这次是**被点掉的**——开着的时候点身体就是「再点一下收起」，那是用户自己的手势，
+  // 和「吃饭期间别把菜单自己抽走」是两件事（后者由下面那条检查钉）。
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   await clickBody({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
   const during = await dbg()
   assert.deepEqual(during.current, { pool: 'eat', name: 'rice' }, `吃饭时点身体把动画抢走了：${JSON.stringify(during.current)}`)
-  assert.equal(during.open, true, '吃饭时点身体连菜单也不弹了——用户要的是别打断动画，不是别理我')
+  assert.equal(during.open, false, '开着的时候点身体该把菜单收掉（点击开关的手势不能变成点不动）')
+
+  // 再点一次又叫得回来：吃饭期间菜单不是点不动，只是不自己消失。
+  await clickBody({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  assert.equal((await dbg()).open, true, '吃饭期间点第二下把菜单叫不回来')
+  await page.evaluate(() => window.__petDebug.hidePanel())
 
   // 饭吃完之后必须回到正常链：不能把「不抢播」做成「从此点不动」。
   await page.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
@@ -867,8 +891,7 @@ check('皮肤里没做的那一口：回落到 click，而不是随机播一口�
 })
 
 check('食物列表：整屏步进、到底置灰、拖横条、收起后复位', async () => {
-  // 上一条检查现在会把列表收掉（选完即收），所以这条自己把列表叫出来，别接上一家的残局。
-  // 先 hidePanel 再叫：上一条如果中途失败（比如底板素材断言炸了），列表会留在打开状态，
+  // 先 hidePanel 再叫：上一条检查可能带着打开的列表失败（断言炸在半路），
   // 那时点身体是「收起」而不是「叫出」，接下来的 feed 按钮就等 30 秒超时。
   await page.evaluate(() => window.__petDebug.hidePanel())
   assert.ok(await openOnBody(), '前置：面板叫不出来')
@@ -1281,6 +1304,10 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {
   // 上一版这里直接喂离开坐标然后断言「收了」——可那时候面板已经被拖拽测试关掉了，
   // 断言的是「本来就没开」，什么都没测到。先把面板叫起来，再验它自己收回去。
+  //
+  // 先等嘴边那口饭吃完：上一条检查刚喂过一格，而吃饭期间延时会**重新上弦**（不收起）。
+  // 这条要验的是普通计时，撞上吃饭状态就是在测另一套行为（会随机红）。
+  await page.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
   assert.ok(await openOnBody(), '前置条件：点一下身体该把面板叫出来')
   await feed({ x: 5, y: 5 })
   // 只喂这一次离开坐标：静止时光标不会再产生新事件，收起也得计时自己完成。
@@ -1306,26 +1333,40 @@ check('光标离开身体与面板后立刻放开鼠标，不等面板收起', a
   assert.equal(after.open, true, '面板该还开着（PANEL_HIDE_MS 是可见性延时，不是扣鼠标）')
 })
 
-check('点完食物列表自己收起：光标一动不动也要立刻放开鼠标', async () => {
+check('吃饭期间菜单不收（延时到点只重新上弦），饭后手不动也要自己收掉并放开鼠标', async () => {
   /**
-   * codex 复审 #3 P1。wantGrab 以前只在光标事件里算，于是漏掉「DOM 自己消失」这条路：
-   * 用户点一格食物 → 列表收起 → 鼠标还停在原来那块格子的位置（真的没动）→
-   * 心跳继续每 250ms 给整屏续租，桌面点击被透明层吞掉，直到他动一下鼠标才纠正。
-   * 上面那条「光标离开」的检查覆盖不到这里，因为它挪了光标。
+   * 两半各钉一件事：
+   * ① 吃饭这一口期间，「离开满延时」不收起——菜单抽走会把用户的手落空，
+   *    而且整块 DOM 消失会把交互区吐出去，光标当场变回系统箭头（用户 2026-11-05 报的那条）。
+   * ② 饭后必须还能收：延时的自驱定时器是 `scheduleHover` 挂的，主进程对同一坐标去重、
+   *    手停住不动时不再有任何光标事件。如果 postpone 走的是 `hover.open()`（把 leftAt 清空），
+   *    pendingMs 就永远返回 null，面板会挂在屏幕上再也收不掉——codex 复审 #3 P1 那个
+   *    「DOM 自己消失却没放开鼠标」的坑于是换了个方向再犯一次。
+   * 延时压到 400ms：一口饭 4 秒，按真实 1500/5000ms 这条要睡十几秒。
    */
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-plate .pet-food')
-  const cell = await page.evaluate(() => {
-    const r = document.querySelector('.pet-plate .pet-food').getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
-  })
-  await feed(cell)
-  assert.equal((await dbg()).grab, true, '前置：光标压在格子上，该接住鼠标')
-  await page.click('.pet-plate .pet-food')
-  await page.waitForTimeout(120)
-  assert.equal((await dbg()).open, false, '前置：选完即收，列表该已收起')
-  assert.equal((await dbg()).grab, false, '列表消失了却没放开鼠标：整屏会继续吞点击，直到鼠标再动一下')
+  await page.evaluate(() => window.__petDebug.setLastTalk(0))
+  await page.click('.pet-plate .pet-food[data-food="rice"]')
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
+  await page.evaluate(() => window.__petDebug.setPanelHideMs(400))
+  await feed({ x: 4, y: 4 })
+  await page.waitForTimeout(900)
+  const during = await dbg()
+  assert.equal(during.pool, 'eat', '素材只有 4 秒都不到，这条检查的「期间」没测到东西')
+  assert.equal(during.open, true, '吃饭期间延时到点把菜单收走了：用户的手落空，光标也跟着变箭头')
+  assert.equal(during.grab, false, '前置：光标已经离开身体与面板，该放开鼠标')
+
+  await page.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
+  await feed({ x: 6, y: 6 })
+  await page.waitForTimeout(900)
+  const after = await dbg()
+  assert.equal(after.open, false, '饭吃完了还收不掉：postpone 把计时器掐死了')
+  assert.equal(after.grab, false, '面板到点自己消失却没放开鼠标：整屏会继续吞点击，直到鼠标再动一下')
+  // 延时是面板上的一份状态，不是这条检查的私有变量：不还回去，后面每条「离开满 PANEL_HIDE_MS 才收」
+  // 的检查都会按 400ms 走（§5.13 同一类残局坑）。
+  await page.evaluate((ms) => window.__petDebug.setPanelHideMs(ms), PANEL_HIDE_MS)
 })
 
 check('点气泡的回应按钮后：光标一动不动也要立刻放开鼠标', async () => {

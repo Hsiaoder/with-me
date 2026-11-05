@@ -127,6 +127,53 @@ describe('静止光标的待转换计时', () => {
     h.onPoint(off, false, false)
     expect(h.pendingMs(c.now())).toBe(PANEL_HIDE_MS)
   })
+
+  it('postpone：到点但先不收，重新拿到完整一段，并且下一次到点还能 close', () => {
+    /**
+     * 吃饭那一口正到嘴边，装配层会拒掉这一次 close。拒完之后计时必须还活着：
+     * close 已经把 armed 落下，如果 postpone 只是把 leftAt 清掉（open 的做法），
+     * pendingMs 就永远返回 null，而主进程对同一坐标去重、静止的手不再产生事件——
+     * 面板会挂在屏幕上再也收不掉。
+     */
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.open()
+    c.set(600)
+    h.onPoint(off, false, false)
+    c.set(600 + PANEL_HIDE_MS)
+    expect(h.onPoint(off, false, false)).toBe('close')
+    h.postpone()
+    expect(h.pendingMs(c.now())).toBe(PANEL_HIDE_MS)
+    c.set(600 + PANEL_HIDE_MS * 2)
+    expect(h.onPoint(off, false, false)).toBe('close')
+  })
+
+  it('postpone 之后手回到面板上：照旧清零，不留挂起计时', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.open()
+    c.set(600)
+    h.onPoint(off, false, false)
+    c.set(600 + PANEL_HIDE_MS)
+    expect(h.onPoint(off, false, false)).toBe('close')
+    h.postpone()
+    c.set(600 + PANEL_HIDE_MS + 100)
+    expect(h.onPoint(on, false, true)).toBe('none')
+    expect(h.pendingMs(c.now())).toBeNull()
+  })
+
+  it('reset 之后 postpone 仍会重新上弦：收一个已经不在布局里的面板是幂等的', () => {
+    const c = clock()
+    const h = createHoverTimer(c.now)
+    h.open()
+    c.set(600)
+    h.onPoint(off, false, false)
+    h.reset()
+    h.postpone()
+    expect(h.pendingMs(c.now())).toBe(PANEL_HIDE_MS)
+    c.set(600 + PANEL_HIDE_MS)
+    expect(h.onPoint(off, false, false)).toBe('close')
+  })
 })
 
 describe('收起延时可切换', () => {

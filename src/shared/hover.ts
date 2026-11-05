@@ -19,6 +19,15 @@ export type HoverEvent = 'close' | 'none'
 export interface HoverTimer {
   /** 面板被叫出来：开始计「离开多久收」。再点一次会重新计。 */
   open(): void
+  /**
+   * 重新给一整段窗口：延时到点，但调用方决定**先不收**。
+   *
+   * 用在吃饭那口正到嘴边的时候——菜单抽走会把用户的手落空。
+   * 为什么不是调 `open()`：它把 `leftAt` 清空，于是 `pendingMs()` 返回 null，
+   * 调用方就再也不会挂那个自驱定时器。主进程对相同坐标去重，手停住不动时
+   * 根本没有第二次 `onPoint` 进来，面板会永远挂在屏幕上（饭后也收不掉）。
+   */
+  postpone(): void
   /** 每次光标位置进来调用一次（主进程 33ms 推进来，或调用方自己催）。 */
   onPoint(p: Point, overBody: boolean, overPanel: boolean): HoverEvent
   /**
@@ -34,7 +43,7 @@ export interface HoverTimer {
    * 回动作视图时换回来。
    */
   setHideMs(ms: number): void
-  /** 面板被别的路收掉了（拖拽、选完食物、皮肤切换）：立刻停表，别再补一条 close。 */
+  /** 面板被别的路收掉了（拖拽、点气泡的回应、皮肤切换）：立刻停表，别再补一条 close。 */
   reset(): void
 }
 
@@ -48,6 +57,12 @@ export function createHoverTimer(now: () => number): HoverTimer {
     open() {
       armed = true
       leftAt = null
+    },
+    postpone() {
+      // onPoint 报 'close' 时已经把 armed 落下去了（它的语义是「这次真收」），
+      // 所以这里必须整个重新上弦，不能只看 leftAt。
+      armed = true
+      leftAt = now()
     },
     onPoint(_p: Point, overBody: boolean, overPanel: boolean): HoverEvent {
       if (overBody || overPanel) {

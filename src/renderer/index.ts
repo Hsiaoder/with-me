@@ -189,8 +189,11 @@ function bootstrap(skin: SkinPayload): void {
       else if (f.anim === undefined) requestClip('click')
       sayFor('feed')
       window.petBridge?.statEvent({ kind: 'feed', food: f.id })
-      // 选完即收：列表就压在宠物脚底那块，不收的话你点完看不到它吃。
-      closePanel()
+      // 选完**不收**（2026-11-05 改，先前是 closePanel）：吃饭那几秒用户的手就停在这块区域上，
+      // 要连喂、要点着玩。整块收掉带出两条同一根因的观感 bug——按钮没了，且那块像素不再归宠物，
+      // 光标当场变回系统箭头（交互区只算「看得见的那几块」，见 recomputeInteraction）。
+      // 「列表压住宠物看不到它吃」这个老理由在两块拆分之后已经失效：副板永远长在按钮条**外侧**，
+      // e2e 钉着它不许压到身体框。收起改由「离开满一段延时」和「再点一次喂食 / 点宠物」负责。
     },
     /**
      * 状态栏里点性别。本地不预置反馈：它要写进存档，回灌一下也就是一帧的事，
@@ -542,7 +545,11 @@ function bootstrap(skin: SkinPayload): void {
      */
     const overPanel = hit !== null && hit.closest('.pet-panel') !== null
     const ev = hover.onPoint(p, over || dragging, overPanel)
-    if (ev === 'close') closePanel()
+    if (ev === 'close') {
+      // 到点了但这一口还没吃完：菜单留着，手也留着。饭后任意一次到点才真收。
+      if (current.pool === 'eat') hover.postpone()
+      else closePanel()
+    }
     recomputeInteraction()
     scheduleHover()
   }
@@ -673,6 +680,15 @@ function bootstrap(skin: SkinPayload): void {
     hidePanel: (): boolean => {
       closePanel()
       return true
+    },
+    /**
+     * 换「离开多久收」的档位。e2e 要验吃饭期间不收、饭后又收得掉：一口饭 4 秒，
+     * 按真实的 1500 / 5000ms 排例这条得睡十几秒。它走的是视图切换同一个
+     * `hover.setHideMs` 口子，所以测到的就是运行链路那套计时，不是另造一套。
+     */
+    setPanelHideMs: (ms: number): number => {
+      hover.setHideMs(ms)
+      return ms
     },
     get bubbleOpen(): boolean {
       return bubble.isOpen
