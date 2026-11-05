@@ -18,8 +18,9 @@ export type Food = {
   anim?: { pool: string; name: string }
 }
 
-/** 一格 56px、字号 12px，汉字约 12px 宽 → 上限按「几个汉字」算。 */
-export const FOOD_LABEL_WIDTH = 4
+/** 一格 48px、减左右描边净宽 46、字号 12px，汉字约 12px 宽 → 上限按「几个汉字」算。
+ *  以前格子 56px 时上限是 4；格子收到 48 后 4 个汉字（48px）就顶到边了，所以降到 3。 */
+export const FOOD_LABEL_WIDTH = 3
 
 export const FOODS: readonly Food[] = [
   { id: 'token', name: '代币', anim: { pool: 'eat', name: 'token' } },

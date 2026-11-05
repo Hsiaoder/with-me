@@ -138,6 +138,17 @@ try {
     console.log(`${label}（设备px）: ${runs(line)}`)
   }
 
+  /**
+   * 往**外**读 alpha：透明窗的 capturePage 里框外像素的 RGB 被预乘成 0，只有 alpha 有意义，
+   * 所以「上边有没有阴影」只能这么读。CSS 的 box-shadow 模糊天生四周溢出（素材画的底影只有下边有），
+   * 上沿外只要 alpha 明显 > 0，就是那一层漏到了桌面上。
+   */
+  const alphaAt = (x, y) => raw[(y * imgW + x) * 4 + 3]
+  const cx = P.x + Math.round(P.w / 2)
+  const outward = (ys) => ys.map((k) => alphaAt(cx, k)).join(' ')
+  console.log(`上沿外 alpha（由远到近，${P.y - 14}…${P.y - 1}）: ${outward(Array.from({ length: 14 }, (_, i) => P.y - 14 + i))}`)
+  console.log(`下沿外 alpha（由近到远）: ${outward(Array.from({ length: 14 }, (_, i) => P.y + P.h + i))}`)
+
   // 左上角放大 8 倍，肉眼确认四层框的圆角没有被拉歪
   const corner = execFileSync(FF, [
     '-v', 'error', '-y',

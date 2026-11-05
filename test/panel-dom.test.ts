@@ -251,10 +251,10 @@ describe('食物视图', () => {
     const next = panel.el.querySelector('.pet-page[data-page="next"]') as HTMLElement
     const prev = panel.el.querySelector('.pet-page[data-page="prev"]') as HTMLElement
     expect(strip()).toBe('translateX(0px)')
-    // 6 格 ×(56+4) = 356，视口 236 → 最大滚动只有 120，比一整屏步进 240 还小，
+    // 6 格 48 + 5 缝 4 = 308，视口 204 → 最大滚动只有 104，比一整屏步进 208 还小，
     // 所以按一次就到头。数字要按 FOODS 实际长度算，不能照 12 格的老期望写。
-    next.click(); expect(strip()).toBe('translateX(-120px)')
-    next.click(); expect(strip()).toBe('translateX(-120px)')
+    next.click(); expect(strip()).toBe('translateX(-104px)')
+    next.click(); expect(strip()).toBe('translateX(-104px)')
     for (let i = 0; i < 4; i++) prev.click()
     expect(strip()).toBe('translateX(0px)')
   })

@@ -724,7 +724,7 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   assert.equal(plate.clip, 'padding-box', `背景没裁到内沿，圆角缺口处会露出方角浅蓝：${plate.clip}`)
   // 格子底是 square_depth_line；翻页键是箭头图。两者都走那两条白名单，
   // 名字写错就是 404：格子变白片、箭头变空框，所以必须真的 decode 一次。
-  // 格子退回 CSS 白卡：底板和格子以前铺同一套四层边，56px 上糊成框中框。
+  // 格子退回 CSS 白卡：底板和格子以前铺同一套四层边，格子那个尺度上糊成框中框。
   // 所以这里要钉的是「格子**没有**背景图、板面是白卡」，而不是某个素材名。
   const art = await page.evaluate(async () => {
     const cs = getComputedStyle(document.querySelector('.pet-food'))
@@ -816,13 +816,13 @@ check('食物列表：整屏步进、到底置灰、拖横条、收起后复位'
   assert.equal(await disabled('next'), false)
 
   await page.click('.pet-page[data-page="next"]')
-  // 6 格只有 356 宽，视口 236 → 最大滚动 120，比一整屏步进 240 还小，按一次就到头。
-  assert.equal(await strip(), 'translateX(-120px)', '6 格一步到底该是 -120')
+  // 6 格只有 308 宽，视口 204 → 最大滚动 104，比一整屏步进 208 还小，按一次就到头。
+  assert.equal(await strip(), 'translateX(-104px)', '6 格一步到底该是 -104')
 
   // 按到置灰为止，不是盲目按 8 次：到底之后 next 就该 disabled（上一条断言要的就是它），
   // 拿 page.click 去点一个 disabled 的按钮只会 30 秒超时——那是在等一个不该发生的事。
   for (let i = 0; i < 6 && !(await disabled('next')); i++) await page.click('.pet-page[data-page="next"]')
-  assert.equal(await strip(), 'translateX(-120px)', '最大滚动该是 356−236=120')
+  assert.equal(await strip(), 'translateX(-104px)', '最大滚动该是 308−204=104')
   assert.equal(await disabled('next'), true, '到底了 next 还亮着，骗人去点')
 
   // 拖滑块：位移按轨道比例换算回去，所以拖 100px 不等于按一次翻页

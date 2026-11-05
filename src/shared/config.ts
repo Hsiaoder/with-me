@@ -142,10 +142,12 @@ export const PANEL_BUTTONS: readonly PanelButton[] = [
 ]
 
 // ---- 喂食列表 ----
-/** 一格多大。用户要求「食物图片是正方形」，现在是文字，以后换图片不改尺寸。 */
-export const FOOD_CELL = 56
+/** 一格多大。用户要求「食物图片是正方形」，现在是文字，以后换图片不改尺寸。
+ *  48 而不是 56：格子是比圆底（40）还大 40% 时，同一竖列里「能点的东西」出现两种量级，
+ *  而且把底板撑到比按钮排宽 82px（两端各空 41px，谁也不对齐谁）。收到 48 后伸出量 25px。 */
+export const FOOD_CELL = 48
 export const FOOD_GAP = 4
-/** 一屏可见格数。视口宽 = 4×56 + 3×4 = 236。 */
+/** 一屏可见格数。视口宽 = 4×48 + 3×4 = 204。 */
 export const FOOD_VISIBLE = 4
 /** 食物表本体在 `shared/food.ts`——那里要带排版宽度函数，config 只放常量。 */
 

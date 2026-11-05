@@ -64,8 +64,32 @@ describe('气泡素材', () => {
 })
 
 describe('食物列表的尺寸', () => {
-  it('一屏正好 4 格，视口 236——panel 与滚动数学都按这个数摆', () => {
-    expect(FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP).toBe(236)
+  const css = readFileSync('src/renderer/style.css', 'utf8')
+  /** 取某个选择器块里第一个 `width` / `height` 的字面量（px）。 */
+  const dim = (sel: string, prop: 'width' | 'height'): string | undefined =>
+    css.match(new RegExp(`\\.${sel}\\s*\\{[^}]*${prop}:\\s*(\\d+)px`))?.[1]
+
+  it('一屏正好 4 格，视口宽 = 4×格 + 3×缝', () => {
+    expect(FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP).toBe(204)
+  })
+
+  it('CSS 里那四处尺寸字面量必须等于 config 常量——改格子只改一个数', () => {
+    const VIEW_W = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
+    expect(dim('pet-food-viewport', 'width'), '视口宽 ≠ 视口数学').toBe(String(VIEW_W))
+    expect(dim('pet-scroll', 'width'), '横条宽 ≠ 视口宽，thumbGeometry 会算错').toBe(String(VIEW_W))
+    expect(dim('pet-food', 'height'), '格子高 ≠ FOOD_CELL').toBe(String(FOOD_CELL))
+    expect(dim('pet-page', 'height'), '翻页键命中区该跟着格子高').toBe(String(FOOD_CELL))
+  })
+
+  it('底板投影不许溢出到上沿外（负 spread 是唯一防线）', () => {
+    // 透明置顶窗里这层灰雾会直接压在桌面上：以前 `0 2px 8px` 时板顶外沿实测 alpha 12/255
+    const m = css.match(/\.pet-plate\s*\{[^}]*box-shadow:\s*0\s+(\d+)px\s+(\d+)px\s+(-?\d+)px/)
+    expect(m, '读不到 .pet-plate 的 box-shadow（写法变了？规则要求「0 Xpx Ypx -Zpx」）').not.toBeNull()
+    const y = Number(m?.[1] ?? Number.NaN)
+    const blur = Number(m?.[2] ?? Number.NaN)
+    const spread = Number(m?.[3] ?? Number.NaN)
+    expect(spread, 'spread 必须是负值才收得住上沿').toBeLessThan(0)
+    expect(Math.abs(spread) + y, '模糊半径不得盖过「内收 + 下偏」').toBeGreaterThanOrEqual(blur / 2)
   })
 })
 

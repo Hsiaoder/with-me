@@ -4,7 +4,7 @@ import { labelWidth } from '../src/shared/text.js'
 import { CLIP_NAME, POOL_NAME } from '../src/shared/skin.js'
 
 /**
- * 喂食列表的契约。格子是 56px 正方形、13px 字号，所以名字的限制本质是**宽度**，
+ * 喂食列表的契约。格子是 48px 正方形、12px 字号，所以名字的限制本质是**宽度**，
  * 不是字符数：`大闸蟹` 三个汉字比 `Token` 五个拉丁字母还宽。
  *
  * 动画名是**皮肤里的 clip 名（ascii slug）**，不是素材源里的中文文件名——

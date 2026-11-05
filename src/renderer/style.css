@@ -142,7 +142,11 @@ body.pet-over {
   background: var(--plate-fill);
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  /* 阴影只在下边。以前是 `0 2px 8px rgba(0,0,0,.16)`：8px 模糊往四周各溢出约 4px，
+     2px 下偏抵不掉，于是板顶外沿实测还有 alpha 12/255 的灰雾（板底 27/255）——
+     食物列表素材自己只有下边那道 4px 硬底影，上面这层是 CSS 加的，看着像「框上面也有一条影」。
+     负 spread 先把阴影矩形往里收 4px，模糊就够不着上沿：上边干净，下边留约 7px 软晕。 */
+  box-shadow: 0 6px 10px -4px rgba(0, 0, 0, 0.22);
   pointer-events: auto;
   cursor: var(--pet-cursor);
   will-change: transform;
@@ -488,8 +492,8 @@ body.pet-over {
 }
 
 .pet-food-viewport {
-  width: 236px;
-  height: 56px;
+  width: 204px;
+  height: 48px;
   overflow: hidden;
 }
 
@@ -507,16 +511,19 @@ body.pet-over {
 
 /* 格子里现在是文字（图片以后同尺寸替换）。
    以前格子铺 Kenney `button_square_depth_line`，和底板是同一套四层边 + 各自底影：
-   56px 尺度下每层只剩 3.5 个设备像素，蓝线灰线糊成一片，还和底板形成「框中框」，
+   格子尺度下每层只剩 3.5 个设备像素，蓝线灰线糊成一片，还和底板形成「框中框」，
    两层底影叠在一起。现在定一条规则：**外板用 Kenney 素材，板内的可点项用 CSS 白卡**——
    和状态栏、设置里的卡片同一套语言，蓝线全场只剩底板那一道。
-   顺带：净宽从 42px 回到 54px，字号跟着面板其余文字收到 12px（原来 13px 时
-   「糖葫芦」三个字 39px 挤在 42px 里，每侧只剩 1.5px）。
+   顺带：字号跟着面板其余文字收到 12px（原来 13px 时「糖葫芦」三个字 39px 挤在 42px 里，
+   每侧只剩 1.5px）。
+   尺寸只有 `FOOD_CELL` 一个来源（shared/config.ts），这里的字面量由 test/config.test.ts
+   反查钉住——56 收到 48 是因为格子比圆底（40）还大 40%，同一竖列里「能点的东西」
+   出现两种量级，而且把底板撑到比按钮排宽 82px、两端各空 41px 谁也不对齐谁。
    选择器要压过基类 `.pet-panel button`（那条把尺寸和边框都定了），所以带上 .pet-panel 一层。 */
 .pet-panel .pet-food {
   flex: 0 0 auto;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
@@ -526,11 +533,11 @@ body.pet-over {
 
 /* 翻页键：以前是文字符号 `‹ ›`，在板面上对比不够、也看不出是按钮。
    现在用 Kenney 的 arrow_basic_w/e_small（24×24 三角，带同套蓝调描边）。
-   命中区仍是 24×56 整条，图只有 18px——按箭头本身点太费眼睛。 */
+   命中区仍是 24×48 整条（高 = FOOD_CELL），图只有 18px——按箭头本身点太费眼睛。 */
 .pet-panel .pet-page {
   flex: 0 0 auto;
   width: 24px;
-  height: 56px;
+  height: 48px;
   padding: 0;
   border: none;
   border-radius: 0;
@@ -563,8 +570,9 @@ body.pet-over {
    宽度 236 是 thumbGeometry 的契约（比例换算靠它），别动。 */
 .pet-scroll {
   position: relative;
-  /* 宽度必须等于 thumbGeometry 用的视口宽，比例换算才对得上像素。 */
-  width: 236px;
+  /* 宽度必须等于 thumbGeometry 用的视口宽（= FOOD_VISIBLE×FOOD_CELL + 3×FOOD_GAP），
+     比例换算才对得上像素。这个字面量由 test/config.test.ts 反查钉住，别留两处各写各的。 */
+  width: 204px;
   height: 5px;
   margin-top: 3px;
   border-radius: 3px;
