@@ -82,15 +82,34 @@ try {
     console.log(`${moving ? '✓' : '✗'} ${label}：scale ${mid.map((r) => r.scale.toFixed(2)).join(' → ')}｜translate ${mid.map((r) => r.translate).join(' ')}`)
   }
 
-  // ① 面板刚叫出来的前几帧。取**中间那颗**：它的 --i 是 0、没有错峰延迟，
-  //   拿第一颗会被 80ms 的延迟吃掉，前几帧全是起始值，看着像没动。
+  /**
+   * 同一排五颗在同一时刻各自的 scale——错落成立的话，这里是一条**随时间从左向右推进**的序列
+   * （先 1.00 / 0.82 / 0.82 / 0.82 / 0.82，再 1.00 / 1.00 / 0.95 / 0.82 / 0.82）。
+   * 一次快照不够：t≈0 时五颗都还停在起始值，读出来全是 0.82，看着像没错峰。
+   */
+  const rowSnapshot = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.pet-actions button[data-id]')].map((n) => {
+        const raw = getComputedStyle(n).scale
+        return raw === 'none' || raw === '' ? 1 : Number.parseFloat(raw)
+      }))
+  const rowTimeline = async (marks) => {
+    for (const ms of marks) {
+      await page.waitForTimeout(ms)
+      console.log(`  +${ms}ms：${(await rowSnapshot()).map((s) => s.toFixed(2)).join(' ')}`)
+    }
+  }
+
+  // ① 面板刚叫出来的前几帧。取**最左那颗**：错峰是「从左到右」，它的 --i=0、没有延迟，
+  //   取第二颗往后会被 55ms×序号 的延迟吃掉，前几帧全停在起始值，看着像没动。
   await clickBody()
-  verdict('按钮条出场（中间那颗）', await sample('.pet-actions button[data-id]:nth-child(3)', 10))
+  console.log('整排同一时刻的 scale（左→右，累计时间）：')
+  await rowTimeline([40, 80, 120, 200])
   await shot('motion-t0.png')
   await page.waitForTimeout(500)
   await shot('motion-t1.png')
-  const settled = await sample('.pet-actions button[data-id]:nth-child(3)', 1)
-  console.log(`落定后：scale ${settled.map((r) => r?.scale.toFixed(3)).join(' ')}｜translate ${settled[0]?.translate}`)
+  const settled = await rowSnapshot()
+  console.log(`落定后整排：${settled.map((s) => s.toFixed(3)).join(' ')}（该全是 1.000）`)
 
   // ② 列表那张卡片的出场
   await page.click('.pet-panel button[data-id="feed"]')

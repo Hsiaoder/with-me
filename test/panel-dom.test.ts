@@ -515,12 +515,12 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(on()).toBeUndefined()
   })
 
-  it('错峰档位 --i：中间那颗 0，向两边各 +1（出场从中心向外长）', () => {
+  it('错峰档位 --i：从左数 0、1、2…（出场按左→右依次弹）', () => {
     const { panel } = mount()
     panel.show({ x: 0, y: 0 })
     const i = [...panel.el.querySelectorAll<HTMLElement>('.pet-actions button[data-id]')]
       .map((b) => b.style.getPropertyValue('--i'))
-    expect(i).toEqual(['2', '1', '0', '1', '2'])
+    expect(i).toEqual(['0', '1', '2', '3', '4'])
   })
 
   it('主块尺寸跟着视图走：设置视图量到的是设置板，不是按钮条', () => {

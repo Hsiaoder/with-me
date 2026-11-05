@@ -352,9 +352,9 @@ export function createPanel(
     row.className = 'pet-actions'
     actions.forEach((a, k) => {
       const b = iconBtn(a)
-      // 出场的错峰档位：`--i` = 离中心第几格（中间那颗 0，往外各 +1）。CSS 拿它乘 40ms。
-      // 写在 style 而不是 :nth-child，是因为按钮数量由 config 决定，写死 5 颗的序号会骗人。
-      b.style.setProperty('--i', String(Math.abs(k - (actions.length - 1) / 2)))
+      // 错峰档位：`--i` = 从左数第几颗（0、1、2…），CSS 拿它乘间隔，就是 GSAP `stagger` 那件事。
+      // 写在 style 而不是 :nth-child，是因为按钮数量由 config 决定，写死序号会骗人。
+      b.style.setProperty('--i', String(k))
       b.addEventListener('click', () => {
         // 带 view 的按钮是切视图，带 pool 的才是点歌；两者都由 config 说清楚。
         // 再点一次同一个视图按钮 = 收回副板：不然列表开着时除了等自动收起没有别的关法。
