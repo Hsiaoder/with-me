@@ -2,20 +2,28 @@ import { describe, it, expect } from 'vitest'
 import {
   applyEvent,
   bondGain,
+  DAILY_OPEN_BOND,
   DECAY_PER_MIN,
   DIMINISH_MULT,
   eventDeltas,
+  EXP_GAIN,
+  EXP_PER_LEVEL,
+  expGain,
   FOOD_EFFECT,
   INITIAL_STATS,
   isBlue,
   isCheerful,
   isChubby,
+  levelOf,
+  levelProgress,
   isHungry,
   isStarving,
   LONELY_AFTER_MS,
   MOOD_LONELY_PER_MIN,
   OFFLINE_MAX_LOSS,
   OFFLINE_RATE,
+  PLAY_BOND,
+  REPLY_BOND,
   STAT_KEYS,
   STAT_LABELS,
   tickStats,
@@ -194,5 +202,44 @@ describe('状态阈值', () => {
     expect(isBlue({ mood: 29.9 })).toBe(true)
     expect(isCheerful({ mood: 70.1 })).toBe(true)
     expect(isChubby({ weight: 75.1 })).toBe(true)
+  })
+})
+
+/**
+ * 等级。它是从「累计经验」算出来的读数，所以这里分两块：经验怎么攒（有闸），
+ * 等级怎么读（纯除法）。经验只增不减——冷落会掉亲密条，但抹不掉「你陪过它多少次」。
+ */
+describe('经验与等级', () => {
+  it('等级与到下一级的进度都从经验算，跨级那一格归零', () => {
+    expect([levelOf(0), levelProgress(0)]).toEqual([1, 0])
+    expect([levelOf(3.4), levelProgress(3.4)]).toEqual([1, 3.4])
+    expect([levelOf(EXP_PER_LEVEL), levelProgress(EXP_PER_LEVEL)]).toEqual([2, 0])
+    expect([levelOf(25), levelProgress(25)]).toEqual([3, 5])
+    // 垃圾值不许把等级读成 Lv.0 或负数
+    expect(levelOf(-50)).toBe(1)
+  })
+
+  it('逗玩与回复的经验就是它们那份亲密（写成引用，两处不会漂）', () => {
+    expect(EXP_GAIN.play).toBe(PLAY_BOND)
+    expect(EXP_GAIN.reply).toBe(REPLY_BOND)
+    expect(EXP_GAIN['daily-open']).toBe(DAILY_OPEN_BOND)
+  })
+
+  it('喂食给经验但不给亲密：等级认「照顾」，亲密条仍只认陪伴', () => {
+    const ctx = { now: NOW, lastEventAt: {} }
+    expect(expGain({ kind: 'feed', food: 'rice' }, ctx)).toBeCloseTo(EXP_GAIN.feed, 6)
+    expect(eventDeltas({ kind: 'feed', food: 'rice' }, ctx).bond).toBeUndefined()
+  })
+
+  it('认不出的食物、以及 20 小时内第二次日开，都不给经验', () => {
+    expect(expGain({ kind: 'feed', food: '石头' }, { now: NOW, lastEventAt: {} })).toBe(0)
+    expect(expGain({ kind: 'daily-open' }, { now: NOW, lastEventAt: { 'daily-open': NOW } })).toBe(0)
+  })
+
+  it('10 分钟内连点经验减半，过了窗口恢复全额', () => {
+    const first = expGain({ kind: 'play' }, { now: NOW, lastEventAt: {} })
+    const again = expGain({ kind: 'play' }, { now: NOW + 5 * 60_000, lastEventAt: { play: NOW } })
+    expect(again).toBeCloseTo(first * DIMINISH_MULT, 6)
+    expect(expGain({ kind: 'play' }, { now: NOW + 11 * 60_000, lastEventAt: { play: NOW } })).toBeCloseTo(first, 6)
   })
 })

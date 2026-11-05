@@ -1,7 +1,7 @@
 import { FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, PANEL_BUTTONS, type PanelButton } from '../shared/config.js'
 import { FOODS, type Food } from '../shared/food.js'
 import { clampScroll, pageStep, thumbGeometry } from '../shared/scroll.js'
-import { STAT_KEYS, STAT_LABELS, statBand } from '../shared/stats.js'
+import { EXP_PER_LEVEL, STAT_KEYS, STAT_LABELS, levelOf, levelProgress, statBand } from '../shared/stats.js'
 import { GENDER_GLYPHS, GENDER_LABELS, type Gender, type StatsSnapshot, otherGender } from '../shared/save.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
 import type { Point, Rect } from '../shared/types.js'
@@ -264,7 +264,7 @@ export function createPanel(
   }
 
   /**
-   * 状态栏：姓名一行、性别一行，下面四条读数，没有返回按钮（收起靠再点一次状态键）。
+   * 状态栏：姓名一行、性别一行、等级一行，下面四条读数，没有返回按钮（收起靠再点一次状态键）。
    * 它是 qqpet 那种「一眼看到当前值」的面板，不是设置页——唯一还能就地改的是性别。
    */
   function renderStats(host: HTMLElement): void {
@@ -274,25 +274,37 @@ export function createPanel(
 
     // 快照还没到就到此为止：画四条 0 会让用户以为宠物饿坏了，那是编出来的恐慌。
     if (snap === null) return
+
+    // 等级：条画的是「到下一级这 10 点攒了多少」，右端是等级本身。经验只增不减，所以这根条不会倒退。
+    const pct = Math.round((levelProgress(snap.exp) / EXP_PER_LEVEL) * 100)
+    const level = barLine('is-level', 'level', '等级', pct, `Lv.${levelOf(snap.exp)}`)
+    level.title = `累计经验 ${snap.exp.toFixed(1)}，攒满 ${EXP_PER_LEVEL} 升一级`
+    host.append(level)
+
     for (const key of STAT_KEYS) {
       const v = snap.stats[key]
-      const line = document.createElement('div')
-      line.className = 'pet-stat'
-      line.dataset.key = key
-      const label = document.createElement('span')
-      label.className = 'pet-stat-label'
-      label.textContent = STAT_LABELS[key]
-      const bar = document.createElement('span')
-      bar.className = `pet-stat-bar is-${statBand(v)}`
-      const fill = document.createElement('i')
-      fill.style.width = `${Math.round(v)}%`
-      bar.append(fill)
-      const out = document.createElement('span')
-      out.className = 'pet-stat-value'
-      out.textContent = String(Math.round(v))
-      line.append(label, bar, out)
-      host.append(line)
+      host.append(barLine(`is-${statBand(v)}`, key, STAT_LABELS[key], Math.round(v), String(Math.round(v))))
     }
+  }
+
+  /** 「标签 + 进度条 + 右端数值」一行，四条读数与等级共用。 */
+  function barLine(bandCls: string, key: string, labelText: string, pct: number, valueText: string): HTMLElement {
+    const line = document.createElement('div')
+    line.className = 'pet-stat'
+    line.dataset.key = key
+    const label = document.createElement('span')
+    label.className = 'pet-stat-label'
+    label.textContent = labelText
+    const bar = document.createElement('span')
+    bar.className = `pet-stat-bar ${bandCls}`
+    const fill = document.createElement('i')
+    fill.style.width = `${pct}%`
+    bar.append(fill)
+    const out = document.createElement('span')
+    out.className = 'pet-stat-value'
+    out.textContent = valueText
+    line.append(label, bar, out)
+    return line
   }
 
   /** 「标签 + 值」一行，和读数行同列：值右对齐到数字那一栏。 */

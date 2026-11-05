@@ -1,6 +1,7 @@
 import {
   applyEvent,
   eventDeltas,
+  expGain,
   FOOD_EFFECT,
   STAT_TICK_MS,
   tickStats,
@@ -54,7 +55,7 @@ export function startStats(o: {
   const { save, persist, broadcast, now } = o
   const MIN_MS = 60_000
 
-  const snapshot = (): StatsSnapshot => ({ stats: save.stats, identity: save.identity })
+  const snapshot = (): StatsSnapshot => ({ stats: save.stats, identity: save.identity, exp: save.exp ?? 0 })
 
   /** 上次结算到的时刻。开机先拿存档里的 lastSeenAt 补一次离线，再把起点拧到现在。 */
   let lastTick = now()
@@ -99,13 +100,20 @@ export function startStats(o: {
       const e = toStatEvent(raw)
       if (e === null) return
       const t = now()
-      const deltas = eventDeltas(e, { now: t, lastEventAt, stats: save.stats })
+      const ctx = { now: t, lastEventAt, stats: save.stats }
+      const deltas = eventDeltas(e, ctx)
       // 今天已经开过面板、或这条动作此刻什么都给不出：不算一次互动，也不落盘。
       // 少了这道判断，用户连点会每次都写一遍文件。
       if (Object.keys(deltas).length === 0) return
+      // 经验必须在 applyEvent 之前算：那条 10 分钟递减闸读的就是「上一次是什么时候」，
+      // 而 applyEvent 会把它更新成此刻——放在后面，每一次都会被判成「10 分钟内连点」而砍半。
+      const gain = expGain(e, ctx)
       const applied = applyEvent(save.stats, e, { now: t, lastEventAt })
       save.stats = applied.stats
       lastEventAt = applied.lastEventAt
+      // 经验走的是**另一本账**：只增不减，所以冷落几天亲密条会掉、等级不会退。
+      // 数值本身入库，等级不落库——它是从经验算出来的读数，存了就等于有两份真相。
+      if (gain > 0) save.exp = (save.exp ?? 0) + gain
       // 只有这条跨 20 小时的门槛要落盘；其余动作的时刻仍是内存软闸
       if (e.kind === 'daily-open') save.dailyOpenAt = t
       lastInteractionAt = t

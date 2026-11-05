@@ -14,7 +14,7 @@ import { INITIAL_STATS, STAT_KEYS, type Stats } from './stats.js'
  * 所以放在同时认识两者的这里，让渲染层与主进程用同一个名字（不放 main/，
  * 渲染层不该 import 主进程模块；也不放 stats.ts，那会让两个模块互相 import）。
  */
-export type StatsSnapshot = { stats: Stats; identity: Identity }
+export type StatsSnapshot = { stats: Stats; identity: Identity; exp: number }
 
 /** 性别只有两档，落盘存 ascii，显示用中文（动物的说法：雌/雄）。 */
 export type Gender = 'female' | 'male'
@@ -48,6 +48,13 @@ export type SaveFile = {
    * 也和「每天第一次」的产品说明对不上。其余防刷（同类 10 分钟递减）是内存软闸，不落盘。
    */
   dailyOpenAt?: number
+  /**
+   * 累计经验（只增不减）。等级是从它算出来的读数，不另存一份。
+   * 和 dailyOpenAt 一样是可选键：老档没这个字段就是 0，从 Lv.1 重新攒。
+   * 为什么只增：亲密条会掉、体重会掉，但「你陪过它多少次」不该被冷落实几天抹掉——
+   * 那才是等级该有的语义。
+   */
+  exp?: number
 }
 
 export type SaveData = SaveFile & {
@@ -182,8 +189,10 @@ export function migrate(raw: unknown, now: number): SaveData {
     stats[key] = clampStat(v)
   }
   // v1 的 stats 是占位形状（mind/clean 两条没人写过），认不出的键直接丢，不记 warning 吓用户。
-  // dailyOpenAt 同理：垃圾值就当没有（宁可不发今天的奖励，也不能因为一个 NaN 把门槛清掉）。
+  // dailyOpenAt / exp 同理：垃圾值就当没有（宁可不发今天的奖励、宁可从 Lv.1 重攒，
+  // 也不能因为一个 NaN 把门槛或经验清零——清零还会一路传染回写盘）。
   const dailyOpenAt = typeof r.dailyOpenAt === 'number' && Number.isFinite(r.dailyOpenAt) ? r.dailyOpenAt : undefined
+  const exp = typeof r.exp === 'number' && Number.isFinite(r.exp) && r.exp >= 0 ? r.exp : undefined
   return {
     version: SAVE_VERSION,
     skin: typeof r.skin === 'string' && r.skin ? r.skin : base.skin,
@@ -192,6 +201,7 @@ export function migrate(raw: unknown, now: number): SaveData {
     settings: migrateSettings(r, warnings),
     lastSeenAt: num(r.lastSeenAt, base.lastSeenAt),
     ...(dailyOpenAt === undefined ? {} : { dailyOpenAt }),
+    ...(exp === undefined ? {} : { exp }),
     warnings,
     fromFuture: false,
   }
@@ -208,5 +218,6 @@ export function toSaveFile(save: SaveData): SaveFile {
     lastSeenAt: save.lastSeenAt,
     // 没有就别写这个键（exactOptionalPropertyTypes 下 `undefined` 也算一个值，落盘会变成 null）
     ...(save.dailyOpenAt === undefined ? {} : { dailyOpenAt: save.dailyOpenAt }),
+    ...(save.exp === undefined ? {} : { exp: save.exp }),
   }
 }

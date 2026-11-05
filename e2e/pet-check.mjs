@@ -1063,21 +1063,34 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   const g = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
     const p = document.querySelector('.pet-plate').getBoundingClientRect()
+    const level = document.querySelector('.pet-stat[data-key="level"]')
     return {
       bodyRight: b.x + b.w, panelLeft: p.x, panelRight: p.right, inner: window.innerWidth,
       name: document.querySelector('.pet-stats-name')?.textContent,
       keys: [...document.querySelectorAll('.pet-stat')].map((r) => r.dataset.key),
-      rows: [...document.querySelectorAll('.pet-stat')].map((r) => ({
+      rows: [...document.querySelectorAll('.pet-stat:not([data-key="level"])')].map((r) => ({
         value: Number(r.querySelector('.pet-stat-value')?.textContent),
         band: r.querySelector('.pet-stat-bar')?.className,
         fill: r.querySelector('.pet-stat-bar > i')?.style.width,
       })),
+      // 等级那一行：右端是 Lv.N，条是到下一级的进度，title 里带着累计经验
+      level: level === null ? null : {
+        text: level.querySelector('.pet-stat-value')?.textContent,
+        fill: level.querySelector('.pet-stat-bar > i')?.style.width,
+        hint: level.title,
+      },
     }
   })
   assert.equal(g.name, '小鲸', `状态栏没显示存档里的名字：${g.name}`)
-  assert.deepEqual(g.keys, ['hunger', 'mood', 'weight', 'bond'], '四条读数的顺序或键名不对')
+  assert.deepEqual(g.keys, ['level', 'hunger', 'mood', 'weight', 'bond'], '等级行没排在四条读数上面，或键名不对')
   assert.ok(g.panelLeft >= g.bodyRight - 1, `状态栏没在宠物右侧：panelLeft=${g.panelLeft} 身体右沿=${g.bodyRight}`)
   assert.ok(g.panelRight <= g.inner, `状态栏溢出屏幕右边：${g.panelRight} > ${g.inner}`)
+  // 等级行自己得自洽：条宽 = (经验 % 10)/10，Lv = floor(经验/10)+1。
+  // 这里不另抄一份公式，而是把 title 里那个「真实累计值」解出来反查渲染——两边不一致就是渲染算错了。
+  const exp = Number(/累计经验 ([\d.]+)/.exec(g.level?.hint ?? '')?.[1] ?? Number.NaN)
+  assert.ok(Number.isFinite(exp) && exp >= 0, `等级行的经验读数取不出来：${g.level?.hint}`)
+  assert.equal(g.level.text, `Lv.${Math.floor(exp / 10) + 1}`, `等级和它对不上：${g.level.text} vs 经验 ${exp}`)
+  assert.equal(g.level.fill, `${Math.round(((exp % 10) / 10) * 100)}%`, `进度条和累计经验对不上：${g.level.fill} vs ${exp}`)
   // 颜色必须跟着数字：分档写死在渲染里就会出「数值红了、条还是蓝的」那种假读数
   const bandOf = (v) => (v > 60 ? 'high' : v > 20 ? 'mid' : 'low')
   for (const r of g.rows) {
@@ -1110,12 +1123,21 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   // 断言拿「开机初值 70」比而不是比前后差：本套检查里前面已经喂过几次，
   // 饥饿可能已经顶到 100，那种时候「再喂一次会涨」是个不该成立的期待。
   await page.evaluate(() => window.__petDebug.hidePanel())
+  const file = join(userData, 'save.json')
+  const readSave = () => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'))
+    } catch {
+      return null
+    }
+  }
+  // 喂之前先抄一份：等级那本账要证的是「喂食进经验、但不进亲密条」，得有个对照
+  const before = readSave()
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')
   await page.click('.pet-panel .pet-food[data-food="hotpot"]')
 
-  const file = join(userData, 'save.json')
   let stats = null
   for (let i = 0; i < 30; i++) {
     try {
@@ -1129,6 +1151,16 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   assert.ok(stats !== null, '存档里读不到 stats')
   assert.ok(stats.hunger > 70, `喂了火锅饥饿没涨（初值 70）：${stats.hunger}`)
   assert.ok(stats.weight > 50, `喂了火锅体重没涨（初值 50）：${stats.weight}`)
+
+  // 经验：喂一次要涨。这里**不钉具体数值**——本套检查前面已经喂过几次，这一发常常落在
+  // 10 分钟窗口内（于是是 0.1 而不是 0.2）；全额/减半那两条时序规则由 test/stats-runtime.test.ts 钉。
+  const saved = readSave()
+  assert.ok(typeof saved?.exp === 'number', `喂食没把经验写进存档：${JSON.stringify(saved?.exp)}`)
+  assert.ok(saved.exp > (before?.exp ?? 0), `喂食经验没涨：${before?.exp} → ${saved.exp}`)
+  // 而亲密条**不该动**（两条账分开）：留一点余量是因为主进程每 60 秒会结算一次自然衰减，
+  // 那一档只有 0.2/天≈0.00013/分，落在 0.01 以内。
+  const bondDelta = Math.abs((saved.stats.bond ?? 0) - (before?.stats?.bond ?? 0))
+  assert.ok(bondDelta < 0.01, `喂食不该抬亲密条，却动了 ${bondDelta}`)
 
   // 性别：一枚符号，点一下换档并落盘。
   // 以前这里是两颗按钮（雌/雄）点其中一颗——断言「选中态换了」其实只验了类名。

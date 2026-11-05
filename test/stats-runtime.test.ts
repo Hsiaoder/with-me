@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { startStats } from '../src/main/stats.js'
 import { defaultSave, migrate } from '../src/shared/save.js'
-import { DAILY_OPEN_GAP_MS, DECAY_PER_MIN, INITIAL_STATS, OFFLINE_MAX_LOSS, OFFLINE_RATE, STAT_TICK_MS } from '../src/shared/stats.js'
+import { DAILY_OPEN_GAP_MS, DECAY_PER_MIN, INITIAL_STATS, OFFLINE_MAX_LOSS, OFFLINE_RATE, PLAY_BOND, REPLY_BOND, STAT_TICK_MS } from '../src/shared/stats.js'
 import type { SaveData } from '../src/shared/save.js'
 import type { StatsSnapshot } from '../src/main/stats.js'
 
@@ -176,6 +176,68 @@ describe('daily-open 跨重启', () => {
       const h = harness({ ...defaultSave(T0), dailyOpenAt: bad as unknown as number })
       h.rt.event({ kind: 'daily-open' })
       expect(h.rt.snapshot().stats.bond).toBeGreaterThan(0)
+    }
+  })
+})
+
+/**
+ * 等级那本账。它和亲密度**分开记**：喂食涨经验但不涨亲密条（那条的平衡早就调好了，
+ * 不该被一个「也算照顾」的决定顺带改掉）；而且只增不减，冷落几天会掉亲密但不会掉级。
+ */
+describe('经验与等级', () => {
+  it('喂食给经验，但不碰亲密度条：两条账各走各的', () => {
+    const h = harness()
+    h.rt.event({ kind: 'feed', food: 'rice' })
+    expect(h.rt.snapshot().exp).toBeCloseTo(0.2, 6)
+    expect(h.rt.snapshot().stats.bond).toBe(INITIAL_STATS.bond)
+    expect(h.rt.snapshot().stats.hunger).toBeGreaterThan(70)
+  })
+
+  /**
+   * 这条钉的是顺序：expGain 读的是「上一次这条动作是什么时候」，而 applyEvent 会把那个时刻
+   * 更新成此刻。谁要是把经验结算挪到 applyEvent 之后，每一次都会被判成「10 分钟内连点」而砍半。
+   */
+  it('第一次喂食拿全额、10 分钟内第二次减半', () => {
+    const h = harness()
+    h.rt.event({ kind: 'feed', food: 'rice' })
+    expect(h.rt.snapshot().exp).toBeCloseTo(0.2, 6)
+    h.setNow(T0 + 5 * MIN)
+    h.rt.event({ kind: 'feed', food: 'rice' })
+    expect(h.rt.snapshot().exp).toBeCloseTo(0.3, 6)
+    // 距离**上一次**过了窗口才是全额：闸量的是连点间隔，不是每天限量
+    h.setNow(T0 + 16 * MIN)
+    h.rt.event({ kind: 'feed', food: 'rice' })
+    expect(h.rt.snapshot().exp).toBeCloseTo(0.5, 6)
+  })
+
+  it('逗玩与回复的经验等于它们那份亲密（引用同一批常量，不会漂）', () => {
+    const h = harness()
+    h.rt.event({ kind: 'play' })
+    expect(h.rt.snapshot().exp).toBeCloseTo(PLAY_BOND, 6)
+    h.setNow(T0 + 11 * MIN)
+    h.rt.event({ kind: 'reply' })
+    expect(h.rt.snapshot().exp).toBeCloseTo(PLAY_BOND + REPLY_BOND, 6)
+  })
+
+  it('经验落盘并跨重启累计；日开仍受 20 小时门槛管，不会重启再领一次', () => {
+    const a = harness()
+    a.rt.event({ kind: 'feed', food: 'rice' })
+    a.rt.event({ kind: 'daily-open' })
+    const written = a.persisted.at(-1)!
+    expect(written.exp).toBeCloseTo(0.4, 6)
+
+    const b = harness({ ...defaultSave(T0), ...written })
+    expect(b.rt.snapshot().exp).toBeCloseTo(0.4, 6)
+    b.rt.event({ kind: 'daily-open' })
+    expect(b.rt.snapshot().exp).toBeCloseTo(0.4, 6)
+    expect(b.persisted).toHaveLength(0)
+  })
+
+  it('exp 是垃圾值（NaN、负数、字符串）就当没有：migrate 连键都不留', () => {
+    for (const bad of [Number.NaN, -1, 'x', null, Infinity]) {
+      const save = migrate({ version: 2, skin: 'dshtry', exp: bad }, T0)
+      expect('exp' in save, `垃圾值 ${String(bad)} 没被丢掉`).toBe(false)
+      expect(save.exp, '没键就该从 0 攒').toBeUndefined()
     }
   })
 })

@@ -137,6 +137,38 @@ export function bondGain(e: StatEvent | 'daily-open', ctx: EventCtx): number {
   return eventDeltas(ev, ctx).bond ?? 0
 }
 
+// ---- 等级 ----
+/**
+ * 一级要多少经验。按现速率，「一天认真陪」（5 次逗玩 + 5 次回复 + 1 次日开 ≈ 3.7）约三天一级，
+ * 一个月 Lv.11 —— 桌面陪伴不是游戏，升级就该是慢的。
+ */
+export const EXP_PER_LEVEL = 10
+
+/**
+ * 每条动作给多少经验。**和亲密度的账分开记**：喂食也涨等级，但不该顺带动那条已经调好平衡的亲密条
+ * （它现在只由陪伴类动作涨，见 eventDeltas 的 feed 分支）。
+ * 其余三档写成对亲密常量的引用而不是抄数——这两份账在陪伴类动作上本来就该同涨，抄数会漂。
+ */
+export const EXP_GAIN: Record<StatEvent['kind'], number> = {
+  feed: 0.2,
+  play: PLAY_BOND,
+  reply: REPLY_BOND,
+  'daily-open': DAILY_OPEN_BOND,
+}
+
+/** 这一刻这条动作给多少经验：过同一道 10 分钟递减闸，今天开过面板的日开给 0。 */
+export function expGain(e: StatEvent, ctx: EventCtx): number {
+  // 「这条此刻到底给不给得出东西」已经由 eventDeltas 判掉了（认不出的食物、跨不过 20 小时的日开
+  // 都返回空对象）。这里跟着它的结论走，别自己再写一份日界判断——那才是两份真相。
+  if (Object.keys(eventDeltas(e, ctx)).length === 0) return 0
+  return EXP_GAIN[e.kind] * diminish(eventKey(e), ctx)
+}
+
+/** 等级由经验算出来，不入库：入库就有两份真相，还会漂。 */
+export const levelOf = (exp: number): number => Math.floor(Math.max(0, exp) / EXP_PER_LEVEL) + 1
+/** 到下一级已经攒了多少（画那一截进度条用）。 */
+export const levelProgress = (exp: number): number => Math.max(0, exp) % EXP_PER_LEVEL
+
 export function applyEvent(
   stats: Stats,
   e: StatEvent,
