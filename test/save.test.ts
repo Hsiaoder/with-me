@@ -132,6 +132,17 @@ describe('toSaveFile', () => {
     expect('warnings' in file).toBe(false)
     expect('fromFuture' in file).toBe(false)
   })
+
+  it('dailyOpenAt 有就带上、没有就连键都不写', () => {
+    // 写盘漏了这个键，「每天第一次」的门槛就永远存不住（codex 复审 #3 P1），
+    // 而读侧的测试照样全绿——所以这条单独钉写侧。
+    const withAt = toSaveFile({ ...defaultSave(NOW), dailyOpenAt: NOW - 1000 })
+    expect(withAt.dailyOpenAt).toBe(NOW - 1000)
+    const without = toSaveFile(defaultSave(NOW))
+    expect('dailyOpenAt' in without).toBe(false)
+    // 落盘再读回来必须还在：整条链就是靠这一步闭环的
+    expect(migrate(withAt, NOW).dailyOpenAt).toBe(NOW - 1000)
+  })
 })
 
 describe('settings', () => {

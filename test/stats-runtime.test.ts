@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { startStats } from '../src/main/stats.js'
-import { defaultSave } from '../src/shared/save.js'
-import { DECAY_PER_MIN, INITIAL_STATS, OFFLINE_MAX_LOSS, OFFLINE_RATE, STAT_TICK_MS } from '../src/shared/stats.js'
+import { defaultSave, migrate } from '../src/shared/save.js'
+import { DAILY_OPEN_GAP_MS, DECAY_PER_MIN, INITIAL_STATS, OFFLINE_MAX_LOSS, OFFLINE_RATE, STAT_TICK_MS } from '../src/shared/stats.js'
 import type { SaveData } from '../src/shared/save.js'
 import type { StatsSnapshot } from '../src/main/stats.js'
 
@@ -133,5 +133,49 @@ describe('动作增益', () => {
     h.rt.identity({ gender: '外星人' })
     expect(h.rt.snapshot().identity.gender).toBe('male')
     expect(h.persisted).toHaveLength(1)
+  })
+})
+
+/**
+ * codex 复审 #3 P1：daily-open 的门槛跨 20 小时，比一次运行长得多，
+ * 只活在内存里就等于「重启一遍再拿一次亲密度」，也和「每天第一次」的说明对不上。
+ * 所以这里测的是**跨 runtime**：奖励时刻必须落在存档里，下一个进程读得到。
+ */
+describe('daily-open 跨重启', () => {
+  it('奖励时刻落盘：重启后 20 小时内再开面板不再给亲密', () => {
+    const a = harness()
+    a.rt.event({ kind: 'daily-open' })
+    const bond = a.rt.snapshot().stats.bond
+    expect(bond).toBeGreaterThan(0)
+    const written = a.persisted.at(-1)
+    expect(typeof written?.dailyOpenAt).toBe('number')
+
+    const b = harness({ ...defaultSave(T0), ...written! })
+    b.rt.event({ kind: 'daily-open' })
+    expect(b.rt.snapshot().stats.bond).toBe(bond)
+    // 什么都没发出去就不该为此写一遍文件
+    expect(b.persisted).toHaveLength(0)
+  })
+
+  it('跨过窗口后重新奖励', () => {
+    const a = harness()
+    a.rt.event({ kind: 'daily-open' })
+    const written = a.persisted.at(-1)!
+    const b = harness({ ...defaultSave(T0), ...written })
+    b.setNow(T0 + DAILY_OPEN_GAP_MS + MIN)
+    b.rt.event({ kind: 'daily-open' })
+    expect(b.rt.snapshot().stats.bond).toBeGreaterThan(written.stats.bond)
+  })
+
+  it('dailyOpenAt 是垃圾值就当没有：不能因为一个坏值把奖励永久锁死', () => {
+    for (const bad of [Number.NaN, 'x', null, Infinity, -Infinity]) {
+      // migrate 是外部数据真正进来的那道门：垃圾值必须连键都不留
+      const save = migrate({ version: 2, skin: 'dshtry', dailyOpenAt: bad }, T0)
+      expect('dailyOpenAt' in save, `垃圾值 ${String(bad)} 没被丢掉`).toBe(false)
+      // 有人绕过 migrate 直接把档递进来时，runtime 自己也不认
+      const h = harness({ ...defaultSave(T0), dailyOpenAt: bad as unknown as number })
+      h.rt.event({ kind: 'daily-open' })
+      expect(h.rt.snapshot().stats.bond).toBeGreaterThan(0)
+    }
   })
 })

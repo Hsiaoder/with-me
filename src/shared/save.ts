@@ -42,6 +42,12 @@ export type SaveFile = {
   stats: Stats
   settings: Settings
   lastSeenAt: number
+  /**
+   * 上一次「今天第一次打开面板」奖励亲密度时刻到的时间戳。
+   * 只有这一条要入库：它的门槛跨 20 小时，比一次运行长得多，不存就等于重启刷亲密，
+   * 也和「每天第一次」的产品说明对不上。其余防刷（同类 10 分钟递减）是内存软闸，不落盘。
+   */
+  dailyOpenAt?: number
 }
 
 export type SaveData = SaveFile & {
@@ -176,6 +182,8 @@ export function migrate(raw: unknown, now: number): SaveData {
     stats[key] = clampStat(v)
   }
   // v1 的 stats 是占位形状（mind/clean 两条没人写过），认不出的键直接丢，不记 warning 吓用户。
+  // dailyOpenAt 同理：垃圾值就当没有（宁可不发今天的奖励，也不能因为一个 NaN 把门槛清掉）。
+  const dailyOpenAt = typeof r.dailyOpenAt === 'number' && Number.isFinite(r.dailyOpenAt) ? r.dailyOpenAt : undefined
   return {
     version: SAVE_VERSION,
     skin: typeof r.skin === 'string' && r.skin ? r.skin : base.skin,
@@ -183,6 +191,7 @@ export function migrate(raw: unknown, now: number): SaveData {
     stats,
     settings: migrateSettings(r, warnings),
     lastSeenAt: num(r.lastSeenAt, base.lastSeenAt),
+    ...(dailyOpenAt === undefined ? {} : { dailyOpenAt }),
     warnings,
     fromFuture: false,
   }
@@ -197,5 +206,7 @@ export function toSaveFile(save: SaveData): SaveFile {
     stats: save.stats,
     settings: save.settings,
     lastSeenAt: save.lastSeenAt,
+    // 没有就别写这个键（exactOptionalPropertyTypes 下 `undefined` 也算一个值，落盘会变成 null）
+    ...(save.dailyOpenAt === undefined ? {} : { dailyOpenAt: save.dailyOpenAt }),
   }
 }

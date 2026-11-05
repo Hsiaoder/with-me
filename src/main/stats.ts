@@ -60,8 +60,14 @@ export function startStats(o: {
   let lastTick = now()
   /** 上次「有互动」的时刻：心情掉得快不快看它，不看开机时间。 */
   let lastInteractionAt = now()
-  /** 各动作的上一次时刻（同类 10 分钟内递减）。不入库：它只是软闸，重启就清零可以接受。 */
+  /**
+   * 各动作的上一次时刻（同类 10 分钟内递减）。这一份不入库：它只是软闸，重启清零可以接受。
+   * **daily-open 是例外**——它的门槛跨 20 小时，比一次运行长得多，只活在内存里就等于
+   * 「重启一遍再拿一次亲密度」，而且和「每天第一次」的产品说明对不上（codex 复审 #3 P1）。
+   * 所以它单独落在存档的 dailyOpenAt，开机时把它镜像回来。
+   */
   let lastEventAt: Record<string, number> = {}
+  if (typeof save.dailyOpenAt === 'number' && Number.isFinite(save.dailyOpenAt)) lastEventAt['daily-open'] = save.dailyOpenAt
 
   const commit = (): void => {
     persist(save)
@@ -100,6 +106,8 @@ export function startStats(o: {
       const applied = applyEvent(save.stats, e, { now: t, lastEventAt })
       save.stats = applied.stats
       lastEventAt = applied.lastEventAt
+      // 只有这条跨 20 小时的门槛要落盘；其余动作的时刻仍是内存软闸
+      if (e.kind === 'daily-open') save.dailyOpenAt = t
       lastInteractionAt = t
       commit()
     },

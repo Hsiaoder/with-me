@@ -224,6 +224,9 @@ function bootstrap(skin: SkinPayload): void {
       bubbleDeadline = null
       // 「你理它了」是养成里最该有反馈的一次点击：它同时涨心情与亲密。
       window.petBridge?.statEvent({ kind: 'reply' })
+      // bubble.ts 在回调之前已经把节点收掉了（hide() → handlers.onReply()），
+      // 这里收尾交互区：光标常常就停在那颗回应按钮上。
+      recomputeInteraction()
     },
   })
   /** 气泡自己的一次性定时器。不挂 rAF：覆盖层没焦点时 rAF 会被节流，定时器才准（心跳那条踩过）。 */
@@ -238,6 +241,8 @@ function bootstrap(skin: SkinPayload): void {
 
   function placeBubble(): void {
     bubble.place(bubbleAnchorNow())
+    // 气泡挪位置 = 可见区域变了，光标没动也得重算捕获（recomputeInteraction 的注释里有这条链）
+    recomputeInteraction()
   }
 
   /** 光标压在气泡上就算「还在读」。判据用坐标，不用 CSS :hover：穿透一开就收不到 mouseleave。 */
@@ -250,7 +255,11 @@ function bootstrap(skin: SkinPayload): void {
     if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
     bubbleDeadline = setTimeout(() => {
       if (bubble.isOpen && lastCursor !== null && overBubble(lastCursor)) armBubble(ms)
-      else bubble.hide()
+      else {
+        bubble.hide()
+        // 到点收起时光标常常还压在气泡上：不收尾就是「看不见却还吞点击」
+        recomputeInteraction()
+      }
     }, ms)
   }
 
@@ -273,6 +282,8 @@ function bootstrap(skin: SkinPayload): void {
     bubble.show({ text: clean, reply: line.reply }, bubbleAnchorNow())
     lastTalkAt = Date.now()
     armBubble(ms)
+    // 气泡出现也是「可见区域变大」，光标停在它该覆盖的位置时得立刻接住鼠标
+    recomputeInteraction()
     return bubble.isOpen
   }
 
@@ -379,6 +390,8 @@ function bootstrap(skin: SkinPayload): void {
       clearTimeout(hoverDeadline)
       hoverDeadline = null
     }
+    // 收起是「DOM 自己消失」，没有光标事件会来纠正 wantGrab（见 recomputeInteraction）
+    recomputeInteraction()
   }
 
   /** 再点一次宠物就收：点击开的东西，得能用点击关。 */
@@ -470,20 +483,17 @@ function bootstrap(skin: SkinPayload): void {
     document.body.classList.toggle('pet-over', on)
   }
 
-  function handleCursor(p: Point): void {
-    lastCursor = p
-    const over = overBody(p)
-    // 面板那块不自报矩形，直接问 DOM：命中的元素（或其祖先）带 data-hit 才算。
-    // 收起的面板不在布局里，问不到，所以不存在「看不见却抢鼠标」的中间状态。
-    const hit = document.elementFromPoint(p.x, p.y)
-    /**
-     * 悬停计时只认**面板**，不认任何 `data-hit`：气泡也带 data-hit（要抢鼠标、要手形），
-     * 但「停在气泡上读那句话」不该把按钮面板叫出来——那是用户没做过的动作。
-     * 抢鼠标与光标形状归 zone 管（下面的 unionRect），两件事分开。
-     */
-    const overPanel = hit !== null && hit.closest('.pet-panel') !== null
-    const ev = hover.onPoint(p, over || dragging, overPanel)
-    if (ev === 'close') closePanel()
+  /**
+   * 交互区、光标类、鼠标捕获的**唯一**重算入口。
+   *
+   * 以前只有 handleCursor 算这一份派生状态，于是「DOM 自己消失」这条路漏掉了：
+   * 点完一格食物 → 列表收起、光标还停在原来那块格子上 → wantGrab 仍是 true，
+   * 心跳每 250ms 继续给整屏续租，桌面点击被透明层吞掉，直到鼠标再动一下才纠正
+   * （codex 复审 #3 P1）。所以凡是改变可见区域的路径——面板显隐、气泡显隐与摆位——
+   * 都必须走这里，而不是各自顺手 set 一下 wantGrab。
+   */
+  function recomputeInteraction(): void {
+    if (lastCursor === null) return
     /**
      * 交互区 = 身体框、开着的面板框、开着的气泡框三者的外接矩形。用外接矩形而不是并集，
      * 因为要的是**连续**：身体和面板之间那截空隙、四个按钮之间那 8px、面板与气泡之间
@@ -494,10 +504,27 @@ function bootstrap(skin: SkinPayload): void {
      * 收起延时照旧跑，所以这段吞点击的时间有上界。
      */
     const zone = unionRect(hitBox(), panelBox(), bubble.rect())
-    const inZone = rectContains(zone, p)
+    const inZone = rectContains(zone, lastCursor)
     setOverClass(inZone || dragging)
     wantGrab = inZone || dragging
     sendGrab()
+  }
+
+  function handleCursor(p: Point): void {
+    lastCursor = p
+    const over = overBody(p)
+    // 面板那块不自报矩形，直接问 DOM：命中的元素（或其祖先）带 data-hit 才算。
+    // 收起的面板不在布局里，问不到，所以不存在「看不见却抢鼠标」的中间状态。
+    const hit = document.elementFromPoint(p.x, p.y)
+    /**
+     * 悬停计时只认**面板**，不认任何 `data-hit`：气泡也带 data-hit（要抢鼠标、要手形），
+     * 但「停在气泡上读那句话」不该把按钮面板叫出来——那是用户没做过的动作。
+     * 抢鼠标与光标形状归 zone 管（上面的 unionRect），两件事分开。
+     */
+    const overPanel = hit !== null && hit.closest('.pet-panel') !== null
+    const ev = hover.onPoint(p, over || dragging, overPanel)
+    if (ev === 'close') closePanel()
+    recomputeInteraction()
     scheduleHover()
   }
 
@@ -613,6 +640,8 @@ function bootstrap(skin: SkinPayload): void {
       bubble.hide()
       if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
       bubbleDeadline = null
+      // 和真实收起路径一致（定时器到期、点回应按钮都会重算），不然 e2e 测的是另一套行为
+      recomputeInteraction()
       return true
     },
     /**

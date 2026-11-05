@@ -33,6 +33,14 @@ body {
 /* 交互区的光标只在这一处定义，用的地方只有 body.pet-over。 */
 :root {
   --pet-cursor: url("icons/hand_point.svg") 9 2, pointer;
+  /* 面板底色只有这三份。底板中心色不再来自素材，而是这里——因为 Kenney `depth_line` 那款
+     中心实测是冷浅灰 (218,220,231)，蓝只出现在内框那一道线上（同包 `depth_flat` 才是实心蓝）。
+     plate 用**实心**而不是以前的 rgba(255,255,255,.94)：透明置顶窗里半透明白会把桌面像素混进来，
+     深色桌面上它就不是白的，是灰的——和上次纯白 cursor 压浅色桌面消失同一个物理原因。
+     要调淡调浓只改这一个值；#dceaf5 配现有文字色 #2b2f36 是 10.8:1。 */
+  --plate-fill: #dceaf5;
+  --hover-fill: #cfe6f6;
+  --on-fill: #a9d4ef;
 }
 
 /* 交互区（身体 + 开着的面板的外接矩形）里是同一枚 hand_point，值只有 --pet-cursor 一份。
@@ -123,7 +131,7 @@ body.pet-over {
   display: flex;
   gap: 8px;
   padding: 6px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--plate-fill);
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 10px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
@@ -232,7 +240,7 @@ body.pet-over {
 }
 
 .pet-bubble-reply:hover {
-  background: #eef6f4;
+  background: var(--hover-fill);
 }
 
 /* 命中区与排布：所有视图的按钮共用。40px 的方块留着当命中区——图标才 26px，
@@ -302,7 +310,8 @@ body.pet-over {
 }
 
 /* 食物列表的底板：Kenney UI Pack 的 `button_rectangle_depth_line`（CC0，Blue/Default，192×64）。
-   实测四层 + 一道底影：2px 灰外框 → 2px 白内高光 → 2px 留白 → 2px 蓝色内框，中间纯色填充；
+   实测四层 + 一道底影：2px 灰外框 → 2px 白内高光 → 2px 留白 → 2px 蓝色内框，中间是浅灰
+   (218,220,231) 填充；**这道浅灰现在不用**——slice 去掉 fill 把它丢弃，中心由 --plate-fill 上色。
    **只有下边**多一条 4px 的深灰底影（116,116,135），所以四条边的装饰厚度不一样：
    上/左/右各 8px，下边 12px。slice 因此写成四个值 `8 8 12 8`，border-width 也跟着不对称——
    写成单个 8 会把下边那条蓝色内框留在中间区里，被纵向拉成一条杂色带。
@@ -315,13 +324,20 @@ body.pet-over {
    两条 .pet-plate 规则靠权重分胜负（.pet-plate.is-foods 比 .pet-plate 多一层类），不靠书写顺序。 */
 .pet-plate.is-foods {
   padding: 3px;
-  background: none;
+  /* 中心由 CSS 上色，素材只负责画框。两条必须成对：
+     ① slice 不带 `fill` → 中间那格被丢弃，露出下面的背景色（Kenney 规范默认就是丢弃）；
+     ② `background-clip: padding-box` → 背景只填到边框内沿。少了这条，浅蓝会铺进 border 区，
+        而素材圆角**外侧是透明的**（实测左上角 alpha=0），圆角缺口处就会露出一圈方角浅蓝。
+     背景写成 `background-color` 而不是 `background` 简写：简写会把 background-clip 重置回
+     border-box，顺序稍一变动这条就失效。 */
+  background-color: var(--plate-fill);
+  background-clip: padding-box;
   border-style: solid;
   border-color: transparent;
   border-width: 8px 8px 12px 8px;
   /* 写成三个值：CSS 会把第四个（左）默认成第二个（右），计算样式归一化成「8 8 12」。
      这里刻意用简写而不是 8 8 12 8，是为了和 e2e 钉住的读法一致，别留两种写法让人猜哪个是权威。 */
-  border-image: url("icons/button_rectangle_depth_line.png") 8 8 12 fill;
+  border-image: url("icons/button_rectangle_depth_line.png") 8 8 12;
   border-radius: 0;
 }
 
@@ -359,7 +375,7 @@ body.pet-over {
 /* 悬停换底色。动作视图不画底色——那里没有底板，画了就成了悬浮的方片。 */
 .pet-plate.is-stats button:hover,
 .pet-plate.is-settings button:hover {
-  background: #eef6f4;
+  background: var(--hover-fill);
 }
 
 /* 性别那一枚符号。符号自己已经说了性别，颜色是第二道冗余表意（粉=雌、蓝=雄），
@@ -570,7 +586,7 @@ body.pet-over {
 
 /* 当前生效的那一项。不靠颜色单独表意，同时加粗。 */
 .pet-panel button.on {
-  background: #dcefe9;
+  background: var(--on-fill);
   border-color: rgba(0, 0, 0, 0.34);
   font-weight: 600;
 }

@@ -703,6 +703,8 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   // 底板是 depth_line（四层 + 只有下边多一条 4px 底影），slice 必须写成不对称：
   // 计算样式会把「8 8 12 8」归一化成「8 8 12」（左默认等于右），断言按归一化后的写法来。
   // 写单个 8 会把下边那条蓝色内框留在中间区里被纵向拉长。计算样式里留着 url 查不出画错。
+  // slice 末尾**不能**有 fill：中心色由 CSS 的 --plate-fill 决定，素材那道浅灰中心被丢弃。
+  // 带 fill 时素材中间不透明，会盖死 background，中心立刻退回灰——所以这里连背景色一起钉。
   const plate = await page.evaluate(() => {
     const cs = getComputedStyle(document.querySelector('.pet-plate'))
     return {
@@ -710,12 +712,16 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
       slice: cs.borderImageSlice,
       w: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].join('/'),
       pad: cs.paddingTop,
+      bg: cs.backgroundColor,
+      clip: cs.backgroundClip,
     }
   })
   assert.match(plate.src, /icons\/button_rectangle_depth_line\.png/, `食物底板素材不对：${plate.src}`)
-  assert.equal(plate.slice, '8 8 12 fill', `九宫格切片不对：${plate.slice}`)
+  assert.equal(plate.slice, '8 8 12', `九宫格切片不对（多写了 fill 中心就会退回素材的浅灰）：${plate.slice}`)
   assert.equal(plate.w, '8px/8px/12px/8px', `四边厚度不对（下边要比别处多 4px 底影）：${plate.w}`)
   assert.equal(plate.pad, '3px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
+  assert.equal(plate.bg, 'rgb(220, 234, 245)', `板面中心不是那个浅蓝：${plate.bg}`)
+  assert.equal(plate.clip, 'padding-box', `背景没裁到内沿，圆角缺口处会露出方角浅蓝：${plate.clip}`)
   // 格子底是 square_depth_line；翻页键是箭头图。两者都走那两条白名单，
   // 名字写错就是 404：格子变白片、箭头变空框，所以必须真的 decode 一次。
   // 格子退回 CSS 白卡：底板和格子以前铺同一套四层边，56px 上糊成框中框。
@@ -1202,16 +1208,57 @@ check('光标离开身体与面板后立刻放开鼠标，不等面板收起', a
   assert.equal(after.open, true, '面板该还开着（PANEL_HIDE_MS 是可见性延时，不是扣鼠标）')
 })
 
+check('点完食物列表自己收起：光标一动不动也要立刻放开鼠标', async () => {
+  /**
+   * codex 复审 #3 P1。wantGrab 以前只在光标事件里算，于是漏掉「DOM 自己消失」这条路：
+   * 用户点一格食物 → 列表收起 → 鼠标还停在原来那块格子的位置（真的没动）→
+   * 心跳继续每 250ms 给整屏续租，桌面点击被透明层吞掉，直到他动一下鼠标才纠正。
+   * 上面那条「光标离开」的检查覆盖不到这里，因为它挪了光标。
+   */
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-plate .pet-food')
+  const cell = await page.evaluate(() => {
+    const r = document.querySelector('.pet-plate .pet-food').getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })
+  await feed(cell)
+  assert.equal((await dbg()).grab, true, '前置：光标压在格子上，该接住鼠标')
+  await page.click('.pet-plate .pet-food')
+  await page.waitForTimeout(120)
+  assert.equal((await dbg()).open, false, '前置：选完即收，列表该已收起')
+  assert.equal((await dbg()).grab, false, '列表消失了却没放开鼠标：整屏会继续吞点击，直到鼠标再动一下')
+})
+
+check('点气泡的回应按钮后：光标一动不动也要立刻放开鼠标', async () => {
+  // 同一条派生状态的第二个入口：气泡是 bubble.ts 自己 hide 的，装配层只能靠回调收尾。
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await page.evaluate(() => {
+    window.__petDebug.setLastTalk(0)
+    window.__petDebug.say({ text: '这条留着验按钮', reply: '点我' }, 60000)
+  })
+  const btn = await page.evaluate(() => {
+    const r = document.querySelector('.pet-bubble-reply').getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })
+  await feed(btn)
+  assert.equal((await dbg()).grab, true, '前置：光标压在回应按钮上，该接住鼠标')
+  await page.click('.pet-bubble-reply')
+  await page.waitForTimeout(120)
+  assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), false, '前置：点了回应气泡该收掉')
+  assert.equal((await dbg()).grab, false, '气泡没了却没放开鼠标')
+})
+
 check('面板收起后真的移出布局：不吃点击、不改光标形状', async () => {
   // 真机症状：点完宠物移出去，光标在宠物上方那条带子里变成手指。
   // 根因是样式优先级：UA 的 `[hidden]{display:none}` 被作者样式
   // `.pet-panel{display:flex}` 顶掉了，所以「收起」只等于透明度 0，元素照旧占位、
   // 照旧参与命中测试，命中的还是带 cursor:pointer 的按钮。
   // 现在收起由 `.pet-panel[hidden]{display:none}` 显式做，命中判定也只问 DOM。
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(460)
-  assert.equal((await dbg()).open, true, '前置：面板该开着')
+  // 前置自己把面板叫出来：以前这里只 feed 一个身体坐标就断言「面板开着」，
+  // 靠的是上一条检查收尾时面板还没关——feed 不点击，面板早就收干净了它就该红
+  // （§5.13 同一类坑，本轮被我新加的两条检查照出来了第三次）。
+  assert.ok(await openOnBody(), '前置：面板该开着')
   const band = await page.evaluate(() => {
     const b = document.querySelector('.pet-actions').getBoundingClientRect()
     return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) }
