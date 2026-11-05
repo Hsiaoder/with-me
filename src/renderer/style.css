@@ -426,7 +426,7 @@ body.pet-over {
 }
 
 /* 状态栏与设置视图里的文字卡片。两条规则以前只差 padding（3/7 vs 4/8），合并成一条统一 4px 8px。
-   卡片必须有**真边框**：`.pet-panel button.on` 靠 border-color 加深来表意「当前生效」，
+   卡片必须有**真边框**：`.pet-plate button.on` 靠 border-color 加深来表意「当前生效」，
    而基类是 `border: none`——那行一直是死声明，选中态只剩底色加粗，等于靠颜色单独表意。 */
 .pet-plate.is-stats button,
 .pet-plate.is-settings button {
@@ -668,11 +668,25 @@ body.pet-over {
   color: rgba(0, 0, 0, 0.62);
 }
 
-/* 当前生效的那一项。不靠颜色单独表意，同时加粗。 */
-.pet-panel button.on {
+/* 当前生效的那一项。不靠颜色单独表意，同时加粗。
+   选择器**必须限定在 `.pet-plate` 里**：这条用的是 `background` 简写，
+   而 `.pet-actions` 那五颗的圆底就是它们的 `background-image`——简写会把图擦成 none，
+   按钮当场露成 40×40 的正方形（2026-11-06 真发生过：`syncActive()` 第一次把 .on 挂到圆底上）。
+   文字卡片没有背景图，所以它们吃这条；圆底吃下面那条描边环。 */
+.pet-plate button.on {
   background: var(--on-fill);
   border-color: rgba(0, 0, 0, 0.34);
   font-weight: 600;
+}
+
+/* 圆底的选中态：加一圈**留了缝的描边环**，完全不碰 background。
+   `outline` 在 Chromium 里跟着 border-radius 走，所以 50% 圆 + offset 2px 就是一圈同心环；
+   用 outline 而不是 box-shadow，是因为 shadow 会跟着卡片那条投影叠在一起。
+   颜色取圆底自己的环色 #6990A7（对面 3.09:1），比再引一支新蓝老实。 */
+.pet-actions button[data-id].on {
+  border-radius: 50%;
+  outline: 2px solid #6990a7;
+  outline-offset: 2px;
 }
 
 /* F9 命中区可视化 */

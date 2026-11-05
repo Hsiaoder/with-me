@@ -126,6 +126,34 @@ describe('面板出场动画的形状约束', () => {
   })
 })
 
+describe('选中态的声明方式', () => {
+  const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+
+  /**
+   * 真踩过：`.pet-panel button.on { background: var(--on-fill) }` 这条同时管着文字卡片和五颗圆底，
+   * 而圆底就是按钮的 `background-image`——`background` 简写会把图擦成 none，
+   * 40×40 的命中区当场露成正方形。用户报的原话是「喂食的按钮怎么变成正方形了」。
+   * 所以：`.on` 的底色只能走 `background-color` / `background-image` 长写法，
+   * 而且带简写的那条必须限定在 `.pet-plate`（卡片都在板里，圆底都在 `.pet-actions`）。
+   */
+  it('任何 .on 规则都不许用 background 简写，除非它限定在 .pet-plate 里', () => {
+    const rules = [...css.matchAll(/([^{}]*\.on[^{}]*)\{([^}]*)\}/g)]
+    expect(rules.length, '一条 .on 规则都没读到，选择器改名了？').toBeGreaterThan(0)
+    for (const m of rules) {
+      const sel = (m[1] ?? '').trim()
+      const body = m[2] ?? ''
+      if (!/background:/.test(body)) continue
+      expect(sel, `「${sel}」用 background 简写会擦掉圆底图`).toContain('.pet-plate')
+    }
+  })
+
+  it('圆底的选中态走描边环，不碰背景', () => {
+    const disc = css.match(/\.pet-actions button\[data-id\]\.on \{([^}]*)\}/)?.[1] ?? ''
+    expect(disc, '圆底没有自己的选中态规则').toContain('outline')
+    expect(disc).not.toContain('background')
+  })
+})
+
 describe('操作型视图共用宽裕的收起延时', () => {
   it('VIEW_HIDE_MS 是 5000，旧名字 SETTING_HIDE_MS 已经不存在', () => {
     expect(VIEW_HIDE_MS).toBe(5000)
