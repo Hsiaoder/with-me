@@ -700,28 +700,28 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await page.waitForSelector('.pet-panel .pet-food')
   assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '点喂食没进食物视图')
   assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), 6)
-  // 底板是 depth_line（四层 + 只有下边多一条 4px 底影），slice 必须写成不对称：
-  // 计算样式会把「8 8 12 8」归一化成「8 8 12」（左默认等于右），断言按归一化后的写法来。
-  // 写单个 8 会把下边那条蓝色内框留在中间区里被纵向拉长。计算样式里留着 url 查不出画错。
-  // slice 末尾**不能**有 fill：中心色由 CSS 的 --plate-fill 决定，素材那道浅灰中心被丢弃。
-  // 带 fill 时素材中间不透明，会盖死 background，中心立刻退回灰——所以这里连背景色一起钉。
+  // 食物列表改用和状态读数同一张 CSS 卡片：没有 border-image、1px 描边、10px 圆角、6px 留白。
+  // （以前这里钉的是 Kenney depth_line 的不对称九宫格 `8 8 12` 与 padding-box 配对，
+  //   那套写法的理由留在 problem/03 §3.9；这一圈框被否掉了，见 §3.12。）
   const plate = await page.evaluate(() => {
     const cs = getComputedStyle(document.querySelector('.pet-plate'))
     return {
       src: cs.borderImageSource,
-      slice: cs.borderImageSlice,
       w: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].join('/'),
       pad: cs.paddingTop,
       bg: cs.backgroundColor,
-      clip: cs.backgroundClip,
+      radius: cs.borderTopLeftRadius,
+      shadow: cs.boxShadow,
     }
   })
-  assert.match(plate.src, /icons\/button_rectangle_depth_line\.png/, `食物底板素材不对：${plate.src}`)
-  assert.equal(plate.slice, '8 8 12', `九宫格切片不对（多写了 fill 中心就会退回素材的浅灰）：${plate.slice}`)
-  assert.equal(plate.w, '8px/8px/12px/8px', `四边厚度不对（下边要比别处多 4px 底影）：${plate.w}`)
-  assert.equal(plate.pad, '3px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
+  assert.equal(plate.src, 'none', `副板又铺上素材边框了：${plate.src}`)
+  assert.equal(plate.w, '1px/1px/1px/1px', `描边厚度不对，该是卡片那一圈：${plate.w}`)
+  assert.equal(plate.pad, '6px', `留白和另外两块副板不一致：${plate.pad}`)
   assert.equal(plate.bg, 'rgb(221, 238, 248)', `板面中心不是那个浅蓝：${plate.bg}`)
-  assert.equal(plate.clip, 'padding-box', `背景没裁到内沿，圆角缺口处会露出方角浅蓝：${plate.clip}`)
+  assert.equal(plate.radius, '10px', `圆角不是卡片那版：${plate.radius}`)
+  // 阴影必须是「只在下边」那一版：负 spread 一旦丢掉，透明窗里板顶外沿会漏出一层灰雾
+  assert.ok(plate.shadow.includes('rgba(0, 0, 0'), `投影颜色不对：${plate.shadow}`)
+  assert.ok(plate.shadow.includes('-4px'), `投影没有内收（上沿会漏灰雾）：${plate.shadow}`)
   // 格子底是 square_depth_line；翻页键是箭头图。两者都走那两条白名单，
   // 名字写错就是 404：格子变白片、箭头变空框，所以必须真的 decode 一次。
   // 格子退回 CSS 白卡：底板和格子以前铺同一套四层边，格子那个尺度上糊成框中框。

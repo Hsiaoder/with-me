@@ -11,6 +11,11 @@
  *
  * 跑法：node spike/palette-recolor.mjs
  * 源文件读仓库外的 Kenney 原图，保证可重复；不在就直接报错。
+ *
+ * 现状（2026-11-06）：**底板那张 PNG 已退出产品**——食物列表改用和状态读数同一张 CSS 卡片，
+ * 文件也从仓库删了（problem/03 §3.12）。再跑这个脚本会把它写回来，写回来就等于把已删的素材
+ * 重新塞进 dist。所以这里只跑圆底那半段；「按明度分段重映射渐变带」的做法留着，下次遇到别的
+ * 位图素材照抄，别再 PLATE_OUT 上按回车。
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'child_process'

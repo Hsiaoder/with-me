@@ -211,7 +211,7 @@ body.pet-over {
   /* 底图是 SVG（`emotes/bubble.svg`），**不能**开邻取放大（pixelated）：
      那是给格子画的位图用的渲染方式，套到矢量上只会把圆角拉成阶梯。
      （上一版是 Kenney Vector PNG 放大 5 倍，那版才谈得上采样方式；换回位图时要一起重看这条。）
-     别在这段注释里写出那个属性的完整写法——`test/config.test.ts` 有一条反向测试是拿本块文本匹配的。 */
+     这条由 test/config.test.ts 钉住——它读 CSS 形状前会先剥掉注释，所以这里可以放心写属性全名。 */
   pointer-events: none;
 }
 
@@ -326,37 +326,12 @@ body.pet-over {
   transition: transform 0.12s ease;
 }
 
-/* 食物列表的底板：Kenney UI Pack 的 `button_rectangle_depth_line`（CC0，Blue/Default，192×64）。
-   实测四层 + 一道底影：2px 灰外框 → 2px 白内高光 → 2px 留白 → 2px 蓝色内框，中间是浅灰
-   (218,220,231) 填充；**这道浅灰现在不用**——slice 去掉 fill 把它丢弃，中心由 --plate-fill 上色。
-   **只有下边**多一条 4px 的深灰底影（116,116,135），所以四条边的装饰厚度不一样：
-   上/左/右各 8px，下边 12px。slice 因此写成四个值 `8 8 12 8`，border-width 也跟着不对称——
-   写成单个 8 会把下边那条蓝色内框留在中间区里，被纵向拉成一条杂色带。
-
-   为什么用 border-image 而不是 background-size:100% 100%：列表实测约 314×94，跟素材比例不一样，
-   整张拉过去四边厚度会跟着面板尺寸变；九宫格只拉伸中间那片纯色。
-   留白：上/左/右 8+3=11px、下 12+3=15px，和上一版（2+9）基本一致，格子尺寸契约没动。
-
-   border-image 不吃 border-radius（圆角由素材自己画），这里显式归零，免得留着 10px 让人以为还有人在管。
-   两条 .pet-plate 规则靠权重分胜负（.pet-plate.is-foods 比 .pet-plate 多一层类），不靠书写顺序。 */
-.pet-plate.is-foods {
-  padding: 3px;
-  /* 中心由 CSS 上色，素材只负责画框。两条必须成对：
-     ① slice 不带 `fill` → 中间那格被丢弃，露出下面的背景色（Kenney 规范默认就是丢弃）；
-     ② `background-clip: padding-box` → 背景只填到边框内沿。少了这条，浅蓝会铺进 border 区，
-        而素材圆角**外侧是透明的**（实测左上角 alpha=0），圆角缺口处就会露出一圈方角浅蓝。
-     背景写成 `background-color` 而不是 `background` 简写：简写会把 background-clip 重置回
-     border-box，顺序稍一变动这条就失效。 */
-  background-color: var(--plate-fill);
-  background-clip: padding-box;
-  border-style: solid;
-  border-color: transparent;
-  border-width: 8px 8px 12px 8px;
-  /* 写成三个值：CSS 会把第四个（左）默认成第二个（右），计算样式归一化成「8 8 12」。
-     这里刻意用简写而不是 8 8 12 8，是为了和 e2e 钉住的读法一致，别留两种写法让人猜哪个是权威。 */
-  border-image: url("icons/button_rectangle_depth_line.png") 8 8 12;
-  border-radius: 0;
-}
+/* 食物列表**不再单独铺素材底板**：它和状态读数、设置行共用上面那条 `.pet-plate` 的 CSS 卡片。
+   以前这里是一整块 Kenney `button_rectangle_depth_line` 的 border-image 九宫格——四层边、
+   只有下边多 4px 底影，所以 slice 和 border-width 都得写成不对称的 `8 8 12`，中心色还得靠
+   `background-clip: padding-box` 从 CSS 递进去。那套写法为什么必须这么写、量出来的数字，
+   都留在 problem/03 §3.9 与 §3.12；这一圈框本身被否掉了：三块副板里只有它带框，
+   读起来比三处都素更怪。留白回到基类的 6px（素材那版是 8px 边框 + 3px 内边距）。 */
 
 /* 设置视图是文字行，竖排两列。 */
 .pet-plate.is-settings {

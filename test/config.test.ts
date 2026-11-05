@@ -116,8 +116,9 @@ describe('气泡尺寸', () => {
     // 现在换成同轮廓的 SVG。两件事必须一起成立：底图是 .svg，且 `.pet-bubble-bg` 里没有 pixelated。
     // 哪天要换回位图，这两行都得重新表过态。
     expect(BUBBLE_IMAGE.endsWith('.svg'), `底图又退回位图了：${BUBBLE_IMAGE}`).toBe(true)
-    const css = readFileSync('src/renderer/style.css', 'utf8')
-    expect(css.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).not.toMatch(/image-rendering:\s*pixelated/)
+    // 先剥注释：这条断言读的是 CSS 形状，注释里提一句那个属性名不该把自己判红（真发生过）
+    const code = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(code.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).not.toMatch(/image-rendering:\s*pixelated/)
   })
 
   it('文字与按钮都留在纯白内腔里（描边那两行、尾巴那 30px 都不压字）', () => {
