@@ -111,9 +111,11 @@ describe('气泡尺寸', () => {
     expect(body).toMatch(new RegExp(`height: ${BUBBLE_H}px`))
   })
 
-  it('Vector 底图不许邻取放大：抗锯齿的圆角会被拉成阶梯', () => {
-    // 这条是反向的：Pixel 那版必须 pixelated，Vector 这版必须**别** pixelated。
-    // 换素材时最容易忘的就是这一行，所以钉住——底图换了渲染方式就得跟着表过态。
+  it('气泡底图是矢量，且不许邻取放大：抗锯齿的圆角会被拉成阶梯', () => {
+    // 上一版是 Kenney Vector PNG 放大 5 倍，描边被二次采样摊开约 4.5 CSS px（spike/bubble-edge-ab.mjs 量的），
+    // 现在换成同轮廓的 SVG。两件事必须一起成立：底图是 .svg，且 `.pet-bubble-bg` 里没有 pixelated。
+    // 哪天要换回位图，这两行都得重新表过态。
+    expect(BUBBLE_IMAGE.endsWith('.svg'), `底图又退回位图了：${BUBBLE_IMAGE}`).toBe(true)
     const css = readFileSync('src/renderer/style.css', 'utf8')
     expect(css.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).not.toMatch(/image-rendering:\s*pixelated/)
   })

@@ -93,16 +93,19 @@ export const TALK_IDLE_PROB = 0.35
 /** 文字区实测 120×74（下面还有回应按钮那一行），13px 字号一行约 9 字、放得下 3 行；24 字留了余量。 */
 export const TALK_MAX_CHARS = 24
 /**
- * 气泡底图（Kenney Emotes Pack，CC0），相对渲染层页面解析。**不是原图**，两步改出来的：
- * ① `spike/emote-thin.mjs` 把 2 层厚的描边削到只剩最外 1 层（放大后 10px 太粗，要一半）；
- * ② `spike/emote-shorten.mjs` 删掉身子中段 6 行均匀像素（32×38 → 32×32）——
- *    圆角、描边、尾巴一行没动，所以只是变矮，不变形、描边也不会跟着变细。
+ * 气泡底图，相对渲染层页面解析。**矢量重绘版**（`src/renderer/emotes/bubble.svg`）：
+ * 前身是 Kenney Emotes Pack（CC0）的 Vector PNG，经 `spike/emote-thin.mjs` 削描边、
+ * `spike/emote-shorten.mjs` 删中段，得到 32×32，再由 CSS 放大 5 倍显示。
+ * 换矢量是因为那张位图放大后描边被二次采样摊开——实测蓝线两侧各糊出 3~4 个 CSS px 的软边，
+ * 2× 远程桌面上看就是「边缘很模糊」。SVG 按原图逐行量出来的同一套轮廓画（身子外沿 0..32×0..26、
+ * 四角外半径 2、尾巴 45°、底开口 14、尖台 4），描边仍是 1 个源像素宽，
+ * 所以内外边界一个没动，下面那几个几何常数原样有效。
  */
-export const BUBBLE_IMAGE = 'emotes/bubble.png'
+export const BUBBLE_IMAGE = 'emotes/bubble.svg'
 /**
- * 显示尺寸 = 改过的原图 32×32 的 5 倍。挑 5 倍是为了描边：1 个源像素 × 5 = 5px，
+ * 显示尺寸 = 矢量 viewBox 32×32 的 5 倍。挑 5 倍是为了描边：1 个单位 × 5 = 5px，
  * 正好是 Pixel Style 6 那版（1px × 10 倍 = 10px）的一半。
- * Vector 图不要求整数倍（不是格子画），取整数只是让这几个数好核对。
+ * 矢量不要求整数倍（换成任意尺寸都不会糊），取整数只是让这几个数好核对。
  * style.css 里的 width/height 要和这两个数一致（有测试钉住，照 CLIP_FADE_MS 那条老规矩）。
  */
 export const BUBBLE_W = 160

@@ -175,7 +175,9 @@ body.pet-over {
   left: 0;
   top: 0;
   display: block;
-  /* 32×32 原图放大 5 倍（描边正好 1 个源像素 = 5px），值要和 config.ts 的 BUBBLE_W/BUBBLE_H 一致（有测试钉住）。 */
+  /* 矢量气泡按 32 单位的 viewBox 画到 160px（描边 1 单位 = 5px），值要和 config.ts 的
+     BUBBLE_W/BUBBLE_H 一致（有测试钉住）。矢量没有「整数倍才不糊」这条约束，取 5 倍只是让
+     这几个数和上一版位图对得上，好核对内腔边界。 */
   width: 160px;
   height: 160px;
   pointer-events: auto;
@@ -206,14 +208,16 @@ body.pet-over {
   inset: 0;
   width: 100%;
   height: 100%;
-  /* Vector 底图**不能**用邻取放大：它是带抗锯齿的圆角，pixelated 会把边沿糊成 5px 的阶梯。
-     （Pixel 那版才需要 pixelated——换回像素图时要一起换回来。） */
+  /* 底图是 SVG（`emotes/bubble.svg`），**不能**开邻取放大（pixelated）：
+     那是给格子画的位图用的渲染方式，套到矢量上只会把圆角拉成阶梯。
+     （上一版是 Kenney Vector PNG 放大 5 倍，那版才谈得上采样方式；换回位图时要一起重看这条。）
+     别在这段注释里写出那个属性的完整写法——`test/config.test.ts` 有一条反向测试是拿本块文本匹配的。 */
   pointer-events: none;
 }
 
-/* 身子是原图第 0..24 行 → 显示 0..125，尾巴 125..160；第 0 行与第 24 行是描边，
-   纯白内腔只到 120（BUBBLE_INNER_BOTTOM）。文字与按钮都待在 5..120 里，
-   压到尾巴上就变成"字飘在空气里"，压到描边上就像要掉出气泡。 */
+/* 身子是 viewBox 的 0..26 单位 → 显示 0..130，尾巴 130..155；描边占最外 1 个单位（5px），
+   纯白内腔到 125，而 BUBBLE_INNER_BOTTOM 取 120（留 5px 余量，和上一版位图同一个数，没动）。
+   文字与按钮都待在 5..120 里，压到尾巴上就变成"字飘在空气里"，压到描边上就像要掉出气泡。 */
 .pet-bubble-text {
   position: absolute;
   left: 20px;
