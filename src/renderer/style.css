@@ -362,24 +362,57 @@ body.pet-over {
   background: #eef6f4;
 }
 
-.pet-stats-head {
+/* 性别那一枚符号。符号自己已经说了性别，颜色是第二道冗余表意（粉=雌、蓝=雄），
+   所以这里不做「选中/未选中」对比——卡上只有这一枚，它没有对照组。
+   权重三层类名，压过上面那条 `.pet-plate.is-stats button`。 */
+.pet-plate.is-stats .pet-gender {
+  min-width: 30px;
+  padding: 1px 8px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.pet-plate.is-stats .pet-gender.is-female {
+  color: #e0559a;
+  border-color: rgba(224, 85, 154, 0.45);
+  background: rgba(224, 85, 154, 0.1);
+}
+
+.pet-plate.is-stats .pet-gender.is-male {
+  color: #4a86d8;
+  border-color: rgba(74, 134, 216, 0.45);
+  background: rgba(74, 134, 216, 0.1);
+}
+
+/* 它是卡上唯一能点的东西，悬停必须给反馈——加深自己那支颜色，
+   不要落到上面那条薄荷绿 hover 底色上（那是给雌雄两档文字按钮准备的）。 */
+.pet-plate.is-stats .pet-gender.is-female:hover {
+  background: rgba(224, 85, 154, 0.2);
+}
+
+.pet-plate.is-stats .pet-gender.is-male:hover {
+  background: rgba(74, 134, 216, 0.2);
+}
+
+/* 姓名 / 性别这两行和读数行同列：值右对齐到数字那一栏。
+   刻意不叫 .pet-stat——那个类专指「一条数值读数」，单测和 e2e 都按它数条数。 */
+.pet-stat,
+.pet-stat-line {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
+.pet-stat-line {
+  justify-content: space-between;
+}
+
+/* 名字是卡上最重的一行字，但字号跟着 `.pet-stat-value` 走 12px，
+   免得比数字宽一档把右列顶歪。 */
 .pet-stats-name {
-  flex: 1 1 auto;
   overflow: hidden;
   white-space: nowrap;
-  font: 600 13px/1.4 "Microsoft YaHei UI", sans-serif;
-  color: #2b2f36;
-}
-
-.pet-stat {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  font-weight: 600;
 }
 
 .pet-stat-label {

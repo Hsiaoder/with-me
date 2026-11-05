@@ -2,7 +2,7 @@ import { FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, PANEL_BUTTONS, type PanelButton } fr
 import { FOODS, type Food } from '../shared/food.js'
 import { clampScroll, pageStep, thumbGeometry } from '../shared/scroll.js'
 import { STAT_KEYS, STAT_LABELS, statBand } from '../shared/stats.js'
-import { GENDER_LABELS, type Gender, type StatsSnapshot } from '../shared/save.js'
+import { GENDER_GLYPHS, GENDER_LABELS, type Gender, type StatsSnapshot, otherGender } from '../shared/save.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
 import type { Point, Rect } from '../shared/types.js'
 
@@ -85,9 +85,6 @@ const ROWS: { key: keyof Settings; label: string }[] = [
   { key: 'onFullscreen', label: '全屏时' },
   { key: 'onPresentation', label: '放映时' },
 ]
-
-/** 性别两档。改名要键盘输入，这扇窗默认不收键盘，所以状态栏先只给能点的部分。 */
-const GENDER_KEYS: Gender[] = ['female', 'male']
 
 function btn(label: string, attrs: Record<string, string>, on: boolean): HTMLButtonElement {
   const b = document.createElement('button')
@@ -267,23 +264,13 @@ export function createPanel(
   }
 
   /**
-   * 状态栏：名字 + 性别在上，四条读数在下。它是 qqpet 那种「一眼看到当前值」的面板，
-   * 不是设置页——每一项都只读，唯一能点的是性别和返回。
+   * 状态栏：姓名一行、性别一行，下面四条读数，没有返回按钮（收起靠再点一次状态键）。
+   * 它是 qqpet 那种「一眼看到当前值」的面板，不是设置页——唯一还能就地改的是性别。
    */
   function renderStats(host: HTMLElement): void {
-    const head = document.createElement('div')
-    head.className = 'pet-stats-head'
-    const name = document.createElement('span')
-    name.className = 'pet-stats-name'
-    name.textContent = snap === null ? '…' : snap.identity.name
-    head.append(name)
-    for (const g of GENDER_KEYS) {
-      const b = btn(GENDER_LABELS[g], { gender: g }, snap?.identity.gender === g)
-      b.classList.add('pet-gender')
-      b.addEventListener('click', () => handlers.identity({ gender: g }))
-      head.append(b)
-    }
-    host.append(head)
+    host.append(plainLine('姓名', snap === null ? '…' : snap.identity.name, 'pet-stats-name'))
+    // 性别要读得出是哪一档才画：没快照时给个空符号比猜一个诚实。
+    if (snap !== null) host.append(genderLine(snap.identity.gender))
 
     // 快照还没到就到此为止：画四条 0 会让用户以为宠物饿坏了，那是编出来的恐慌。
     if (snap === null) return
@@ -306,9 +293,45 @@ export function createPanel(
       line.append(label, bar, out)
       host.append(line)
     }
-    const back = btn('返回', { view: 'actions' }, false)
-    back.addEventListener('click', () => switchTo('actions'))
-    host.append(back)
+  }
+
+  /** 「标签 + 值」一行，和读数行同列：值右对齐到数字那一栏。 */
+  function plainLine(label: string, value: string, valueCls: string): HTMLElement {
+    const line = document.createElement('div')
+    line.className = 'pet-stat-line'
+    const l = document.createElement('span')
+    l.className = 'pet-stat-label'
+    l.textContent = label
+    const v = document.createElement('span')
+    v.className = `pet-stat-value ${valueCls}`
+    v.textContent = value
+    line.append(l, v)
+    return line
+  }
+
+  /**
+   * 性别就一枚符号，点一下换到另一档。为什么还留着能点：改名要键盘输入而这扇窗不收键盘，
+   * 换性别是存档里唯一还能就地改的东西，做成纯展示就没有入口了。
+   * 符号自己说性别，颜色是第二道冗余表意（粉=雌、蓝=雄），所以不再做「选中/未选中」对比。
+   */
+  function genderLine(g: Gender): HTMLElement {
+    const line = document.createElement('div')
+    line.className = 'pet-stat-line'
+    const l = document.createElement('span')
+    l.className = 'pet-stat-label'
+    l.textContent = '性别'
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = `pet-gender is-${g}`
+    b.dataset.gender = g
+    b.textContent = GENDER_GLYPHS[g]
+    // 图/符号不带文字时，title 与 aria-label 是读屏和悬停唯一的说明
+    const text = `${GENDER_LABELS[g]}（点一下换成${GENDER_LABELS[otherGender(g)]}）`
+    b.title = text
+    b.setAttribute('aria-label', text)
+    b.addEventListener('click', () => handlers.identity({ gender: otherGender(g) }))
+    line.append(l, b)
+    return line
   }
 
   /** 按钮条。动作/食物/状态视图都挂着它——用户要的是「列表开着的时候按钮不许消失」。 */

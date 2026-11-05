@@ -1124,20 +1124,38 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   assert.ok(stats.hunger > 70, `喂了火锅饥饿没涨（初值 70）：${stats.hunger}`)
   assert.ok(stats.weight > 50, `喂了火锅体重没涨（初值 50）：${stats.weight}`)
 
-  // 性别：状态栏里点一下就该落盘，并且选中态跟着快照走
+  // 性别：一枚符号，点一下换档并落盘。
+  // 以前这里是两颗按钮（雌/雄）点其中一颗——断言「选中态换了」其实只验了类名。
+  // 现在符号本身就是状态，所以验的是「档位 + 字符 + 颜色」三样一起换过去。
   await page.evaluate(() => window.__petDebug.hideBubble())
   await page.evaluate(() => window.__petDebug.hidePanel())
   assert.ok(await openOnBody(), '前置：面板叫不回来')
   await page.click('.pet-panel button[data-id="status"]')
   await page.waitForSelector('.pet-panel .pet-gender')
-  await page.click('.pet-panel .pet-gender[data-gender="male"]')
-  const on = () => page.locator('.pet-panel .pet-gender').evaluateAll((bs) => bs.map((b) => b.classList.contains('on')))
-  let picked = await on()
-  for (let i = 0; i < 20 && !(picked[1] && !picked[0]); i++) {
+  const glyph = () => page.evaluate(() => {
+    const b = document.querySelector('.pet-panel .pet-gender')
+    if (!b) return null
+    return {
+      gender: b.dataset.gender,
+      text: b.textContent,
+      color: getComputedStyle(b).color,
+      label: b.getAttribute('aria-label'),
+    }
+  })
+  const beforeGender = await glyph()
+  assert.equal(beforeGender?.gender, 'female', `开局该是雌：${JSON.stringify(beforeGender)}`)
+  assert.equal(beforeGender?.text, '♀', `雌的符号不是 ♀：${JSON.stringify(beforeGender)}`)
+  assert.equal(beforeGender?.color, 'rgb(224, 85, 154)', `雌的符号该是粉色：${beforeGender?.color}`)
+  await page.click('.pet-panel .pet-gender')
+  let picked = await glyph()
+  for (let i = 0; i < 30 && picked?.gender !== 'male'; i++) {
+    // 落盘 → 主进程广播快照 → 渲染层重绘，这一圈比一次点击慢
     await page.waitForTimeout(100)
-    picked = await on()
+    picked = await glyph()
   }
-  assert.deepEqual(picked, [false, true], `点「雄」之后选中态没换过去：${JSON.stringify(picked)}`)
+  assert.deepEqual(picked, {
+    gender: 'male', text: '♂', color: 'rgb(74, 134, 216)', label: '雄（点一下换成雌）',
+  }, `点完性别没换档：${JSON.stringify(picked)}`)
   let identity = null
   for (let i = 0; i < 30; i++) {
     try {
@@ -1150,6 +1168,10 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   }
   assert.equal(identity?.gender, 'male', `性别没落盘：${JSON.stringify(identity)}`)
   assert.equal(identity?.name, '小鲸', `改性别把名字弄丢了：${JSON.stringify(identity)}`)
+  // 返回按钮没了：卡片上除了性别符号不该再有别的可点项
+  const clickable = await page.evaluate(() =>
+    [...document.querySelectorAll('.pet-plate.is-stats button')].map((b) => b.className))
+  assert.deepEqual(clickable, ['pet-gender is-male'], `状态栏里还有别的按钮：${JSON.stringify(clickable)}`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {

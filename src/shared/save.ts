@@ -19,6 +19,13 @@ export type StatsSnapshot = { stats: Stats; identity: Identity }
 /** 性别只有两档，落盘存 ascii，显示用中文（动物的说法：雌/雄）。 */
 export type Gender = 'female' | 'male'
 export const GENDER_LABELS: Record<Gender, string> = { female: '雌', male: '雄' }
+/**
+ * 状态栏里性别只占一个符号（用户要的），颜色在 CSS 里：粉=雌、蓝=雄。
+ * 用 U+2640/2642 而不是图片：微软雅黑带这两个字形，换颜色换大小都是一行的事，
+ * 而且读屏能念出来。渲染有没有真的出字由 e2e 截图与 label 断言钉，别只看代码。
+ */
+export const GENDER_GLYPHS: Record<Gender, string> = { female: '♀', male: '♂' }
+export const otherGender = (g: Gender): Gender => (g === 'female' ? 'male' : 'female')
 export type Identity = { name: string; gender: Gender }
 
 /** 状态栏表头那一行宽度是死的，名字按码点截到这里。 */

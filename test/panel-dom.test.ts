@@ -356,18 +356,29 @@ describe('状态视图', () => {
     expect(bands).toEqual(['high', 'mid', 'low', 'high'])
   })
 
-  it('表头是名字 + 两颗性别按钮，选中态跟着快照走', () => {
+  it('姓名一行、性别一行：性别是枚可点的粉色符号', () => {
     const { panel } = open()
-    expect(panel.el.querySelector('.pet-stats-name')?.textContent).toBe('小鲸')
-    const g = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-gender')]
-    expect(g.map((b) => b.getAttribute('aria-label'))).toEqual(['雌', '雄'])
-    expect(g[0]?.classList.contains('on')).toBe(true)
-    expect(g[1]?.classList.contains('on')).toBe(false)
+    const lines = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-line')]
+    expect(lines.map((l) => l.querySelector('.pet-stat-label')?.textContent)).toEqual(['姓名', '性别'])
+    expect(lines[0]?.querySelector('.pet-stats-name')?.textContent).toBe('小鲸')
+    const g = panel.el.querySelector<HTMLButtonElement>('.pet-gender')!
+    expect(g.textContent).toBe('♀')
+    expect(g.dataset.gender).toBe('female')
+    expect(g.className).toContain('is-female')
+    // 符号不带文字，读屏只能靠 label；label 还得说清点下去会发生什么
+    expect(g.getAttribute('aria-label')).toContain('雌')
+    expect(g.getAttribute('aria-label')).toContain('换成雄')
+    expect(g.getAttribute('title')).toBe(g.getAttribute('aria-label'))
   })
 
-  it('点性别只上报 identity，不顺手播一条动画', () => {
+  it('状态栏没有返回按钮：收起靠再点一次状态键', () => {
+    const { panel } = open()
+    expect(panel.el.querySelector('button[data-view="actions"]')).toBeNull()
+  })
+
+  it('点性别只上报另一档，不顺手播一条动画', () => {
     const { panel, identity, onClick } = open()
-    panel.el.querySelector<HTMLButtonElement>('.pet-gender[data-gender="male"]')?.click()
+    panel.el.querySelector<HTMLButtonElement>('.pet-gender')?.click()
     expect(identity).toHaveBeenCalledWith({ gender: 'male' })
     expect(onClick).not.toHaveBeenCalled()
   })
@@ -378,6 +389,9 @@ describe('状态视图', () => {
     m.panel.setView('stats')
     expect(m.panel.el.querySelector('.pet-stats-name')?.textContent).toBe('…')
     expect(m.panel.el.querySelectorAll('.pet-stat')).toHaveLength(0)
+    // 性别也一样：没快照就猜一个符号，等于编造存档里没有的东西
+    expect(m.panel.el.querySelector('.pet-gender')).toBeNull()
+    expect(m.panel.el.querySelectorAll('.pet-stat-line')).toHaveLength(1)
   })
 
   it('setStats 在状态视图里立刻重绘；在别的视图只存不画', () => {
