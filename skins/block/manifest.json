@@ -8,6 +8,7 @@
     "turn": ["left"],
     "move": ["step"],
     "click": ["tapped"],
-    "drag": ["pulled"]
+    "drag": ["pulled"],
+    "eat": ["rice", "hotpot"]
   }
 }

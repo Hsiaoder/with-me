@@ -17,6 +17,11 @@ export type PoolSource = {
 export interface Picker {
   /** 在指定池里挑一条。空池返回 null。多条时会排除刚播过那条，只有一条时只能重复。 */
   pickFrom(skin: PoolSource, pool: string, current: ClipRef | null): ClipRef | null
+  /**
+   * 按名字点一条：皮肤里有这个名字才给，否则 null。
+   * 「点火锅播白饭的吃相」就是因为以前只有 pickFrom，食物表里那个 clip 名从来没被用上。
+   */
+  pickNamed(skin: PoolSource, pool: string, name: string): ClipRef | null
   /** 无人交互时自主挑一条环境动画（待机 / 走走 / 转身）。 */
   pickAmbient(skin: PoolSource, current: ClipRef | null): ClipRef | null
 }
@@ -54,7 +59,14 @@ export function createPicker(rng: () => number): Picker {
     return pickFrom(skin, candidates[candidates.length - 1] ?? 'idle', current)
   }
 
-  return { pickFrom, pickAmbient }
+  function pickNamed(skin: PoolSource, pool: string, name: string): ClipRef | null {
+    // 查的是皮肤**实际有什么**，不是 FOODS 表里写了什么：皮肤可以只做其中几口，
+    // 名字在这一步对上文件，装载时就不用拿名字去反推池（那条路会让每个默认皮肤都报缺素材）。
+    const names = skin.pools[pool] ?? []
+    return names.includes(name) ? { pool, name } : null
+  }
+
+  return { pickFrom, pickNamed, pickAmbient }
 }
 
 /**

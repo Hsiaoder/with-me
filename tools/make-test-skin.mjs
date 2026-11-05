@@ -38,6 +38,11 @@ const CLIPS = [
   ['move', 'step', GREEN, `${BASE_X}+20*sin(2*PI*t/2)`, `${BASE_Y}+${BOB}*sin(2*PI*t/0.5)`],
   ['click', 'tapped', '0xE6572C', `${BASE_X}`, `${BASE_Y}`],
   ['drag', 'pulled', '0xE62CA8', `${BASE_X}`, `${BASE_Y}+${BOB}*sin(2*PI*t/1)`],
+  // eat 池**故意只做两口**（rice / hotpot）：食物表里有六口，皮肤可以只做其中几口。
+  // 这样 e2e 一次覆盖两条路——点白饭/火锅该播那一条（按名字点歌），
+  // 点饺子这类皮肤里没有的该回落到 click（而不是随机播一口，那是「点火锅播白饭」那个 bug）。
+  ['eat', 'rice', '0x36BDF7', `${BASE_X}`, `${BASE_Y}+${BOB}*sin(2*PI*t/1)`],
+  ['eat', 'hotpot', '0xE6A32C', `${BASE_X}`, `${BASE_Y}+${BOB}*cos(2*PI*t/1)`],
 ]
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')

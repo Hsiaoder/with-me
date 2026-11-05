@@ -507,6 +507,8 @@ check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连�
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
   pool: window.__petDebug.current.pool,
+  // 「点哪格播哪条」要的是整条引用：只看池子内随机播一条也算过，那是这个 bug 的原样
+  current: window.__petDebug.current,
   sends: window.__petDebug.grabSends,
   grab: window.__petDebug.grabRequested,
   hit: window.__petDebug.hitBox,
@@ -810,17 +812,58 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
     return v.getBoundingClientRect().width < v.scrollWidth
   }), '视口没把内容夹住，滚动条就没有意义')
 
-  // 点一格 → 播 click 池 + 出气泡（feed 台词）
+  // 点一格 → 播**它自己那一条**吃相（不是池里随机一条）+ 出气泡（feed 台词）
   await page.evaluate(() => window.__petDebug.setLastTalk(0))
   await page.click('.pet-panel .pet-food[data-food="rice"]')
-  await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
-  assert.equal((await dbg()).pool, 'click')
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
+  assert.equal((await dbg()).pool, 'eat')
+  assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'rice' }, '点白饭没播白饭那一条')
   assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), true, '点了食物没回话')
   // 选完即收：列表压在宠物脚底那块，不收就看不到它吃。连喂的代价只是再悬停一次，
   // 而连喂的第二样本来会被 25 秒冷却吞掉台词，留着列表换不到什么。
   assert.equal((await dbg()).open, false, '点了食物但列表没收起')
   assert.ok(await openOnBody(), '前置：列表收掉之后面板叫不回来')
   assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'actions', '重新叫出来还停在食物列表')
+})
+
+check('吃饭期间点身体：菜单照样弹出，但动画不许被抢走', async () => {
+  // 自己叫一遍，别接上一条的残局（它收不收都不影响这条）。
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.evaluate(() => window.__petDebug.setLastTalk(0))
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
+  await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 3000 })
+
+  // 立刻点身体：以前这里会把嘴边那口饭换成 click 动画，用户看到的就是「一口没吃完就改动作」。
+  const h = await page.evaluate(() => window.__petDebug.hitBox)
+  await clickBody({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
+  const during = await dbg()
+  assert.deepEqual(during.current, { pool: 'eat', name: 'rice' }, `吃饭时点身体把动画抢走了：${JSON.stringify(during.current)}`)
+  assert.equal(during.open, true, '吃饭时点身体连菜单也不弹了——用户要的是别打断动画，不是别理我')
+
+  // 饭吃完之后必须回到正常链：不能把「不抢播」做成「从此点不动」。
+  await page.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  assert.ok(await openOnBody(), '前置：饭后的面板叫不出来')
+  const h2 = await page.evaluate(() => window.__petDebug.hitBox)
+  await clickBody({ x: h2.x + h2.w / 2, y: h2.y + h2.h / 2 })
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
+  await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
+check('皮肤里没做的那一口：回落到 click，而不是随机播一口别的', async () => {
+  // block 皮肤的 eat 池只有 rice / hotpot。点饺子（没做）该播 click——
+  // 播「池里随便一条」就是「点火锅播白饭的吃相」那个 bug 的样子，比不播更误导。
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  await page.click('.pet-panel .pet-food[data-food="dumpling"]')
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
+  assert.equal((await dbg()).pool, 'click')
+  await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
 check('食物列表：整屏步进、到底置灰、拖横条、收起后复位', async () => {

@@ -138,9 +138,20 @@ function bootstrap(skin: SkinPayload): void {
     })()
   }
 
-  /** 点了这一格该播哪条。找不到素材就回落到 click，点了必须有反应。 */
-  function requestClip(pool: string): boolean {
-    const ref = picker.pickFrom(source, pool, current)
+  /**
+   * 播一条。给了名字就**必须播那条**（点哪格吃哪口），皮肤里没有这个名字返回 false，
+   * 由调用方降级；没给名字就在池里随机挑一条（避开刚播过那条）。
+   *
+   * 「正在吃饭时不被打断」这道闸也在这里：吃饭期间任何动作都不换动画（用户拍的板：全都不打断）。
+   * 例外是**名字寻址的那一次**——再喂一口是新的照顾动作，该改口吃新的；
+   * 拖拽也例外，被拎起来必须有反应，那是物理打断，不是点一下。
+   * 台词、菜单、养成数值都在调用方那边照走，所以「不打断动画」不等于「没反应」。
+   */
+  function requestClip(pool: string, name?: string): boolean {
+    if (current.pool === 'eat' && pool !== 'drag' && name === undefined) return false
+    const ref = name === undefined
+      ? picker.pickFrom(source, pool, current)
+      : picker.pickNamed(source, pool, name)
     if (!ref) return false
     current = ref
     startChain()
@@ -164,13 +175,18 @@ function bootstrap(skin: SkinPayload): void {
       if (a.id === 'game') window.petBridge?.statEvent({ kind: 'play' })
     },
     /**
-     * 点了一格食物。播哪条动画由食物自己说了算；皮肤里没有那个池（自带的 block
-     * 皮肤就没有 eat）就回落到 click 池——点了没反应比播错动画更糟。
+     * 点了一格食物：**点哪格就播哪条**（`f.anim.name`）。降级链是两级——
+     * 皮肤里没有这一口（自带的 block 皮肤就只做 rice / hotpot 两口）就回落到 click 池。
+     * 以前这里只递池名，于是「点火锅播到白饭的吃相」：名字在装载皮肤时就被丢掉了，
+     * 池里有什么就随机播什么（见 problem/03 §3.13）。
+     * 为什么宁可播 click 也不播「池里随便一条」：播错的那口会假装它吃的是别的，
+     * 而点了没反应 / 反应不对，都比假装更值得防。
      */
     pick: (f) => {
       lastInteractionAt = Date.now()
       rules.feed('interacted')
-      if (!requestClip(f.anim?.pool ?? 'click')) requestClip('click')
+      if (f.anim !== undefined && !requestClip(f.anim.pool, f.anim.name)) requestClip('click')
+      else if (f.anim === undefined) requestClip('click')
       sayFor('feed')
       window.petBridge?.statEvent({ kind: 'feed', food: f.id })
       // 选完即收：列表就压在宠物脚底那块，不收的话你点完看不到它吃。
@@ -575,8 +591,11 @@ function bootstrap(skin: SkinPayload): void {
     // 屏幕内了，不需要再吸附。（启动时落地仍由 bootstrap 里的 snapToBottom 负责）
     if (!dragStarted) {
       // 没过阈值就是「点了一下」：给它 click 动画（点了必须有反应），并开关按钮面板。
-      // 台词这一轮先不配（click 那一档等喂食回复一起补）。
-      requestClip('click')
+      // **正在吃饭时不抢播**：click 会把嘴边那口饭换掉，用户看到的就是「一口没吃完就改动作」。
+      // 面板照旧弹出——他要的是别打断动画，不是别理我；而且面板本身就是反馈。
+      // 判据用 `current.pool` 而不是「播放中」标志：链子播完下一条会把 current 换成 idle，
+      // 再自己加一个状态就等于有两本账。
+      if (current.pool !== 'eat') requestClip('click')
       togglePanel()
       return
     }

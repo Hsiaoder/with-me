@@ -15,6 +15,26 @@ function seeded(seed: number): () => number {
 
 const skin = { pools: { idle: ['a', 'b', 'c'], turn: ['left'], move: ['step'] } }
 
+describe('pickNamed', () => {
+  /**
+   * 「点火锅播到白饭的吃相」的根因：食物表里存了 clip 名，运行时却只递池名，
+   * 于是池里有什么就随机播什么。pickNamed 是把名字接回来的那一步——
+   * 它查的是皮肤**实际有什么**，不是 FOODS 表写了什么，所以皮肤可以只做其中几口。
+   */
+  const eatSkin = { pools: { eat: ['rice', 'hotpot'] } }
+
+  it('皮肤里有这个名字就给整条引用，不看随机数', () => {
+    expect(createPicker(() => 0.99).pickNamed(eatSkin, 'eat', 'hotpot')).toEqual({ pool: 'eat', name: 'hotpot' })
+    expect(createPicker(() => 0).pickNamed(eatSkin, 'eat', 'rice')).toEqual({ pool: 'eat', name: 'rice' })
+  })
+
+  it('皮肤里没做这一口就返回 null，由调用方降级（绝不随机给一口别的）', () => {
+    expect(createPicker(() => 0).pickNamed(eatSkin, 'eat', 'dumpling')).toBeNull()
+    expect(createPicker(() => 0).pickNamed(eatSkin, 'sleep', 'rice')).toBeNull()
+    expect(createPicker(() => 0).pickNamed({ pools: { eat: [] } }, 'eat', 'rice')).toBeNull()
+  })
+})
+
 describe('pickFrom', () => {
   it('空池返回 null 而不是崩溃', () => {
     expect(createPicker(() => 0).pickFrom({ pools: { idle: [] } }, 'idle', null)).toBeNull()

@@ -240,11 +240,11 @@ body.pet-over {
   left: 0;
   top: 0;
   display: block;
-  /* 矢量气泡按 32 单位的 viewBox 画到 160px（描边 1 单位 = 5px），值要和 config.ts 的
-     BUBBLE_W/BUBBLE_H 一致（有测试钉住）。矢量没有「整数倍才不糊」这条约束，取 5 倍只是让
-     这几个数和上一版位图对得上，好核对内腔边界。 */
-  width: 160px;
-  height: 160px;
+  /* 矢量气泡：viewBox 1024 画到 220px（描边 24 单位 ≈ 5.2px），值要和 config.ts 的
+     BUBBLE_W/BUBBLE_H 一致（有测试钉住）。矢量没有「整数倍才不糊」这条约束，
+     220 是为了让「3 行字 + 那颗回应按钮」这一整块装进主泡的椭圆内腔（解法见 config.ts）。 */
+  width: 220px;
+  height: 220px;
   pointer-events: auto;
   cursor: var(--pet-cursor);
   will-change: transform;
@@ -280,15 +280,16 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 身子是 viewBox 的 0..26 单位 → 显示 0..130，尾巴 130..155；描边占最外 1 个单位（5px），
-   纯白内腔到 125，而 BUBBLE_INNER_BOTTOM 取 120（留 5px 余量，和上一版位图同一个数，没动）。
-   文字与按钮都待在 5..120 里，压到尾巴上就变成"字飘在空气里"，压到描边上就像要掉出气泡。 */
+/* 主泡的内腔是**椭圆**，不是矩形：能用的矩形比外接方框小得多，这四个数是从椭圆解出来的
+   （角点归一 0.963 ≤ 1，算法见 emotes/bubble.svg 的注释）——
+   文字 + 缝 + 回应按钮合起来是「中心 (101,138)、半宽 55、半高 42」那一块，
+   底边 180 就是 BUBBLE_INNER_BOTTOM。压到描边上就像字要掉出气泡。 */
 .pet-bubble-text {
   position: absolute;
-  left: 20px;
-  top: 12px;
-  width: 120px;
-  height: 74px;
+  left: 46px;
+  top: 96px;
+  width: 110px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -299,12 +300,13 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 回应按钮：文字区下面那一行，底边 114 仍在纯白内腔（120）里。 */
+/* 回应按钮：文字区下面那一行，底边 180 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
+   宽度跟着文字区收到 110——椭圆下半截本来就窄了，120 会戳到描边上。 */
 .pet-bubble-reply {
   position: absolute;
-  left: 20px;
-  top: 92px;
-  width: 120px;
+  left: 46px;
+  top: 158px;
+  width: 110px;
   height: 22px;
   padding: 0;
   border: 1px solid rgba(0, 0, 0, 0.14);

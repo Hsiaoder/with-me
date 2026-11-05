@@ -73,13 +73,26 @@ try {
     join('spike', 'out', 'bubble-crop.png'),
   ])
 
-  // 过渡宽度：沿气泡左边缘那一列往下走，数「桌面 → 描边 → 纯白」实际摊开在几个像素上。
-  // 越小说明越硬。矢量图应当是 1~2 个像素（一次 alpha 覆盖），二次重采样的放大位图会摊到 3~5 个。
+  // 过渡宽度：在主泡**最宽那一行**上，从方框左沿往里扫到第一个不透明列，
+  // 数「桌面 → 描边」摊开在几个像素上。越小说明越硬：矢量应当是 1~2 个设备像素
+  // （一次 alpha 覆盖），二次重采样的位图会摊到 3~5 个。
+  // 两个坑：① 不能用方框的纵向中点——这版主泡中心在框内 y=137.5，上面那截是两颗小泡，
+  //   拿中点读到的是空白；② 不能从框沿起算固定偏移——椭圆左右各有 20 多像素的空边，
+  //   那是形状不是模糊。所以先自己找那条边。
   const raw = execFileSync(FF, ['-v', 'error', '-i', join('spike', 'out', 'bubble-shot.png'), '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { maxBuffer: 1 << 28 })
   const alphaAt = (x, y) => raw[(y * imgW + x) * 4 + 3]
-  const midY = P.y + Math.round(P.h / 2)
-  const col = Array.from({ length: 10 }, (_, k) => alphaAt(P.x - 3 + k, midY))
-  console.log(`左边缘一列 alpha（板外 3 个起）: ${col.join(' ')}`)
+  const k = P.w / 220                                  // CSS 像素 → 设备像素（框宽 220 CSS）
+  const midY = P.y + Math.round(137.5 * k)             // 主泡中心在框内 y=137.5 CSS
+  let edge = -1
+  for (let x = 0; x < P.w; x++) {
+    if (alphaAt(P.x + x, midY) > 200) { edge = x; break }
+  }
+  // 预期位置：主泡外沿在 viewBox 里是 cx−rx = 469.33−373.33 = 96 单位，
+  // 换算 96 × (220/1024) CSS × 2 设备 = 41 个设备像素。
+  const want = Math.round(96 * (220 / 1024) * k)
+  console.log(edge < 0 ? '✗ 中心行上没找到气泡左沿'
+    : `主泡左沿：实测 x=${edge} 设备像素（预期 ≈${want}）；过渡 alpha：${Array.from({ length: 6 }, (_, i) => alphaAt(P.x + edge - 2 + i, midY)).join(' ')}`)
+  console.log(`量到的气泡框：${JSON.stringify(geo)}（该是 220×220）`)
   console.log('已存：spike/out/bubble-shot.png + bubble-crop.png')
 } finally {
   await app.close()
