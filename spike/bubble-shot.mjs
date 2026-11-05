@@ -76,20 +76,19 @@ try {
   // 过渡宽度：在主泡**最宽那一行**上，从方框左沿往里扫到第一个不透明列，
   // 数「桌面 → 描边」摊开在几个像素上。越小说明越硬：矢量应当是 1~2 个设备像素
   // （一次 alpha 覆盖），二次重采样的位图会摊到 3~5 个。
-  // 两个坑：① 不能用方框的纵向中点——这版主泡中心在框内 y=137.5，上面那截是两颗小泡，
-  //   拿中点读到的是空白；② 不能从框沿起算固定偏移——椭圆左右各有 20 多像素的空边，
-  //   那是形状不是模糊。所以先自己找那条边。
+  // 两个坑：① 不能用「框里随便找一行」——这版尾巴在左下，底部那几行左沿是尾巴不是主泡，
+  //   所以走主泡圆心那一行（正圆，框内 y=110，就是框的正中）；② 不能从框沿起算固定偏移——
+  //   外沿圆离框沿还有 9 个 CSS 像素，那是形状不是模糊。所以先自己找那条边。
   const raw = execFileSync(FF, ['-v', 'error', '-i', join('spike', 'out', 'bubble-shot.png'), '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { maxBuffer: 1 << 28 })
   const alphaAt = (x, y) => raw[(y * imgW + x) * 4 + 3]
   const k = P.w / 220                                  // CSS 像素 → 设备像素（框宽 220 CSS）
-  const midY = P.y + Math.round(137.5 * k)             // 主泡中心在框内 y=137.5 CSS
+  const midY = P.y + Math.round(110 * k)               // 正圆的圆心就在框正中
   let edge = -1
   for (let x = 0; x < P.w; x++) {
     if (alphaAt(P.x + x, midY) > 200) { edge = x; break }
   }
-  // 预期位置：主泡外沿在 viewBox 里是 cx−rx = 469.33−373.33 = 96 单位，
-  // 换算 96 × (220/1024) CSS × 2 设备 = 41 个设备像素。
-  const want = Math.round(96 * (220 / 1024) * k)
+  // 预期位置：外沿圆 512−469.33 = 42.67 单位，换算 42.67 × (220/1024) CSS × 2 设备 ≈ 18 个设备像素。
+  const want = Math.round(42.67 * (220 / 1024) * k)
   console.log(edge < 0 ? '✗ 中心行上没找到气泡左沿'
     : `主泡左沿：实测 x=${edge} 设备像素（预期 ≈${want}）；过渡 alpha：${Array.from({ length: 6 }, (_, i) => alphaAt(P.x + edge - 2 + i, midY)).join(' ')}`)
   console.log(`量到的气泡框：${JSON.stringify(geo)}（该是 220×220）`)

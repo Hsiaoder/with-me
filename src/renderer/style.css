@@ -280,14 +280,14 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 主泡的内腔是**椭圆**，不是矩形：能用的矩形比外接方框小得多，这四个数是从椭圆解出来的
-   （角点归一 0.963 ≤ 1，算法见 emotes/bubble.svg 的注释）——
-   文字 + 缝 + 回应按钮合起来是「中心 (101,138)、半宽 55、半高 42」那一块，
-   底边 180 就是 BUBBLE_INNER_BOTTOM。压到描边上就像字要掉出气泡。 */
+/* 内腔是**正圆**（半径 82.5、圆心就在框正中 110,110），不是矩形：能用的矩形比内接方框小得多，
+   这四个数是从圆解出来的——内容块取「半宽 55、半高 42」，四角到圆心最远 69.2，留 13.3 余量。
+   于是文字 + 缝 + 回应按钮合起来是 y 68..152，底边 152 就是 BUBBLE_INNER_BOTTOM。
+   压到描边上就像字要掉出气泡。尾巴那张「嘴」在 y 162 以下，和这一整块不搭界。 */
 .pet-bubble-text {
   position: absolute;
-  left: 46px;
-  top: 96px;
+  left: 55px;
+  top: 68px;
   width: 110px;
   height: 60px;
   display: flex;
@@ -300,12 +300,12 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 回应按钮：文字区下面那一行，底边 180 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
-   宽度跟着文字区收到 110——椭圆下半截本来就窄了，120 会戳到描边上。 */
+/* 回应按钮：文字区下面那一行，底边 152 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
+   宽度跟着文字区取 110——内腔是圆，下半截本来就窄了，120 会戳到描边上。 */
 .pet-bubble-reply {
   position: absolute;
-  left: 46px;
-  top: 158px;
+  left: 55px;
+  top: 130px;
   width: 110px;
   height: 22px;
   padding: 0;

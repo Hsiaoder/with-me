@@ -191,7 +191,7 @@ describe('气泡尺寸', () => {
     expect(code.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).not.toMatch(/image-rendering:\s*pixelated/)
   })
 
-  it('文字与按钮都留在纯白内腔里（描边那两行、尾巴那 30px 都不压字）', () => {
+  it('文字与按钮都留在纯白内腔里（底边压在 BUBBLE_INNER_BOTTOM，四角落在内腔圆内）', () => {
     const css = readFileSync('src/renderer/style.css', 'utf8')
     const block = (sel: string): string => css.match(new RegExp(`[.]${sel} [{]([^}]*)[}]`))?.[1] ?? ''
     const px = (sel: string, prop: string): number =>
@@ -205,5 +205,25 @@ describe('气泡尺寸', () => {
     expect(px('pet-bubble-reply', 'top') + px('pet-bubble-reply', 'height')).toBeLessThanOrEqual(BUBBLE_INNER_BOTTOM)
     // 反证：数没读到就是 -1，上面两条会直接红，不会出现"读不到也算通过"
     expect(px('pet-bubble-nosuch', 'top')).toBe(-1)
+
+    /**
+     * 内腔是**圆**，不是矩形——只验底边会放过「四角戳到描边上」那种错。
+     * 半径与圆心从素材里读（`viewBox` 与白色内腔那条 `A r r` 弧），不在测试里再抄一份数字：
+     * 抄了就成了第二本账，素材改了测试还绿着。
+     */
+    const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8').replace(/<!--[\s\S]*?-->/g, '')
+    const vb = Number(svg.match(/viewBox="0 0 (\d+)/)?.[1] ?? -1)
+    const cavityR = Number(svg.match(/A([\d.]+) [\d.]+ 0 1 0/)?.[1] ?? -1)
+    expect(vb, 'bubble.svg 读不到 viewBox').toBeGreaterThan(0)
+    expect(cavityR, 'bubble.svg 读不到内腔弧半径').toBeGreaterThan(0)
+    const k = BUBBLE_W / vb
+    const cx = (vb / 2) * k
+    const cy = (vb / 2) * k
+    for (const sel of ['pet-bubble-text', 'pet-bubble-reply']) {
+      const box = { x: px(sel, 'left'), y: px(sel, 'top'), w: px(sel, 'width'), h: px(sel, 'height') }
+      const corners: [number, number][] = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]]
+      const worst = Math.max(...corners.map(([x, y]) => Math.hypot(x - cx, y - cy)))
+      expect(worst, `${sel} 的角点离圆心 ${worst.toFixed(1)}，内腔半径只有 ${(cavityR * k).toFixed(1)}`).toBeLessThan(cavityR * k)
+    }
   })
 })
