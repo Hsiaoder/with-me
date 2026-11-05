@@ -69,6 +69,12 @@ export interface Panel {
   setSettings(s: Settings): void
   /** 主进程推来的数值快照。开着状态视图时立刻重绘，没开就存着。 */
   setStats(s: StatsSnapshot): void
+  /**
+   * 「正在吃饭」这个状态推给面板：食物列表整列置灰、点不动，饭后放开。
+   * 就地翻 `disabled`，**不重建列表**——理由和 `syncScroll` 一样：重建会把滚动位置与
+   * 用户手里的旧节点一起弄丢，而那正是这一列唯一还在动的东西。
+   */
+  setEating(on: boolean): void
 }
 
 /** 按钮来自 config 的 PANEL_BUTTONS，顺序即显示顺序；标签也在 config，不在这儿写死。 */
@@ -159,7 +165,12 @@ export function createPanel(
   const STEP = pageStep(FOOD_VISIBLE, FOOD_CELL, FOOD_GAP)
   let scrollX = 0
   /** 食物视图的节点引用。每次 renderFoods 重新赋值，syncScroll 只改这几个节点，不重建列表。 */
-  let foodRefs: { strip: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement; thumb: HTMLElement | null } | null = null
+  let foodRefs: { strip: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement; thumb: HTMLElement | null; cells: HTMLButtonElement[] } | null = null
+  /**
+   * 「正在吃饭」——装配层推过来的，面板自己不判断（判断要读行为链，那是两份账）。
+   * 存在这里是因为**列表可能在吃饭中途才被叫出来**：那时候格子得直接以灰态建出来。
+   */
+  let eating = false
 
   /** 换视图/收起都要复位：下次进来从头看，不该停在用户上次看一半的位置。 */
   function resetScroll(): void {
@@ -228,11 +239,15 @@ export function createPanel(
     viewport.className = 'pet-food-viewport'
     const strip = document.createElement('div')
     strip.className = 'pet-food-strip'
+    const cells: HTMLButtonElement[] = []
     for (const f of FOODS) {
       const cell = btn(f.name, { food: f.id }, false)
       cell.classList.add('pet-food')
+      // 建的时候就带上灰态：正在吃饭时把列表叫出来，不该先亮一下再暗
+      cell.disabled = eating
       cell.addEventListener('click', () => handlers.pick(f))
       strip.append(cell)
+      cells.push(cell)
     }
     viewport.append(strip)
 
@@ -259,8 +274,17 @@ export function createPanel(
     row.append(prev, main, next)
     host.append(row)
 
-    foodRefs = { strip, prev, next, thumb }
+    foodRefs = { strip, prev, next, thumb, cells }
     syncScroll()
+  }
+
+  /**
+   * 就地翻格子的 `disabled`。列表不在布局里时（食物视图没开着）什么都不做——
+   * 状态已经存在 `eating` 里了，下一次 `renderFoods` 会带着它建格子。
+   */
+  function syncEating(): void {
+    if (foodRefs === null) return
+    for (const c of foodRefs.cells) c.disabled = eating
   }
 
   /**
@@ -513,6 +537,11 @@ export function createPanel(
       // 数值是主进程每 tick / 每次动作推过来的，状态栏开着就得跟着改；
       // 只在这里重绘，收起时不重绘——省掉一批没人看的 DOM 操作。
       if (current === 'stats') render()
+    },
+    setEating(on) {
+      if (on === eating) return
+      eating = on
+      syncEating()
     },
   }
 }

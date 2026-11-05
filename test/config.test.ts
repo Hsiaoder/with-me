@@ -208,22 +208,36 @@ describe('气泡尺寸', () => {
 
     /**
      * 内腔是**圆**，不是矩形——只验底边会放过「四角戳到描边上」那种错。
-     * 半径与圆心从素材里读（`viewBox` 与白色内腔那条 `A r r` 弧），不在测试里再抄一份数字：
-     * 抄了就成了第二本账，素材改了测试还绿着。
+     * 圆心与半径都从素材里算出来，不在测试里抄一份数字（抄了就是第二本账，素材改了测试还绿着）：
+     * bubble.svg 是一条**中线**轮廓 + 描边，所以
+     *   中线半径 = 路径里那条 `A r r` 的 r，环厚 = stroke-width，
+     *   内腔半径 = 中线半径 − 环厚/2，
+     *   圆心 = 路径起点（中线圆的最高点）往下挪一个中线半径。
+     * 尾巴在正下方，所以圆心**不在框正中**——这正是这条算式存在的理由。
      */
     const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8').replace(/<!--[\s\S]*?-->/g, '')
-    const vb = Number(svg.match(/viewBox="0 0 (\d+)/)?.[1] ?? -1)
-    const cavityR = Number(svg.match(/A([\d.]+) [\d.]+ 0 1 0/)?.[1] ?? -1)
-    expect(vb, 'bubble.svg 读不到 viewBox').toBeGreaterThan(0)
-    expect(cavityR, 'bubble.svg 读不到内腔弧半径').toBeGreaterThan(0)
-    const k = BUBBLE_W / vb
-    const cx = (vb / 2) * k
-    const cy = (vb / 2) * k
+    const vb = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
+    expect(vb, 'bubble.svg 读不到 viewBox').not.toBeNull()
+    const [vbW, vbH] = [Number(vb![1]), Number(vb![2])]
+    expect(vbW, '这条算式按正方框写的').toBe(vbH)
+    const midR = Number(svg.match(/A([\d.]+) [\d.]+ 0 0 1/)?.[1] ?? -1)
+    const band = Number(svg.match(/stroke-width="([\d.]+)"/)?.[1] ?? -1)
+    const start = /M([\d.]+) ([\d.]+)/.exec(svg)
+    expect(midR, 'bubble.svg 读不到中线弧半径').toBeGreaterThan(0)
+    expect(band, 'bubble.svg 读不到 stroke-width').toBeGreaterThan(0)
+    expect(start, 'bubble.svg 读不到路径起点').not.toBeNull()
+    const k = BUBBLE_W / vbW
+    const cavityR = (midR - band / 2) * k
+    const cx = Number(start![1]) * k
+    const cy = (Number(start![2]) + midR) * k
+    // 用户点名「边框要设置的细一点」：环厚按原图比例只有 9.2 CSS px，
+    // 上一版（iconfont 那支）是 18.3。这条钉住别哪天手滑又画粗回去。
+    expect(band * k, `环厚 ${band * k}px，比 12px 还粗就不叫细了`).toBeLessThanOrEqual(12)
     for (const sel of ['pet-bubble-text', 'pet-bubble-reply']) {
       const box = { x: px(sel, 'left'), y: px(sel, 'top'), w: px(sel, 'width'), h: px(sel, 'height') }
       const corners: [number, number][] = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]]
       const worst = Math.max(...corners.map(([x, y]) => Math.hypot(x - cx, y - cy)))
-      expect(worst, `${sel} 的角点离圆心 ${worst.toFixed(1)}，内腔半径只有 ${(cavityR * k).toFixed(1)}`).toBeLessThan(cavityR * k)
+      expect(worst, `${sel} 的角点离圆心 ${worst.toFixed(1)}，内腔半径只有 ${cavityR.toFixed(1)}`).toBeLessThan(cavityR)
     }
   })
 })

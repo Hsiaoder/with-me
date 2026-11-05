@@ -204,6 +204,16 @@ async function openOnBody(retry = 3) {
 
 const overClass = () => page.evaluate(() => document.body.classList.contains('pet-over'))
 
+/**
+ * 等嘴边那口饭吃完。
+ *
+ * 吃饭期间整列食物格子是 `disabled`（用户拍的板），而 Playwright 的 `page.click` 会一直等
+ * 元素变 enabled——不等就是「莫名其妙卡 30 秒然后超时」，看起来像格子坏了，其实是上一条
+ * 检查留下的残局（§5.13 那一类）。所以**凡是要点格子的检查，先让上一口吃完**。
+ */
+const notEating = () =>
+  page.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
+
 check('光标形状跟着交互区走：身体上是 hand_point，舞台那截透明空白不是', async () => {
   // 判据必须是交互区而不是舞台矩形——画布四周那截透明空白还归桌面，
   // 在那儿显示「可以点」的手形是骗人的。这条只验到 DOM 层：
@@ -822,6 +832,8 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
     return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
   })
   await feed(rice)
+  await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
+
   assert.equal((await dbg()).grab, true, '前置：光标压在格子上，该接住鼠标')
   await page.click('.pet-panel .pet-food[data-food="rice"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
@@ -848,6 +860,8 @@ check('吃饭期间点身体：动画不许被抢走，菜单跟着这一次点�
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.evaluate(() => window.__petDebug.setLastTalk(0))
   await page.click('.pet-panel button[data-id="feed"]')
+  await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
+
   await page.waitForSelector('.pet-panel .pet-food')
   await page.click('.pet-panel .pet-food[data-food="rice"]')
   await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 3000 })
@@ -883,6 +897,8 @@ check('皮肤里没做的那一口：回落到 click，而不是随机播一口�
   await page.evaluate(() => window.__petDebug.hidePanel())
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
+  await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
+
   await page.waitForSelector('.pet-panel .pet-food')
   await page.click('.pet-panel .pet-food[data-food="dumpling"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
@@ -1224,6 +1240,8 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   const before = readSave()
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
+  await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
+
   await page.waitForSelector('.pet-panel .pet-food')
   await page.click('.pet-panel .pet-food[data-food="hotpot"]')
 
@@ -1347,6 +1365,8 @@ check('吃饭期间菜单不收（延时到点只重新上弦），饭后手不�
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-plate .pet-food')
+  await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
+
   await page.evaluate(() => window.__petDebug.setLastTalk(0))
   await page.click('.pet-plate .pet-food[data-food="rice"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
@@ -1367,6 +1387,56 @@ check('吃饭期间菜单不收（延时到点只重新上弦），饭后手不�
   // 延时是面板上的一份状态，不是这条检查的私有变量：不还回去，后面每条「离开满 PANEL_HIDE_MS 才收」
   // 的检查都会按 400ms 走（§5.13 同一类残局坑）。
   await page.evaluate((ms) => window.__petDebug.setPanelHideMs(ms), PANEL_HIDE_MS)
+})
+
+check('吃饭期间整列食物点不动（置灰是真 disabled），饭后自己解锁', async () => {
+  /**
+   * 用户拍的板：「列表留着，但置灰，等当前食物的动画播放完了才允许点」。
+   * 这里要分两层验：① 灰态是**看得见的**（disabled + not-allowed 游标），
+   * ② 拦截是**真的**——不是靠 CSS 骗眼睛。②用程序化 `.click()` 打一发：
+   * Playwright 的 `page.click` 会自己等元素 enabled，等下去就只能验到「没点到」，
+   * 而绕过它的 `.click()` 才问得出「浏览器给不给 disabled 按钮派发事件」。
+   */
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await notEating()   // 上一条检查可能留着一口没吃完：那样格子全是灰的，下面「没吃饭不该灰」就假红了
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-actions button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  const cells = () => page.evaluate(() => [...document.querySelectorAll('.pet-panel .pet-food')].map((c) => ({
+    disabled: c.disabled,
+    cursor: getComputedStyle(c).cursor,
+  })))
+  const free = await cells()
+  assert.equal(free.length, 6)
+  assert.ok(free.every((c) => !c.disabled), `没在吃饭也把格子灰了：${JSON.stringify(free)}`)
+
+
+  await page.evaluate(() => window.__petDebug.setLastTalk(0))
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
+  await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 5000 })
+  const grey = await cells()
+  assert.ok(grey.every((c) => c.disabled), `吃饭期间还有格子没灰：${JSON.stringify(grey)}`)
+  assert.ok(grey.every((c) => c.cursor === 'not-allowed'), `灰格子的游标不是 not-allowed：${grey[0]?.cursor}`)
+
+  // 绕过 Playwright 的 enabled 等待，直接问浏览器：灰格子还吃不吃点击
+  await page.evaluate(() => document.querySelector('.pet-panel .pet-food[data-food="hotpot"]')?.click())
+  await page.waitForTimeout(200)
+  assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'rice' }, '灰格子被点出第二口：置灰只是画给人看的')
+
+  // 饭后必须自己解锁。不解锁的话列表一直灰着，用户会以为喂食这个功能坏了
+  await page.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
+  await page.waitForTimeout(200)
+  const after = await cells()
+  assert.ok(after.every((c) => !c.disabled), `饭吃完了格子还灰着：${JSON.stringify(after)}`)
+  // 解锁之后要真能喂出去第二口
+  await page.evaluate(() => window.__petDebug.setLastTalk(0))
+  await page.click('.pet-panel .pet-food[data-food="hotpot"]')
+  await page.waitForFunction(() => window.__petDebug.current.name === 'hotpot', null, { timeout: 5000 })
+  assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'hotpot' }, '饭后格子点亮了却喂不进去')
+  // 收尾：这口吃完之前别把面板留给下一条——吃饭期间延时会重新上弦，
+  // 「等满 1500ms 该收起」那类前置会因此假红（§5.13 的残局坑换了个方向）。
+  await notEating()
+  await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
 check('点气泡的回应按钮后：光标一动不动也要立刻放开鼠标', async () => {
@@ -1397,6 +1467,9 @@ check('面板收起后真的移出布局：不吃点击、不改光标形状', a
   // 前置自己把面板叫出来：以前这里只 feed 一个身体坐标就断言「面板开着」，
   // 靠的是上一条检查收尾时面板还没关——feed 不点击，面板早就收干净了它就该红
   // （§5.13 同一类坑，本轮被我新加的两条检查照出来了第三次）。
+  // 还要先等嘴边那口饭吃完：吃饭期间延时会重新上弦（那是产品行为），
+  // 撞上了这条「离开满 1500ms 该收起」的前置就假红。
+  await notEating()
   assert.ok(await openOnBody(), '前置：面板该开着')
   const band = await page.evaluate(() => {
     const b = document.querySelector('.pet-actions').getBoundingClientRect()

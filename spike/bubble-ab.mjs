@@ -13,7 +13,7 @@ import { join } from 'node:path'
 
 const REF = 'C:/Users/11408/AppData/Local/Temp/chat-bubble-ref.svg'
 const OURS = 'src/renderer/emotes/bubble.svg'
-// 原图那条 path 没写 fill（iconfont 靠外层 CSS 上色），并排比之前钉成我们那支蓝，
+// 原图那条 path 的 fill 挂在 svg 根上（#000000），并排比之前钉成我们那支蓝，
 // 不然一边是黑的另一边是蓝的，眼睛先骗一半。
 const ref = readFileSync(REF, 'utf8').replace('<path d=', '<path fill="#92c7e3" d=')
 const ours = readFileSync(OURS, 'utf8')
@@ -39,11 +39,11 @@ await page.setContent(`<!doctype html><meta charset="utf-8">
   .box svg { width:100%; height:100%; display:block; }
 </style>
 <div class="row">
-  <div class="cell"><b>参考（iconfont 原图，fill 用浏览器默认黑）</b>
+  <div class="cell"><b>参考（SVG Repo 原图，腔是**透明**的）</b>
     <div class="on-white"><div class="box">${ref}</div></div>
     <div class="on-dark"><div class="box">${ref}</div></div>
   </div>
-  <div class="cell"><b>我们的重画（外沿铺蓝 + 内腔盖白）</b>
+  <div class="cell"><b>我们的重画（一条中线轮廓：fill 白 + stroke 蓝）</b>
     <div class="on-white"><div class="box">${ours}</div></div>
     <div class="on-dark"><div class="box">${ours}</div></div>
   </div>

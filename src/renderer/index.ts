@@ -131,6 +131,7 @@ function bootstrap(skin: SkinPayload): void {
           player.prepare(nxt.ref)
         } else {
           current = nxt.ref
+          syncEating()
         }
         // 只有交出决策权那一拍才是宠物自己闲逛，这时候才考虑开口
         if (nxt.ambient) maybeSayIdle()
@@ -139,21 +140,34 @@ function bootstrap(skin: SkinPayload): void {
   }
 
   /**
+   * 把「正在吃饭」推给面板：这一口没吃完，食物列表整列点不动（用户拍的板）。
+   * 判据就是 `current.pool`，和 `requestClip` 那道「不许打断」的闸同一个来源——
+   * 再立一个标志位就是两份账，迟早对不上。
+   * 饭吃完那一拍由行为链自己交出决策权（`current` 换成 idle/turn）时解开，
+   * 被拎起来（drag）也算解开：那是物理打断，嘴边那口已经没了。
+   */
+  function syncEating(): void {
+    panel.setEating(current.pool === 'eat')
+  }
+
+  /**
    * 播一条。给了名字就**必须播那条**（点哪格吃哪口），皮肤里没有这个名字返回 false，
    * 由调用方降级；没给名字就在池里随机挑一条（避开刚播过那条）。
    *
-   * 「正在吃饭时不被打断」这道闸也在这里：吃饭期间任何动作都不换动画（用户拍的板：全都不打断）。
-   * 例外是**名字寻址的那一次**——再喂一口是新的照顾动作，该改口吃新的；
-   * 拖拽也例外，被拎起来必须有反应，那是物理打断，不是点一下。
+   * 「正在吃饭时不被打断」这道闸也在这里：吃饭期间任何动作都不换动画（用户拍的板：全都不打断），
+   * 唯一的例外是**拖拽**——被拎起来必须有反应，那是物理打断，不是点一下。
+   * 以前还留了一条「名字寻址的那一次（再喂一口就改口吃新的）」，2026-11-05 起界面上走不到了：
+   * 吃饭期间整列格子是 `disabled`，点不动。留着那条例外等于留一条没人走的路径。
    * 台词、菜单、养成数值都在调用方那边照走，所以「不打断动画」不等于「没反应」。
    */
   function requestClip(pool: string, name?: string): boolean {
-    if (current.pool === 'eat' && pool !== 'drag' && name === undefined) return false
+    if (current.pool === 'eat' && pool !== 'drag') return false
     const ref = name === undefined
       ? picker.pickFrom(source, pool, current)
       : picker.pickNamed(source, pool, name)
     if (!ref) return false
     current = ref
+    syncEating()
     startChain()
     return true
   }
@@ -189,11 +203,12 @@ function bootstrap(skin: SkinPayload): void {
       else if (f.anim === undefined) requestClip('click')
       sayFor('feed')
       window.petBridge?.statEvent({ kind: 'feed', food: f.id })
-      // 选完**不收**（2026-11-05 改，先前是 closePanel）：吃饭那几秒用户的手就停在这块区域上，
-      // 要连喂、要点着玩。整块收掉带出两条同一根因的观感 bug——按钮没了，且那块像素不再归宠物，
+      // 选完**不收**（2026-11-05 改，先前是 closePanel）：用户的手就停在这块区域上，
+      // 整块收掉带出两条同一根因的观感 bug——按钮没了，且那块像素不再归宠物，
       // 光标当场变回系统箭头（交互区只算「看得见的那几块」，见 recomputeInteraction）。
       // 「列表压住宠物看不到它吃」这个老理由在两块拆分之后已经失效：副板永远长在按钮条**外侧**，
       // e2e 钉着它不许压到身体框。收起改由「离开满一段延时」和「再点一次喂食 / 点宠物」负责。
+      // 列表留着不等于能连喂：这一口没吃完时整列格子是灰的，见 syncEating。
     },
     /**
      * 状态栏里点性别。本地不预置反馈：它要写进存档，回灌一下也就是一帧的事，

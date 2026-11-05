@@ -281,13 +281,14 @@ body.pet-over {
 }
 
 /* 内腔是**正圆**（半径 82.5、圆心就在框正中 110,110），不是矩形：能用的矩形比内接方框小得多，
-   这四个数是从圆解出来的——内容块取「半宽 55、半高 42」，四角到圆心最远 69.2，留 13.3 余量。
-   于是文字 + 缝 + 回应按钮合起来是 y 68..152，底边 152 就是 BUBBLE_INNER_BOTTOM。
-   压到描边上就像字要掉出气泡。尾巴那张「嘴」在 y 162 以下，和这一整块不搭界。 */
+   这四个数是从圆解出来的——内容块取「半宽 55、半高 42」，四角到圆心最远 69.4，留 13.1 余量。
+   圆心是 (110, 91.67) 而不是框正中 (110,110)：正下方那截尾巴要吃掉 213.33..512 那一竖条。
+   于是文字 + 缝 + 回应按钮合起来是 y 50..134，底边 134 就是 BUBBLE_INNER_BOTTOM。
+   压到描边上就像字要掉出气泡。 */
 .pet-bubble-text {
   position: absolute;
   left: 55px;
-  top: 68px;
+  top: 50px;
   width: 110px;
   height: 60px;
   display: flex;
@@ -300,12 +301,12 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 回应按钮：文字区下面那一行，底边 152 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
-   宽度跟着文字区取 110——内腔是圆，下半截本来就窄了，120 会戳到描边上。 */
+/* 回应按钮：文字区下面那一行，底边 134 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
+   宽度跟着文字区取 110——内腔是圆，上下两截本来就窄了，120 会戳到描边上。 */
 .pet-bubble-reply {
   position: absolute;
   left: 55px;
-  top: 130px;
+  top: 112px;
   width: 110px;
   height: 22px;
   padding: 0;
@@ -583,6 +584,19 @@ body.pet-over {
   background: rgba(255, 255, 255, 0.94);
   color: #2b2f36;
   font-size: 12px;
+}
+
+/* 正在吃饭时整列置灰（用户拍的板：这一口没吃完不许再喂）。
+   灰态只是**把这件事说出来**——真正拦下点击的是 `disabled` 本身：Chromium 不给 disabled
+   按钮派发 click，所以不存在「看着灰但其实还能喂」的假象，也不需要 JS 再判一次。
+   游标换成 not-allowed：手形在这里是撒谎。那块像素仍然归宠物（照样接鼠标、照样算交互区），
+   但这一点上没有能吃的东西。选择器带上 `.pet-panel` 是为了压过基类那条
+   `cursor: var(--pet-cursor)`——和格子尺寸那条同一个理由。 */
+.pet-panel .pet-food:disabled {
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(0, 0, 0, 0.07);
+  color: #97a0aa;
+  cursor: not-allowed;
 }
 
 /* 翻页键：以前是文字符号 `‹ ›`，在板面上对比不够、也看不出是按钮。

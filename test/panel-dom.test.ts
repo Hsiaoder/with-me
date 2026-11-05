@@ -233,6 +233,41 @@ describe('食物视图', () => {
     expect(panel.view).toBe('foods')
   })
 
+  /**
+   * 吃饭期间整列点不动（用户拍的板）。这里只钉面板这一半：状态推过来时格子必须翻对、
+   * 而且**不许重建列表**。「灰格子真的不吃点击」是浏览器行为，由 e2e 在真 Chromium 里验。
+   */
+  it('setEating(true) 把整列格子翻成 disabled，false 再翻回来', () => {
+    const { panel } = mountFoods()
+    const cells = () => [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
+    expect(cells().every((c) => !c.disabled), '没吃饭时格子就该能点').toBe(true)
+    panel.setEating(true)
+    expect(cells().every((c) => c.disabled)).toBe(true)
+    panel.setEating(false)
+    expect(cells().every((c) => !c.disabled)).toBe(true)
+  })
+
+  it('翻灰态不重建节点：滚动位置与用户手里的旧节点都得留着', () => {
+    const { panel } = mountFoods()
+    const before = panel.el.querySelector('.pet-food')
+    const stripBefore = panel.el.querySelector('.pet-food-strip')
+    panel.setEating(true)
+    expect(panel.el.querySelector('.pet-food')).toBe(before)
+    expect(panel.el.querySelector('.pet-food-strip')).toBe(stripBefore)
+  })
+
+  it('吃饭中途才把列表叫出来：格子直接以灰态建出来，不许先亮一下再暗', () => {
+    const pick = vi.fn()
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, identity: vi.fn() })
+    panel.show({ x: 0, y: 0 })
+    panel.setEating(true)
+    panel.setView('foods')
+    expect([...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')].every((c) => c.disabled)).toBe(true)
+  })
+
   it('翻页键是 Kenney 箭头图，label 说清方向（图不带字时读屏只剩这一句）', () => {
     const { panel } = mountFoods()
     const one = (dir: string) => panel.el.querySelector(`.pet-page[data-page="${dir}"]`) as HTMLButtonElement
