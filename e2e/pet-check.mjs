@@ -669,16 +669,40 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await page.waitForSelector('.pet-panel .pet-food')
   assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '点喂食没进食物视图')
   assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), 6)
-  // 底板是裁过的蓝线版（外层灰框 + 白高光已裁掉）：slice 必须等于素材蓝线的 2px，
-  // 写成 8 就把裁掉的装饰又请回来了；计算样式里留着 url 本身查不出画错。
+  // 底板是 depth_line（四层 + 只有下边多一条 4px 底影），slice 必须写成不对称：
+  // 计算样式会把「8 8 12 8」归一化成「8 8 12」（左默认等于右），断言按归一化后的写法来。
+  // 写单个 8 会把下边那条蓝色内框留在中间区里被纵向拉长。计算样式里留着 url 查不出画错。
   const plate = await page.evaluate(() => {
     const cs = getComputedStyle(document.querySelector('.pet-plate'))
-    return { src: cs.borderImageSource, slice: cs.borderImageSlice, w: cs.borderTopWidth, pad: cs.paddingTop }
+    return {
+      src: cs.borderImageSource,
+      slice: cs.borderImageSlice,
+      w: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].join('/'),
+      pad: cs.paddingTop,
+    }
   })
-  assert.match(plate.src, /icons\/button_rectangle_line_blue\.png/, `食物底板不是裁过的蓝线素材：${plate.src}`)
-  assert.equal(plate.slice, '2 fill', `九宫格切片不对：${plate.slice}`)
-  assert.equal(plate.w, '2px', `边框厚度不对：${plate.w}`)
-  assert.equal(plate.pad, '9px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
+  assert.match(plate.src, /icons\/button_rectangle_depth_line\.png/, `食物底板素材不对：${plate.src}`)
+  assert.equal(plate.slice, '8 8 12 fill', `九宫格切片不对：${plate.slice}`)
+  assert.equal(plate.w, '8px/8px/12px/8px', `四边厚度不对（下边要比别处多 4px 底影）：${plate.w}`)
+  assert.equal(plate.pad, '3px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
+  // 格子底是 square_depth_line；翻页键是箭头图。两者都走那两条白名单，
+  // 名字写错就是 404：格子变白片、箭头变空框，所以必须真的 decode 一次。
+  const art = await page.evaluate(async () => {
+    const cell = getComputedStyle(document.querySelector('.pet-food')).backgroundImage
+    const imgs = [...document.querySelectorAll('.pet-page img')]
+    await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
+    return {
+      cell,
+      arrows: imgs.map((i) => ({ src: i.getAttribute('src'), ok: i.naturalWidth > 0 })),
+      labels: imgs.map((i) => i.closest('button')?.getAttribute('aria-label')),
+    }
+  })
+  assert.match(art.cell, /icons\/button_square_depth_line\.png/, `格子底不是 square_depth_line：${art.cell}`)
+  assert.deepEqual(art.arrows, [
+    { src: 'icons/arrow_basic_w_small.svg', ok: true },
+    { src: 'icons/arrow_basic_e_small.svg', ok: true },
+  ], `翻页键的箭头没加载出来：${JSON.stringify(art.arrows)}`)
+  assert.deepEqual(art.labels, ['上一页', '下一页'], `箭头键的 label 没说清方向：${JSON.stringify(art.labels)}`)
   // 用户这次要的就是这条：列表出来时按钮不许消失，而且列表在按钮条**外侧**。
   // 只数 DOM 里有没有按钮不够——按钮得真能点（Playwright 的 click 会验可见与命中）。
   // 「外侧」不是「下面」：宠物站在屏幕最下沿时按钮条会翻到头顶，这时列表要在按钮条**上面**，

@@ -233,6 +233,18 @@ describe('食物视图', () => {
     expect(panel.view).toBe('foods')
   })
 
+  it('翻页键是 Kenney 箭头图，label 说清方向（图不带字时读屏只剩这一句）', () => {
+    const { panel } = mountFoods()
+    const one = (dir: string) => panel.el.querySelector(`.pet-page[data-page="${dir}"]`) as HTMLButtonElement
+    expect(['prev', 'next'].map((d) => one(d).querySelector('img')?.getAttribute('src'))).toEqual([
+      'icons/arrow_basic_w_small.svg', 'icons/arrow_basic_e_small.svg',
+    ])
+    expect(['prev', 'next'].map((d) => one(d).getAttribute('aria-label'))).toEqual(['上一页', '下一页'])
+    expect(['prev', 'next'].map((d) => one(d).getAttribute('title'))).toEqual(['上一页', '下一页'])
+    // 图挂了不能留空白按钮：按钮里不再塞文字，但 label 还在
+    expect(['prev', 'next'].map((d) => one(d).textContent)).toEqual(['', ''])
+  })
+
   it('点 ‹ › 改变滚动，内容条跟着平移，且不会滚出边界', () => {
     const { panel } = mountFoods()
     const strip = () => (panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform

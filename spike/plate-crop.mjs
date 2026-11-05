@@ -9,6 +9,10 @@
  *
  * 跑法：node spike/plate-crop.mjs → src/renderer/icons/button_rectangle_line_blue.png
  * 依赖仓库外的素材目录（E:/ai-pet/ui），不在就直接报错，不静默出空图。
+ *
+ * 现状：这版裁图**没有接进产品**——后来改用整张 `button_rectangle_depth_line`
+ * 配四值 slice（见 style.css 的 .pet-plate.is-foods），比裁图少一个自造素材。
+ * 脚本留着：裁 RGBA 并自检的这套做法下次还用得上。
  */
 import { existsSync } from 'node:fs'
 import { execFileSync } from 'child_process'

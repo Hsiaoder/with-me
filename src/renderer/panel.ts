@@ -100,17 +100,21 @@ function btn(label: string, attrs: Record<string, string>, on: boolean): HTMLBut
   return b
 }
 
-/** 图标按钮：图是主角，文字退成 title/aria-label。图挂了也不留空白——它带 label。 */
-function iconBtn(a: PanelButton): HTMLButtonElement {
-  const b = btn(a.label, { id: a.id }, false)
+/** 图标按钮的公共形状：图是主角，文字退成 title/aria-label。图挂了也不留空白——它带 label。 */
+function imgBtn(label: string, icon: string, attrs: Record<string, string>, cls: string): HTMLButtonElement {
+  const b = btn(label, attrs, false)
   const img = document.createElement('img')
-  img.className = 'pet-icon'
-  img.src = a.icon
+  img.className = cls
+  img.src = icon
   img.alt = ''
   img.draggable = false
   b.textContent = ''
   b.append(img)
   return b
+}
+
+function iconBtn(a: PanelButton): HTMLButtonElement {
+  return imgBtn(a.label, a.icon, { id: a.id }, 'pet-icon')
 }
 
 export function createPanel(
@@ -214,8 +218,10 @@ export function createPanel(
     const row = document.createElement('div')
     row.className = 'pet-foods'
 
-    const prev = btn('‹', { page: 'prev' }, false)
-    const next = btn('›', { page: 'next' }, false)
+    // 翻页键用 Kenney 的箭头图（以前是文字符号 ‹ ›，在板面上对比不够、也看不出能点）。
+    // label 顺手写成「上一页/下一页」：图不带字时，title 与读屏兜底得能说清方向。
+    const prev = imgBtn('上一页', 'icons/arrow_basic_w_small.svg', { page: 'prev' }, 'pet-arrow')
+    const next = imgBtn('下一页', 'icons/arrow_basic_e_small.svg', { page: 'next' }, 'pet-arrow')
     prev.classList.add('pet-page')
     next.classList.add('pet-page')
     prev.addEventListener('click', () => setScroll(scrollX - STEP))
