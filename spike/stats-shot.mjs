@@ -50,7 +50,7 @@ try {
 
   const geo = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
-    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const p = document.querySelector('.pet-plate').getBoundingClientRect()
     return {
       body: { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) },
       panel: { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(p.width), h: Math.round(p.height) },

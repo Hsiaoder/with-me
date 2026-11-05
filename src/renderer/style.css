@@ -84,13 +84,12 @@ body.pet-over {
    那个 bug 的根因。 */
 .pet-panel {
   position: absolute;
-  left: 0;
-  top: 0;
-  display: flex;
-  gap: 8px;
-  /* 动作视图没有底板：四个图标光秃秃地排在桌面上，中间的空隙不吞点击
-     （pointer-events:none，按钮自己再打开）。命中判定照样成立——closest('[data-hit]')
-     从按钮往上爬，爬到根节点就停，不看根节点接不接收事件。 */
+  inset: 0;
+  /* 定位层：铺满覆盖层，只当 data-hit 的宿主和淡入淡出的载体，自己完全不吃命中。
+     里面最多同时两块：.pet-actions 按钮条 + .pet-plate 副板，各自 transform 定位。
+     合成一块做不到——按钮条贴宠物脚下、状态读数挂右侧、食物列表挂按钮条下面，
+     三个锚点不共边；而外接矩形会把中间一大片看不见的地方圈成命中区，桌面就点不动了。 */
+  display: block;
   padding: 0;
   background: transparent;
   border: 0;
@@ -101,6 +100,35 @@ body.pet-over {
   /* display 也在过渡里，且允许离散属性参与：这样收起时有淡出，
      淡出结束才真的移出布局（Chromium 117+ 的 transition-behavior）。 */
   transition: opacity 0.18s ease, display 0.18s allow-discrete;
+}
+
+/* 主块：一排图标。空隙不吃命中——看不见的地方不该吞桌面的点击。 */
+.pet-actions {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  gap: 8px;
+  will-change: transform;
+}
+
+/* 副板：食物列表 / 状态读数 / 设置行。它是**可见**的一块，所以底板、命中、光标都挂这层。
+   不然鼠标停在标签文字或格子缝隙上时显示的是桌面自己的光标，
+   看着像"这块白板和桌宠没关系"。qqpet 也是把光标挂在容器上而不是只挂按钮。
+   以前这些写在 .pet-panel.is-plate 上，根节点变成定位层后就落到这里了。 */
+.pet-plate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  pointer-events: auto;
+  cursor: var(--pet-cursor);
   will-change: transform;
 }
 
@@ -245,20 +273,6 @@ body.pet-over {
   transition: transform 0.12s ease;
 }
 
-/* 操作型视图（设置、食物列表）是一整块可见面板：底板、命中、光标都跟着。
-   不然鼠标停在标签文字或格子缝隙上时显示的是桌面自己的光标，
-   看着像"这块白板和桌宠没关系"。qqpet 也是把光标挂在容器上而不是只挂按钮。
-   动作视图仍然只有按钮吃命中——那里的空隙是看不见的，不该吞桌面的点击。 */
-.pet-panel.is-plate {
-  padding: 6px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
-  pointer-events: auto;
-  cursor: var(--pet-cursor);
-}
-
 /* 食物列表的底板：Kenney button_rectangle_line 裁掉外层装饰，只留蓝色内框。
    原图 192×64 从外到内四层（2px 灰外框 + 2px 白内高光 + 2px 留白 + 2px 蓝色内框，中间纯色填充），
    要「去掉最外层灰框」就得连白高光一起退到蓝线，所以 spike/plate-crop.mjs 从 (6,6) 起裁 180×52：
@@ -271,8 +285,8 @@ body.pet-over {
 
    蓝色内框本来就是直角（源 bbox 6..185 × 6..57，四角没有圆），所以不需要圆角；
    border-image 也不吃 border-radius，这里显式归零，免得留着 10px 让人以为还有人在管。
-   这条必须排在 is-plate 后面：两者权重相同，靠顺序压过它。 */
-.pet-panel.is-foods {
+   两条 .pet-plate 规则靠权重分胜负（.pet-plate.is-foods 比 .pet-plate 多一层类），不靠书写顺序。 */
+.pet-plate.is-foods {
   padding: 9px;
   background: none;
   border: 2px solid transparent;
@@ -281,7 +295,7 @@ body.pet-over {
 }
 
 /* 设置视图是文字行，竖排两列。 */
-.pet-panel.is-settings {
+.pet-plate.is-settings {
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
@@ -289,14 +303,14 @@ body.pet-over {
 
 /* 状态栏：竖一条，名字在上、四条读数在下。宽度定死 150px——它站在宠物右侧，
    再宽就会在宠物贴右边缘时顶出屏幕，那时它只能翻到左边，反而压住宠物。 */
-.pet-panel.is-stats {
+.pet-plate.is-stats {
   flex-direction: column;
   align-items: stretch;
   gap: 5px;
   width: 150px;
 }
 
-.pet-panel.is-stats button {
+.pet-plate.is-stats button {
   width: auto;
   height: auto;
   padding: 3px 7px;
@@ -306,7 +320,7 @@ body.pet-over {
   font: 12px/1 "Microsoft YaHei UI", sans-serif;
 }
 
-.pet-panel.is-stats button:hover {
+.pet-plate.is-stats button:hover {
   background: #eef6f4;
 }
 
@@ -447,7 +461,7 @@ body.pet-over {
   touch-action: none;
 }
 
-.pet-panel.is-settings button {
+.pet-plate.is-settings button {
   width: auto;
   height: auto;
   padding: 4px 8px;
@@ -457,7 +471,7 @@ body.pet-over {
 }
 
 /* 悬停反馈只在设置视图里换底色；动作视图没有底板，画底色就成了一块方片。 */
-.pet-panel.is-settings button:hover {
+.pet-plate.is-settings button:hover {
   background: #eef6f4;
 }
 

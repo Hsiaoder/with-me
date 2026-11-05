@@ -83,6 +83,15 @@ export function bubbleAnchor(
   return { x, y: edge - gap - size.h }
 }
 
+/** 主块落在了宠物的哪一侧。副板要靠它决定自己往哪边长——见 stackAnchor。 */
+export type StackSide = 'below' | 'above'
+
+export interface Anchored {
+  x: number
+  y: number
+  side: StackSide
+}
+
 /**
  * 按钮面板该摆在宠物身边的哪个位置（覆盖层 CSS 坐标）。
  *
@@ -93,11 +102,39 @@ export function bubbleAnchor(
  *
  * 横向**以身体的对称轴为轴居中**，不是贴着身体左沿：画布左右各有大片空白，
  * 贴左沿会让整排图标明显偏向角色的一侧。
+ *
+ * 除了坐标还要报出落在哪一侧：食物列表是挂在按钮条下面的第二块，
+ * 按钮条翻到头顶时它必须跟着翻到按钮条**上面**，否则就压在宠物身上。
  */
-export function panelAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Point {
+export function panelAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Anchored {
   const below = body.y + body.h + gap
-  const y0 = below + size.h <= screen.y + screen.h ? below : body.y - size.h - gap
+  const fitsBelow = below + size.h <= screen.y + screen.h
+  const y0 = fitsBelow ? below : body.y - size.h - gap
   const centered = body.x + body.w / 2 - size.w / 2
+  const x = Math.min(
+    Math.max(centered, screen.x),
+    Math.max(screen.x, screen.x + screen.w - size.w),
+  )
+  const y = Math.min(Math.max(y0, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
+  return { x, y, side: fitsBelow ? 'below' : 'above' }
+}
+
+/**
+ * 副板（食物列表）该挂在主块（按钮条）的哪一边。
+ *
+ * 规则只有一条：**永远背对宠物**。主块在脚下时副板往下长，主块翻到头顶时副板往上长，
+ * 中间那段留给宠物本体。横向跟主块中线，然后夹回屏幕内——副板比按钮条宽得多，
+ * 宠物贴左右边缘时不夹就会溢出到看不见的地方。
+ */
+export function stackAnchor(
+  primary: Rect,
+  size: { w: number; h: number },
+  screen: Rect,
+  gap: number,
+  side: StackSide,
+): Point {
+  const y0 = side === 'below' ? primary.y + primary.h + gap : primary.y - gap - size.h
+  const centered = primary.x + primary.w / 2 - size.w / 2
   const x = Math.min(
     Math.max(centered, screen.x),
     Math.max(screen.x, screen.x + screen.w - size.w),

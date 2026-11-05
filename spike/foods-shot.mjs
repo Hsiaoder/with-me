@@ -81,8 +81,8 @@ try {
   await page.waitForTimeout(400)
 
   const geo = await page.evaluate(() => {
-    const p = document.querySelector('.pet-panel').getBoundingClientRect()
-    const cs = getComputedStyle(document.querySelector('.pet-panel'))
+    const p = document.querySelector('.pet-plate').getBoundingClientRect()
+    const cs = getComputedStyle(document.querySelector('.pet-plate'))
     return {
       panel: { x: p.x, y: p.y, w: p.width, h: p.height },
       inner: { w: window.innerWidth, h: window.innerHeight },

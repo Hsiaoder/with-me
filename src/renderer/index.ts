@@ -8,12 +8,13 @@ import {
   IDLE_LONG_MS,
   PANEL_GAP,
   PANEL_HIDE_MS,
+  PLATE_GAP,
   VIEW_HIDE_MS,
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, bubbleAnchor, panelAnchor, rectContains, statsAnchor, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
@@ -85,9 +86,28 @@ function bootstrap(skin: SkinPayload): void {
   const stagePos = (): Point => motion.pos()
   const hitBox = (): Rect => bodyRect({ bodyBox: bodyBoxOf(manifest, current.name) }, stagePos())
   const overBody = (p: Point): boolean => anyContains([hitBox()], p)
-  /** 布局里某个元素现在的矩形。面板的位置由 placePanel 决定，问布局比让它自报准。 */
-  const rectOf = (el: HTMLElement): Rect => {
-    const r = el.getBoundingClientRect()
+  /**
+   * 面板现在占的那几块的外接矩形，收起时是 null。
+   * 不能拿根节点当面板矩形：它是铺满覆盖层的定位层，拿它判会让气泡以为
+   * 全屏都是面板、让光标连续区直接圈进整块屏幕。
+   */
+  const panelBox = (): Rect | null => {
+    const [first, ...rest] = panel.rects()
+    if (first === undefined) return null
+    return unionRect(first, ...rest)
+  }
+
+  /**
+   * 气泡要让开的那块。**状态视图只让按钮条**：状态栏挂在宠物侧面，
+   * 把它算进外接矩形会让矩形下沿低到身体中线以下，`bubbleAnchor` 就判不出
+   * 「面板在头顶」，气泡落回身体正上方——正好压在常驻的按钮条上（截图量出来过）。
+   * 食物列表反过来要算进去：它和按钮条在同一条中轴线上，是让路的下一格。
+   */
+  const bubblePanelBox = (): Rect | null => {
+    if (panel.view !== 'stats') return panelBox()
+    const primary = panel.primaryEl()
+    if (primary === null) return null
+    const r = primary.getBoundingClientRect()
     return { x: r.x, y: r.y, w: r.width, h: r.height }
   }
   const loopsOf = (r: ClipRef): boolean => isLooping(manifest, r.pool, r.name)
@@ -175,7 +195,11 @@ function bootstrap(skin: SkinPayload): void {
       // 1500ms 不够操作完；回动作视图换回快档。顺带重挂自动收起的定时器。
       hover.setHideMs(v === 'actions' ? PANEL_HIDE_MS : VIEW_HIDE_MS)
       scheduleHover()
-      if (panel.isOpen) placePanel()
+      if (panel.isOpen) {
+        placePanel()
+        // 副板一占位，气泡得跟着让：状态视图以前没有按钮条挡在中间，现在有了。
+        if (bubble.isOpen) placeBubble()
+      }
     },
   })
 
@@ -210,7 +234,7 @@ function bootstrap(skin: SkinPayload): void {
   const screenRect = (): Rect => ({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight })
 
   const bubbleAnchorNow = (): Point =>
-    bubbleAnchor(hitBox(), panel.isOpen ? rectOf(panel.el) : null, BUBBLE_SIZE, screenRect(), BUBBLE_GAP)
+    bubbleAnchor(hitBox(), bubblePanelBox(), BUBBLE_SIZE, screenRect(), BUBBLE_GAP)
 
   function placeBubble(): void {
     bubble.place(bubbleAnchorNow())
@@ -307,17 +331,25 @@ function bootstrap(skin: SkinPayload): void {
   function placePanel(): void {
     const body = hitBox()
     const screen = { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
-    // 先摆一次才量得出面板自身尺寸，再按尺寸夹回屏幕内。面板宽度由按钮数量决定，
+    // 先摆一次才量得出自身尺寸，再按尺寸夹回屏幕内。按钮条的宽度由数量决定，
     // 事先不知道，只能量一次。收起时它不在布局里，所以量这一步只在打开状态下有意义。
     panel.show({ x: body.x, y: body.y + body.h + PANEL_GAP })
     const size = panel.size()
     if (!size) return
-    // 状态栏走另一条锚点：它竖在宠物**右侧**，不去挤脚下那一横条——那是按钮面板的地盘，
-    // 两者叠在一起的话状态栏会挡住按钮，或者被按钮挡住，两个都读不到。
-    const at = panel.view === 'stats'
-      ? statsAnchor(body, size, screen, PANEL_GAP)
-      : panelAnchor(body, size, screen, PANEL_GAP)
+    // 主块永远走同一条锚点：动作/食物/状态视图里它是按钮条（贴脚下，脚下没地方翻头顶），
+    // 设置视图里它是那块板（整块替换按钮条，位置规则一样）。
+    const at = panelAnchor(body, size, screen, PANEL_GAP)
     panel.show(at)
+    // 副板各走各的锚点，而且和主块在同一次同步任务里摆完——中间不是一帧，不会闪错位。
+    const ps = panel.plateSize()
+    if (ps === null) return
+    if (panel.view === 'foods') {
+      // 挂在按钮条**外侧**：主块在脚下时往下长，翻到头顶时往上长，中间那段留给宠物本体。
+      panel.showPlate(stackAnchor({ x: at.x, y: at.y, w: size.w, h: size.h }, ps, screen, PLATE_GAP, at.side))
+    } else if (panel.view === 'stats') {
+      // 读数竖挂宠物**右侧**：脚下那一横条已经是按钮条的地盘，挤在一起两边都读不到。
+      panel.showPlate(statsAnchor(body, ps, screen, PANEL_GAP))
+    }
   }
 
   /**
@@ -327,6 +359,9 @@ function bootstrap(skin: SkinPayload): void {
    */
   function openPanel(): void {
     placePanel()
+    // 面板一占位就把气泡重贴一次：按钮条现在常驻，气泡原来只躲身体，重贴后才会躲到按钮条外侧。
+    // 话说到一半面板打开，气泡压在按钮上是这次改动带出来的新堆法。
+    if (bubble.isOpen) placeBubble()
     hover.open()
     // 每次打开都报，主进程按「20 小时内只算一次」发亲密。
     // 渲染层不自己判日界：它没有存档里的 lastEventAt，判了就是两份状态。
@@ -458,7 +493,7 @@ function bootstrap(skin: SkinPayload): void {
      * 才放大，而"算不算有人在使用"仍然只问 DOM 命中——停在看不见的空隙里不算活动，
      * 收起延时照旧跑，所以这段吞点击的时间有上界。
      */
-    const zone = unionRect(hitBox(), panel.isOpen ? rectOf(panel.el) : null, bubble.rect())
+    const zone = unionRect(hitBox(), panelBox(), bubble.rect())
     const inZone = rectContains(zone, p)
     setOverClass(inZone || dragging)
     wantGrab = inZone || dragging

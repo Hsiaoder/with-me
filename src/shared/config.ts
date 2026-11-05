@@ -174,3 +174,5 @@ export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}/`
 export const SKIN_ORIGIN = `${APP_SCHEME}://${SKIN_HOST}/`
 /** 面板与身体框之间的间距；脚底下放不下时同一个间距翻到头顶。 */
 export const PANEL_GAP = 16
+/** 按钮条与副板（食物列表）之间的间距。比 PANEL_GAP 小：这两块是一组，不该看着像两个东西。 */
+export const PLATE_GAP = 6

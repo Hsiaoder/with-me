@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, bubbleAnchor, panelAnchor, stageRect, statsAnchor, unionRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, panelAnchor, stageRect, stackAnchor, statsAnchor, unionRect } from '../src/shared/geometry.js'
 import { BUBBLE_H, BUBBLE_W, CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -53,12 +53,15 @@ describe('panelAnchor', () => {
   // 横向以角色的对称轴（身体框中线）为轴居中，不是贴着身体左沿——
   // 画布左右各有大片空白，贴左沿会让整排按钮明显偏左。
   it('默认摆在脚底下，留出一条 gap，并以身体中线居中', () => {
-    expect(panelAnchor(body, size, screen, 16)).toEqual({ x: 560 - 150, y: 400 + 142 + 16 })
+    expect(panelAnchor(body, size, screen, 16)).toEqual({ x: 560 - 150, y: 400 + 142 + 16, side: 'below' })
   })
 
   it('脚底下放不下（宠物站在地上）就翻到头顶', () => {
     const low = { ...body, y: 760 }
     expect(panelAnchor(low, size, screen, 16).y).toBe(760 - 40 - 16)
+    // 翻边要报出来：副板（食物列表）得知道自己是挂在按钮条下面还是上面，
+    // 否则翻到头顶时列表会挤在按钮和宠物中间，把宠物压住。
+    expect(panelAnchor(low, size, screen, 16).side).toBe('above')
   })
 
   it('身体靠近右边缘时横向夹回屏幕内，不让按钮溢出到看不见的地方', () => {
@@ -73,6 +76,32 @@ describe('panelAnchor', () => {
   it('上下都放不下时夹在屏幕内，不跑到负坐标', () => {
     const p = panelAnchor({ x: 10, y: 20, w: 100, h: 930 }, size, screen, 16)
     expect(p.y).toBe(0)
+  })
+})
+
+describe('stackAnchor', () => {
+  const screen = { x: 0, y: 0, w: 1600, h: 952 }
+  const plate = { w: 314, h: 90 }
+  // 主块 = 按钮条现在占的那块
+  const below = { x: 403, y: 558, w: 240, h: 40 }
+
+  it('主块在脚下时，副板贴主块的下沿，横向跟主块中线', () => {
+    expect(stackAnchor(below, plate, screen, 6, 'below')).toEqual({ x: 403 + 120 - 157, y: 558 + 40 + 6 })
+  })
+
+  it('主块翻到头顶时，副板改挂主块上方：永远背对宠物，不压住宠物', () => {
+    const above = { x: 403, y: 428, w: 240, h: 40 }
+    expect(stackAnchor(above, plate, screen, 6, 'above')).toEqual({ x: 403 + 120 - 157, y: 428 - 6 - 90 })
+  })
+
+  it('副板比主块宽，贴右边缘时横向夹回屏幕内', () => {
+    const right = { x: 1500, y: 300, w: 80, h: 40 }
+    expect(stackAnchor(right, plate, screen, 6, 'below').x).toBe(1600 - 314)
+  })
+
+  it('下面没地方时夹在屏幕内，不出现负坐标也不溢出下沿', () => {
+    const low = { x: 403, y: 900, w: 240, h: 40 }
+    expect(stackAnchor(low, plate, screen, 6, 'below').y).toBe(952 - 90)
   })
 })
 describe('anyContains', () => {

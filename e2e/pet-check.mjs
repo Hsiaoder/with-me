@@ -213,7 +213,7 @@ check('光标形状跟着交互区走：身体上是 hand_point，舞台那截�
     for (const sheet of document.styleSheets) {
       for (const r of sheet.cssRules) {
         if (r.selectorText === ':root') out.var = r.style.getPropertyValue('--pet-cursor')
-        if (['body.pet-over', '.pet-panel button', '.pet-panel.is-plate'].includes(r.selectorText)) {
+        if (['body.pet-over', '.pet-plate', '.pet-panel button'].includes(r.selectorText)) {
           out.users.push(r.selectorText)
           if (r.style.cursor !== 'var(--pet-cursor)') out.users.push(`${r.selectorText}≠var`)
         }
@@ -224,7 +224,7 @@ check('光标形状跟着交互区走：身体上是 hand_point，舞台那截�
   assert.ok(decl.var, '样式表里没有 --pet-cursor 这条定义')
   assert.match(decl.var, /icons\/hand_point\.svg/, `光标没指向 hand_point：${decl.var}`)
   assert.match(decl.var, /9 2/, `热点不是量出来的指尖：${decl.var}`)
-  assert.deepEqual(decl.users, ['body.pet-over', '.pet-panel button', '.pet-panel.is-plate'],
+  assert.deepEqual(decl.users, ['body.pet-over', '.pet-plate', '.pet-panel button'],
     `三处没共用同一枚光标：${JSON.stringify(decl.users)}`)
 
   // 上一轮图标 404 就是栽在 MIME 白名单：文件在磁盘上不等于取得到，光标同理
@@ -243,7 +243,7 @@ check('交互区是连续的：身体—空隙—按钮一路不掉', async () =
 
   const geo = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
-    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const p = document.querySelector('.pet-actions').getBoundingClientRect()
     const bs = [...document.querySelectorAll('.pet-panel button')].map((x) => x.getBoundingClientRect())
     const bx = b.x + b.w / 2
     // 身体与面板之间那段：面板在脚下就取两者中间，在头顶也一样
@@ -341,13 +341,43 @@ check('气泡：显示、覆盖、到点收起、悬停续命、跟着宠物走�
   assert.ok(await openOnBody(), '前置：面板叫不出来就没有堆叠可验（收起时它不在布局里，量到的是全 0）')
   const stack = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
-    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const p = document.querySelector('.pet-actions').getBoundingClientRect()
     const u = document.querySelector('.pet-bubble').getBoundingClientRect()
     return { panelAboveBody: p.y + p.height <= b.y, bubbleBottom: Math.round(u.y + u.height), panelTop: Math.round(p.y) }
   })
   assert.ok(stack.panelAboveBody, '前置：宠物站在地面时面板该在头顶')
   assert.ok(stack.bubbleBottom <= stack.panelTop + 1,
     `气泡压到面板上了：气泡底 ${stack.bubbleBottom} vs 面板顶 ${stack.panelTop}`)
+
+  /**
+   * 两块各自摆位之后多出两种堆法，都得单独问布局：
+   * - 状态视图：读数挂在**侧面**。把它算进气泡要让路的那块，外接矩形的下沿会低到
+   *   身体中线以下，bubbleAnchor 就判不出「面板在头顶」，气泡落回身体正上方压住按钮条。
+   * - 食物视图：列表和按钮条在同一条中轴线上，气泡必须让到列表**外面**，不是让到按钮条外面。
+   */
+  await page.click('.pet-panel button[data-id="status"]')
+  await page.waitForSelector('.pet-plate .pet-stat')
+  await page.waitForTimeout(200)
+  const withStats = await page.evaluate(() => {
+    const a = document.querySelector('.pet-actions').getBoundingClientRect()
+    const u = document.querySelector('.pet-bubble').getBoundingClientRect()
+    return { bubbleBottom: Math.round(u.y + u.height), btnTop: Math.round(a.y) }
+  })
+  assert.ok(withStats.bubbleBottom <= withStats.btnTop + 1,
+    `状态视图里气泡压住按钮条了：${JSON.stringify(withStats)}`)
+
+  await page.click('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-plate .pet-food')
+  await page.waitForTimeout(200)
+  const withFoods = await page.evaluate(() => {
+    const p = document.querySelector('.pet-plate').getBoundingClientRect()
+    const u = document.querySelector('.pet-bubble').getBoundingClientRect()
+    return { bubbleBottom: Math.round(u.y + u.height), plateTop: Math.round(p.y) }
+  })
+  assert.ok(withFoods.bubbleBottom <= withFoods.plateTop + 1,
+    `列表开着时气泡压住列表了：${JSON.stringify(withFoods)}`)
+
+  await page.evaluate(() => window.__petDebug.hidePanel())
 
   await page.evaluate(() => window.__petDebug.hideBubble())
 })
@@ -435,9 +465,9 @@ check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连�
 
   // 冷却：刚说过，点按钮不该又冒一句新的
   const before = await text()
-  const h = await page.evaluate(() => window.__petDebug.hitBox)
-  await feed({ x: h.x + h.w / 2, y: h.y + h.h / 2 })
-  await page.waitForTimeout(460)
+  // 用 openOnBody 而不是 feed(身体)：feed 只喂光标坐标、不点击，2026-11-04 起面板要点击才出。
+  // 以前这条能过，靠的是上一条检查收尾时面板还开着——那是接残局，不是自证前置（§5.13）。
+  assert.ok(await openOnBody(), '前置：面板叫不出来就没有「点按钮」这回事')
   await page.click('.pet-panel button[data-id="game"]')
   assert.equal(await text(), before, '25 秒冷却没挡住，连着冒了第二句')
 
@@ -578,7 +608,7 @@ check('面板以角色的对称轴居中，不是贴着身体左沿', async () =
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   const g = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
-    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const p = document.querySelector('.pet-actions').getBoundingClientRect()
     return { axis: b.x + b.w / 2, center: p.x + p.width / 2 }
   })
   assert.ok(Math.abs(g.axis - g.center) < 2,
@@ -609,7 +639,7 @@ check('拖到屏幕左右边缘时，是身体贴边而不是舞台贴边', asyn
 
 check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢出屏幕', async () => {
   const panelRect = () => page.evaluate(() => {
-    const b = document.querySelector('.pet-panel').getBoundingClientRect()
+    const b = document.querySelector('.pet-actions').getBoundingClientRect()
     return { x: b.x, y: b.y, w: b.width, h: b.height }
   })
   const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
@@ -642,13 +672,46 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   // 底板是裁过的蓝线版（外层灰框 + 白高光已裁掉）：slice 必须等于素材蓝线的 2px，
   // 写成 8 就把裁掉的装饰又请回来了；计算样式里留着 url 本身查不出画错。
   const plate = await page.evaluate(() => {
-    const cs = getComputedStyle(document.querySelector('.pet-panel'))
+    const cs = getComputedStyle(document.querySelector('.pet-plate'))
     return { src: cs.borderImageSource, slice: cs.borderImageSlice, w: cs.borderTopWidth, pad: cs.paddingTop }
   })
   assert.match(plate.src, /icons\/button_rectangle_line_blue\.png/, `食物底板不是裁过的蓝线素材：${plate.src}`)
   assert.equal(plate.slice, '2 fill', `九宫格切片不对：${plate.slice}`)
   assert.equal(plate.w, '2px', `边框厚度不对：${plate.w}`)
   assert.equal(plate.pad, '9px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
+  // 用户这次要的就是这条：列表出来时按钮不许消失，而且列表在按钮条**外侧**。
+  // 只数 DOM 里有没有按钮不够——按钮得真能点（Playwright 的 click 会验可见与命中）。
+  // 「外侧」不是「下面」：宠物站在屏幕最下沿时按钮条会翻到头顶，这时列表要在按钮条**上面**，
+  // 中间那段永远留给身体。上一版把断言写成死往下，正好被这个位置打红。
+  const stack = await page.evaluate(() => {
+    const a = document.querySelector('.pet-actions').getBoundingClientRect()
+    const p = document.querySelector('.pet-plate').getBoundingClientRect()
+    const b = window.__petDebug.hitBox
+    const away = b.y + b.h <= a.y + 1 ? 'below' : 'above'
+    const gap = away === 'below' ? p.y - (a.y + a.height) : a.y - (p.y + p.height)
+    return {
+      btns: document.querySelectorAll('.pet-actions button[data-id]').length,
+      away,
+      gap: Math.round(gap),
+      overlapsButtons: p.y < a.y + a.height && p.y + p.height > a.y,
+      overlapsBody: p.y < b.y + b.h && p.y + p.height > b.y,
+    }
+  })
+  assert.equal(stack.btns, 5, `列表开着按钮少了：${stack.btns} 颗`)
+  assert.ok(!stack.overlapsButtons, `列表和按钮条叠住了：${JSON.stringify(stack)}`)
+  assert.ok(!stack.overlapsBody, `列表压到身上了（该在按钮条外侧）：${JSON.stringify(stack)}`)
+  assert.ok(stack.gap >= 4 && stack.gap <= 8, `列表与按钮条的间距该是 4..8px，现在 ${stack.gap}`)
+  await page.click('.pet-actions button[data-id="game"]')
+  await page.waitForTimeout(120)
+  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '列表开着时点别的按钮不该把视图换掉')
+  // 再点一次喂食 = 收回列表：不然除了等 5 秒自动收，没有别的关法
+  await page.click('.pet-actions button[data-id="feed"]')
+  await page.waitForTimeout(150)
+  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'actions', '再点一次喂食没把列表收回')
+  assert.equal(await page.evaluate(() => document.querySelector('.pet-plate')), null, '收回后副板还在布局里')
+  // 下面还要验点一格播动画，先把列表叫回来——上面那串是「开关」检查，不该把残局留给后面
+  await page.click('.pet-actions button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
   // 一屏只露 4 格：视口是 overflow:hidden，其余靠滚
   // 12 格全在条上（视口只是没露出来），滚动才有东西可滚
   assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-food-strip > *').length), 6)
@@ -744,7 +807,7 @@ check('宠物贴右边缘时面板夹回屏幕内', async () => {
   await page.evaluate((p) => window.__petDebug.moveTo(p), { x: inner.w - 40, y: inner.h - 300 })
   assert.ok(await openOnBody(), '面板没开，量到的矩形是 0，夹取断言会假通过')
   const r = await page.evaluate(() => {
-    const b = document.querySelector('.pet-panel').getBoundingClientRect()
+    const b = document.querySelector('.pet-actions').getBoundingClientRect()
     return { x: b.x, y: b.y, w: b.width }
   })
   assert.ok(r.x + r.w <= inner.w, `面板溢出右边缘：${r.x}+${r.w} > ${inner.w}`)
@@ -932,7 +995,7 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   await page.waitForSelector('.pet-panel .pet-stat')
   const g = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
-    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const p = document.querySelector('.pet-plate').getBoundingClientRect()
     return {
       bodyRight: b.x + b.w, panelLeft: p.x, panelRight: p.right, inner: window.innerWidth,
       name: document.querySelector('.pet-stats-name')?.textContent,
@@ -968,7 +1031,7 @@ check('状态栏贴右边缘时翻到宠物左侧，而不是夹过来压住宠�
   await page.waitForSelector('.pet-panel .pet-stat')
   const g = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
-    const p = document.querySelector('.pet-panel').getBoundingClientRect()
+    const p = document.querySelector('.pet-plate').getBoundingClientRect()
     return { bodyLeft: b.x, panelRight: p.right, panelLeft: p.x }
   })
   assert.ok(g.panelRight <= g.bodyLeft + 1, `右侧放不下时该翻到左边，现在还压着宠物：panelRight=${g.panelRight} bodyLeft=${g.bodyLeft}`)
@@ -1067,15 +1130,20 @@ check('面板收起后真的移出布局：不吃点击、不改光标形状', a
   await page.waitForTimeout(460)
   assert.equal((await dbg()).open, true, '前置：面板该开着')
   const band = await page.evaluate(() => {
-    const b = document.querySelector('.pet-panel').getBoundingClientRect()
+    const b = document.querySelector('.pet-actions').getBoundingClientRect()
     return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) }
   })
   await feed({ x: 4, y: 4 })
   await page.waitForTimeout(1600)
   assert.equal((await dbg()).open, false, '前置：面板该已收起')
   // open=false 是立刻生效的，display 却要等 0.18s 的离散过渡走完（淡出是故意留的）。
-  // 不在这里等一下就等于在动画中间读数，会得到还没换过去的 flex。
-  await page.waitForTimeout(400)
+  // 这里等的是「它真的变成 none」这个条件，不是固定 400ms：覆盖层没焦点时过渡会被节流，
+  // 固定等待在长跑里读到过还没换过去的 block——那测的是时序，不是行为。
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('.pet-panel')).display === 'none',
+    null,
+    { timeout: 4000 },
+  )
   const at = await page.evaluate((p) => {
     const el = document.elementFromPoint(p.x, p.y)
     return {

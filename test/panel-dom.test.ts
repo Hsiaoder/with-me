@@ -76,10 +76,12 @@ describe('createPanel', () => {
     expect(panel.el.hidden).toBe(true)
   })
 
-  it('show 把位置写进 transform，而不是 left/top（避免每帧触发布局）', () => {
+  it('show 把位置写进主块的 transform，而不是 left/top（避免每帧触发布局）', () => {
     const { panel } = mount()
     panel.show({ x: 33.6, y: 77.2 })
-    expect(panel.el.style.transform).toBe('translate(34px, 77px)')
+    // 写在主块上而不是根节点：根节点是铺满覆盖层的定位层，转它等于转整块屏幕
+    expect(panel.primaryEl()?.style.transform).toBe('translate(34px, 77px)')
+    expect(panel.el.style.transform).toBe('')
   })
 
   it('点按钮回调带上被点的动作', () => {
@@ -213,10 +215,13 @@ describe('食物视图', () => {
     return { panel, pick }
   }
 
-  it('切到 foods 后是底板态：整块吃命中，格子数等于 FOODS 长度', () => {
+  it('切到 foods 后副板是那块可见底板：格子数等于 FOODS 长度', () => {
     const { panel } = mountFoods()
     expect(panel.view).toBe('foods')
-    expect(panel.el.classList.contains('is-plate')).toBe(true)
+    // 底板样式现在直接挂在 .pet-plate 上（is-plate 那层修饰没了）：
+    // 根节点是整屏定位层，它要是还吃命中，按钮之间那些看不见的缝就会吞掉桌面的点击。
+    expect(panel.el.querySelector('.pet-plate.is-foods')).not.toBeNull()
+    expect(panel.el.className).toBe('pet-panel')
     expect(panel.el.querySelectorAll('.pet-food').length).toBe(FOODS.length)
   })
 
@@ -270,15 +275,16 @@ describe('食物视图', () => {
     expect(num('.pet-thumb')).toBeGreaterThan(0)
   })
 
-  it('横条是视口同一列的下面一行，不是面板的兄弟节点', () => {
-    // 面板是横排 flex：横条直接挂在面板上会并排站到右边去（截图量出来过）。
+  it('横条是视口同一列的下面一行，不是副板的兄弟节点', () => {
+    // 副板是横排 flex：横条直接挂在副板上会并排站到右边去（截图量出来过）。
     // 用户要的是「矩形下面有横条」，所以它必须和视口同列。
     const { panel } = mountFoods()
     const main = panel.el.querySelector('.pet-food-main')
     expect(main?.parentElement?.className).toBe('pet-foods')
     expect(panel.el.querySelector('.pet-scroll')?.parentElement).toBe(main)
     expect(panel.el.querySelector('.pet-food-viewport')?.parentElement).toBe(main)
-    expect(panel.el.querySelector('.pet-foods')?.parentElement).toBe(panel.el)
+    // 列表整块挂在副板里，而不是直接挂在根节点：根节点是整屏定位层，两块各自摆位
+    expect(panel.el.querySelector('.pet-foods')?.parentElement?.parentElement).toBe(panel.el)
   })
 
   it('收起再打开时滚动复位，不会停在用户上次看一半的地方', () => {
@@ -382,5 +388,83 @@ describe('状态视图', () => {
     panel.el.querySelector<HTMLButtonElement>('button[data-id="status"]')?.click()
     expect(action).not.toHaveBeenCalled()
     expect(view).toHaveBeenCalledWith('stats')
+  })
+})
+
+/**
+ * 面板从「一个盒子换内容」改成「按钮条常驻 + 副板另算一块」。
+ * 用户要的：点喂食/状态时按钮不许消失，列表挂在按钮下面、读数挂在宠物右侧。
+ * 两块各自定位，所以命中区、光标、夹屏幕都得分别问，不能再拿根节点当矩形。
+ */
+describe('两块结构：按钮条常驻，副板另算一块', () => {
+  const openView = (v: 'foods' | 'stats' | 'settings') => {
+    const m = mount()
+    m.panel.show({ x: 0, y: 0 })
+    if (v === 'stats') m.panel.setStats({ stats: { hunger: 82, mood: 45, weight: 20, bond: 97 }, identity: { name: '小鲸', gender: 'female' } })
+    m.panel.setView(v)
+    return m
+  }
+  const actionBtns = (panel: ReturnType<typeof mount>['panel']) =>
+    [...panel.el.querySelectorAll('.pet-actions button[data-id]')]
+
+  it('动作视图：只有按钮条，副板不在布局里', () => {
+    const { panel } = mount()
+    panel.show({ x: 0, y: 0 })
+    expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
+    expect(panel.el.querySelector('.pet-plate')).toBeNull()
+    expect(panel.plateSize()).toBeNull()
+  })
+
+  it('食物视图：五颗按钮还在，列表在另一块里', () => {
+    const { panel } = openView('foods')
+    expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
+    const plate = panel.el.querySelector('.pet-plate')!
+    expect(plate.querySelector('.pet-food')).not.toBeNull()
+    // 列表不能是按钮条的子节点：两块的锚点不同，嵌在一起就没法各摆各的
+    expect(plate.closest('.pet-actions')).toBeNull()
+  })
+
+  it('状态视图：五颗按钮还在，读数在副板里', () => {
+    const { panel } = openView('stats')
+    expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
+    const plate = panel.el.querySelector('.pet-plate')!
+    expect(plate.querySelectorAll('.pet-stat')).toHaveLength(4)
+  })
+
+  it('设置视图保持原样：整块替换，按钮条不在布局里', () => {
+    const { panel } = openView('settings')
+    expect(actionBtns(panel)).toHaveLength(0)
+    expect(panel.el.querySelector('.pet-plate .pet-setting')).not.toBeNull()
+  })
+
+  it('主块尺寸跟着视图走：设置视图量到的是设置板，不是按钮条', () => {
+    const actions = mount()
+    actions.panel.show({ x: 0, y: 0 })
+    expect(actions.panel.primaryEl()?.classList.contains('pet-actions')).toBe(true)
+    const settings = openView('settings')
+    expect(settings.panel.primaryEl()?.classList.contains('pet-plate')).toBe(true)
+  })
+
+  it('再点一次喂食把副板收回：回动作视图，副板移出布局', () => {
+    const { panel } = openView('foods')
+    ;(panel.el.querySelector('.pet-actions button[data-id="feed"]') as HTMLElement).click()
+    expect(panel.view).toBe('actions')
+    expect(panel.el.querySelector('.pet-plate')).toBeNull()
+    expect(panel.plateSize()).toBeNull()
+  })
+
+  it('showPlate 只挪副板：主块的位置不受影响', () => {
+    const { panel } = openView('foods')
+    panel.show({ x: 10, y: 20 })
+    panel.showPlate({ x: 300, y: 400 })
+    const plate = panel.el.querySelector('.pet-plate') as HTMLElement
+    expect(plate.style.transform).toBe('translate(300px, 400px)')
+    expect((panel.el.querySelector('.pet-actions') as HTMLElement).style.transform).toBe('translate(10px, 20px)')
+  })
+
+  it('副板仍然吃命中：它是 data-hit 根节点的后代，closest 爬得到', () => {
+    const { panel } = openView('foods')
+    const plate = panel.el.querySelector('.pet-plate') as HTMLElement
+    expect(plate.closest('[data-hit]')).toBe(panel.el)
   })
 })

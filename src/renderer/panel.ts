@@ -4,17 +4,24 @@ import { clampScroll, pageStep, thumbGeometry } from '../shared/scroll.js'
 import { STAT_KEYS, STAT_LABELS, statBand } from '../shared/stats.js'
 import { GENDER_LABELS, type Gender, type StatsSnapshot } from '../shared/save.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
-import type { Point } from '../shared/types.js'
+import type { Point, Rect } from '../shared/types.js'
 
 /**
- * 悬停面板：三个视图共用同一个容器。
+ * 悬停面板：一个定位层 + 两块各自摆位的内容。
+ *
+ * 根节点 `.pet-panel` 铺满覆盖层、不吃命中，只当 `data-hit` 的宿主；
+ * 里面最多同时存在两块：
+ * - `.pet-actions` 按钮条（动作/食物/状态视图都在，设置视图整块替换时才收起）
+ * - `.pet-plate` 副板（食物列表、状态读数、设置行）
+ * 两块各自有 transform，因为它们的锚点不同：按钮条贴宠物脚下，
+ * 状态栏挂宠物右侧，食物列表挂在按钮条下面。合成一块就没法同时满足这三条。
  *
  * 命中判定**不由面板上报矩形**：根节点挂一个 `data-hit`，渲染层拿推进来的
  * 光标坐标问 DOM（`elementFromPoint(...).closest('[data-hit]')`）就够了。
- * 这样"能不能接住这点鼠标"由真实布局回答，收起（`display:none`）的元素
+ * 这样"能不能接住这点鼠标"由真实布局回答，收起（`hidden`）的元素
  * 天然问不到——不会出现透明度 0 却照样吃点击、照样改光标形状那种鬼东西。
  *
- * 切视图只换容器里的子节点，不重建容器：重建会让 `data-hit` 和位置一起丢，
+ * 切视图只换这两块的内容，不重建根节点：重建会让 `data-hit` 和位置一起丢，
  * 而面板正开着的时候切视图是常态。
  */
 
@@ -42,12 +49,22 @@ export interface Panel {
   readonly el: HTMLElement
   readonly isOpen: boolean
   readonly view: PanelView
+  /** 摆主块（设置视图的主块就是那块板，其余视图是按钮条）。at 是覆盖层 CSS 坐标。 */
   show(at: Point): void
+  /** 摆副板。只在有副板的视图里有意义；装配层按视图决定用哪条锚点。 */
+  showPlate(at: Point): void
   hide(): void
   /** 切视图。用户路径是靠点按钮，这个口子给装配层与测试直接用。 */
   setView(v: PanelView): void
-  /** 面板自身尺寸，只有打开时量得到（收起时不在布局里）。夹回屏幕内要用。 */
+  /** 主块自身尺寸，只有打开时量得到（收起时不在布局里）。夹回屏幕内要用。 */
   size(): { w: number; h: number } | null
+  /** 副板尺寸。没有副板（动作视图）或还没打开时是 null——装配层不该按它夹屏幕。 */
+  plateSize(): { w: number; h: number } | null
+  /** 现在代表主块的那个节点（测试与装配层用来确认「量的是哪一块」）。 */
+  primaryEl(): HTMLElement | null
+  /** 开着时占着屏幕的那几块的真实矩形（收起时是空数组）。
+   *  气泡让路、光标连续区都要用它——根节点是整屏定位层，拿它当面板矩形会把全屏圈进来。 */
+  rects(): Rect[]
   /** 选中态变了（本地立刻反馈，或主进程回灌）时重绘。 */
   setSettings(s: Settings): void
   /** 主进程推来的数值快照。开着状态视图时立刻重绘，没开就存着。 */
@@ -111,10 +128,29 @@ export function createPanel(
   root.append(el)
 
   let at: Point | null = null
+  let plateAt: Point | null = null
   let current: PanelView = 'actions'
   let values = settings
   /** 主进程推来的数值快照。null = 还没推到（首帧），此时状态栏只显名字位、不编造读数。 */
   let snap: StatsSnapshot | null = null
+  /** 两块内容节点。render 时重建，收起时都摘掉；null 表示这一视图里没有它。 */
+  let actionsEl: HTMLElement | null = null
+  let plateEl: HTMLElement | null = null
+
+  /** 摆一块。位置为 null 就不动——量不到尺寸时（还没进布局）别把 transform 写成 NaN。 */
+  function place(node: HTMLElement | null, p: Point | null): void {
+    if (node === null || p === null) return
+    node.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`
+  }
+
+  /** 主块 = 谁代表「面板现在站在宠物脚下的那一格」：设置视图是那块板，其余是按钮条。 */
+  function primary(): HTMLElement | null {
+    return current === 'settings' ? plateEl : actionsEl
+  }
+
+  const hasPlate = (v: PanelView): boolean => v !== 'actions'
+  /** 副板有没有自己的锚点：设置板走主块那条，不参与 stackAnchor/statsAnchor。 */
+  const hasSecondAnchor = (v: PanelView): boolean => v === 'foods' || v === 'stats'
 
   // 滚动状态只属于食物视图，就住在这里：一个数，其余全是纯函数算出来的（shared/scroll.ts）。
   const VIEW_W = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
@@ -151,7 +187,8 @@ export function createPanel(
     scrollX = clampScroll(x, CONTENT_W, VIEW_W)
     syncScroll()
     // 内容高度没变，但夹取结果可能贴着屏幕边，位置仍按当前锚点重贴一次
-    if (at !== null) el.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px)`
+    place(primary(), at)
+    place(plateEl, plateAt)
   }
 
   /**
@@ -173,7 +210,7 @@ export function createPanel(
     window.addEventListener('pointerup', up)
   }
 
-  function renderFoods(): void {
+  function renderFoods(host: HTMLElement): void {
     const row = document.createElement('div')
     row.className = 'pet-foods'
 
@@ -217,7 +254,7 @@ export function createPanel(
     }
 
     row.append(prev, main, next)
-    el.append(row)
+    host.append(row)
 
     foodRefs = { strip, prev, next, thumb }
     syncScroll()
@@ -227,7 +264,7 @@ export function createPanel(
    * 状态栏：名字 + 性别在上，四条读数在下。它是 qqpet 那种「一眼看到当前值」的面板，
    * 不是设置页——每一项都只读，唯一能点的是性别和返回。
    */
-  function renderStats(): void {
+  function renderStats(host: HTMLElement): void {
     const head = document.createElement('div')
     head.className = 'pet-stats-head'
     const name = document.createElement('span')
@@ -240,7 +277,7 @@ export function createPanel(
       b.addEventListener('click', () => handlers.identity({ gender: g }))
       head.append(b)
     }
-    el.append(head)
+    host.append(head)
 
     // 快照还没到就到此为止：画四条 0 会让用户以为宠物饿坏了，那是编出来的恐慌。
     if (snap === null) return
@@ -261,63 +298,76 @@ export function createPanel(
       out.className = 'pet-stat-value'
       out.textContent = String(Math.round(v))
       line.append(label, bar, out)
-      el.append(line)
+      host.append(line)
     }
     const back = btn('返回', { view: 'actions' }, false)
     back.addEventListener('click', () => switchTo('actions'))
-    el.append(back)
+    host.append(back)
   }
 
-  function render(): void {
-    el.replaceChildren()
-    foodRefs = null                 // 旧节点已经不在了，别让 syncScroll 去摸它们
-    el.classList.toggle('is-settings', current === 'settings')
-    el.classList.toggle('is-foods', current === 'foods')
-    el.classList.toggle('is-stats', current === 'stats')
-    // 操作型视图是一整块可见面板：底板、命中、光标都跟着，文字浮在桌面上读不成句。
-    // 动作视图仍然只有按钮吃命中——那里的空隙看不见，不该吞桌面的点击。
-    el.classList.toggle('is-plate', current !== 'actions')
-    if (current === 'foods') {
-      renderFoods()
-      return
-    }
-    if (current === 'stats') {
-      renderStats()
-      return
-    }
-    if (current === 'settings') {
-      for (const row of ROWS) {
-        const line = document.createElement('div')
-        line.className = 'pet-setting'
-        const label = document.createElement('span')
-        label.textContent = row.label
-        line.append(label)
-        for (const o of OPTIONS) {
-          const b = btn(o.label, { key: row.key, value: o.value }, values[row.key] === o.value)
-          b.addEventListener('click', () => handlers.setting({ [row.key]: o.value }))
-          line.append(b)
-        }
-        el.append(line)
-      }
-      const back = btn('返回', { view: 'actions' }, false)
-      back.addEventListener('click', () => switchTo('actions'))
-      el.append(back)
-      return
-    }
-
+  /** 按钮条。动作/食物/状态视图都挂着它——用户要的是「列表开着的时候按钮不许消失」。 */
+  function renderActions(): HTMLElement {
+    const row = document.createElement('div')
+    row.className = 'pet-actions'
     for (const a of actions) {
       const b = iconBtn(a)
       b.addEventListener('click', () => {
-        // 带 view 的按钮是切视图（设置），带 pool 的才是点歌；两者都由 config 说清楚
+        // 带 view 的按钮是切视图，带 pool 的才是点歌；两者都由 config 说清楚。
+        // 再点一次同一个视图按钮 = 收回副板：不然列表开着时除了等自动收起没有别的关法。
         if (a.view) {
-          switchTo(a.view)
+          switchTo(current === a.view ? 'actions' : a.view)
           return
         }
         const pool = a.pool
         if (pool !== undefined) handlers.action({ ...a, pool })
       })
-      el.append(b)
+      row.append(b)
     }
+    return row
+  }
+
+  function renderSettings(host: HTMLElement): void {
+    for (const row of ROWS) {
+      const line = document.createElement('div')
+      line.className = 'pet-setting'
+      const label = document.createElement('span')
+      label.textContent = row.label
+      line.append(label)
+      for (const o of OPTIONS) {
+        const b = btn(o.label, { key: row.key, value: o.value }, values[row.key] === o.value)
+        b.addEventListener('click', () => handlers.setting({ [row.key]: o.value }))
+        line.append(b)
+      }
+      host.append(line)
+    }
+    const back = btn('返回', { view: 'actions' }, false)
+    back.addEventListener('click', () => switchTo('actions'))
+    host.append(back)
+  }
+
+  function render(): void {
+    el.replaceChildren()
+    foodRefs = null                 // 旧节点已经不在了，别让 syncScroll 去摸它们
+    actionsEl = null
+    plateEl = null
+    // 设置视图整块替换：那是文字行，旁边再挂一排按钮只会挤成两截，它自己就是主块。
+    // 其余视图按钮条常驻，副板（列表 / 读数）另算一块。
+    if (current !== 'settings') {
+      actionsEl = renderActions()
+      el.append(actionsEl)
+    }
+    if (hasPlate(current)) {
+      plateEl = document.createElement('div')
+      plateEl.className = 'pet-plate'
+      plateEl.classList.add(`is-${current}`)
+      if (current === 'foods') renderFoods(plateEl)
+      else if (current === 'stats') renderStats(plateEl)
+      else renderSettings(plateEl)
+      el.append(plateEl)
+    }
+    // 视图换了尺寸就变，锚在旧矩形上会飘：两块各按自己的锚点重贴
+    place(primary(), at)
+    place(plateEl, hasSecondAnchor(current) ? plateAt : null)
   }
 
   function switchTo(v: PanelView): void {
@@ -325,8 +375,6 @@ export function createPanel(
     current = v
     resetScroll()          // 进列表从头看，离开列表没什么好保留的
     render()
-    // 位置要立刻重算：视图换了尺寸就变，锚在旧矩形上会飘
-    if (at !== null) el.style.transform = `translate(${Math.round(at.x)}px, ${Math.round(at.y)}px)`
     handlers.view(v)
   }
 
@@ -343,13 +391,19 @@ export function createPanel(
     show(p) {
       at = p
       el.hidden = false
-      el.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`
+      place(primary(), p)
+      place(plateEl, hasSecondAnchor(current) ? plateAt : null)
+    },
+    showPlate(p) {
+      plateAt = p
+      place(plateEl, p)
     },
     hide() {
       at = null
+      plateAt = null
       el.hidden = true
       resetScroll()
-      // 收起来就回到动作视图：下次悬停看到的是按钮而不是设置页或列表，
+      // 收起来就回到动作视图：下次点开看到的是按钮而不是设置页或列表，
       // 不然用户会觉得自己上次离开时面板坏在了那里。
       if (current !== 'actions') {
         current = 'actions'
@@ -363,7 +417,25 @@ export function createPanel(
     size() {
       if (!at) return null
       // 只有打开后才量得到：收起时不在布局里，offsetWidth 是 0，所以别在收起状态调它
-      return { w: el.offsetWidth, h: el.offsetHeight }
+      const node = primary()
+      return node === null ? null : { w: node.offsetWidth, h: node.offsetHeight }
+    },
+    plateSize() {
+      if (!at || plateEl === null || !hasSecondAnchor(current)) return null
+      return { w: plateEl.offsetWidth, h: plateEl.offsetHeight }
+    },
+    primaryEl() {
+      return primary()
+    },
+    rects() {
+      if (at === null) return []
+      const out: Rect[] = []
+      for (const node of [actionsEl, plateEl]) {
+        if (node === null) continue
+        const r = node.getBoundingClientRect()
+        out.push({ x: r.x, y: r.y, w: r.width, h: r.height })
+      }
+      return out
     },
     setSettings(s) {
       values = s
