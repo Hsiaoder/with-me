@@ -111,9 +111,13 @@ try {
   const settled = await rowSnapshot()
   console.log(`落定后整排：${settled.map((s) => s.toFixed(3)).join(' ')}（该全是 1.000）`)
 
-  // ② 列表那张卡片的出场
+  // ② 副板**不做动画**（2026-11-06 用户拍的板：食物列表直接出现）。
+  //   这里留一段反向检查：读到的 scale 必须一直是 1、translate 必须是 none——
+  //   有人把卡片的胀开动画加回来时，这段会报 ✗。
   await page.click('.pet-panel button[data-id="feed"]')
-  verdict('副板出场', await sample('.pet-plate'))
+  const plateRows = await sample('.pet-plate', 6)
+  const still = plateRows.filter((r) => r !== null).every((r) => r.scale === 1 && (r.translate === 'none' || r.translate === '0px 0px'))
+  console.log(`${still ? '✓' : '✗'} 副板直接出现（没有动画）：scale ${plateRows.filter((r) => r !== null).map((r) => r.scale.toFixed(2)).join(' ')}`)
   await shot('motion-foods-t0.png')
   await page.waitForTimeout(400)
   const f1 = await page.evaluate(() => {

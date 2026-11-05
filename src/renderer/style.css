@@ -160,9 +160,6 @@ body.pet-over {
   pointer-events: auto;
   cursor: var(--pet-cursor);
   will-change: transform;
-  /* 出场的两条（写在基类这一条里，不要另开一条 .pet-plate——
-     e2e 那条「光标只有一处定义」的探针是按 selectorText 数规则的，多一条同名规则就判红）。 */
-  transition: scale 0.18s ease, translate 0.18s ease;
 }
 
 .pet-panel[hidden] {
@@ -208,19 +205,12 @@ body.pet-over {
   transition-delay: calc(var(--i, 0) * var(--stagger));
 }
 
-/* 卡片该从贴着按钮条的那条边长出来，而不是从自己的中心胀开。
-   它**不吃过冲**：274px 宽的卡片胀过头再回落会像整块板在抖，过冲只留给小东西。 */
-.pet-panel[data-side='below'] .pet-plate {
-  transform-origin: 50% 0;
-}
-
-.pet-panel[data-side='above'] .pet-plate {
-  transform-origin: 50% 100%;
-}
-
+/* 出场动画只给按钮条那五颗。**副板（食物列表 / 状态读数 / 设置行）直接出现，不做动画**——
+   用户 2026-11-06 明确要的。以前这里给卡片配过一套 scale + translate + transform-origin，
+   274px 的东西胀开再落定，读起来像整块板在抖，撤掉了。
+   所以副板身上不许再出现 transition: scale/translate，也不许进 @starting-style。 */
 @starting-style {
-  .pet-panel:not([hidden]) .pet-actions button[data-id],
-  .pet-panel:not([hidden]) .pet-plate {
+  .pet-panel:not([hidden]) .pet-actions button[data-id] {
     scale: var(--enter-scale);
     translate: 0 calc(var(--enter-shift) * var(--enter-dir));
   }
@@ -672,22 +662,17 @@ body.pet-over {
    选择器**必须限定在 `.pet-plate` 里**：这条用的是 `background` 简写，
    而 `.pet-actions` 那五颗的圆底就是它们的 `background-image`——简写会把图擦成 none，
    按钮当场露成 40×40 的正方形（2026-11-06 真发生过：`syncActive()` 第一次把 .on 挂到圆底上）。
-   文字卡片没有背景图，所以它们吃这条；圆底吃下面那条描边环。 */
+   文字卡片没有背景图，所以它们吃这条。 */
 .pet-plate button.on {
   background: var(--on-fill);
   border-color: rgba(0, 0, 0, 0.34);
   font-weight: 600;
 }
 
-/* 圆底的选中态：加一圈**留了缝的描边环**，完全不碰 background。
-   `outline` 在 Chromium 里跟着 border-radius 走，所以 50% 圆 + offset 2px 就是一圈同心环；
-   用 outline 而不是 box-shadow，是因为 shadow 会跟着卡片那条投影叠在一起。
-   颜色取圆底自己的环色 #6990A7（对面 3.09:1），比再引一支新蓝老实。 */
-.pet-actions button[data-id].on {
-  border-radius: 50%;
-  outline: 2px solid #6990a7;
-  outline-offset: 2px;
-}
+/* 圆底**没有视觉选中态**，这是拍板不是遗漏：`.on` 仍然挂在当前视图那颗上（状态语义与测试都靠它），
+   但不画任何东西。试过一圈 `outline` 描边环，用户看后的原话是「不要出现外面的一个黑圈」——
+   40px 的圆外面再套 2px 环，在浅板面上读起来就是一个脏圈。
+   「再点一次同一个按钮 = 收回副板」这条不靠视觉标记也成立。 */
 
 /* F9 命中区可视化 */
 .hit-outline {

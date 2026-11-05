@@ -100,7 +100,8 @@ describe('面板出场动画的形状约束', () => {
 
   it('有出场起始态：scale + translate，且绝不碰 transform', () => {
     expect(starting.length, '一个 @starting-style 块都没读到').toBeGreaterThan(0)
-    expect(starting.join('\n'), '起始态该用独立的 scale 属性').toContain('scale: var(--enter-scale)')
+    const enter = starting.find((b) => b.includes('scale: var(--enter-scale)'))
+    expect(enter, '出场起始态该用独立的 scale 属性').toBeDefined()
     // transform 是 place() 每帧写的定位，按钮悬停也占着它——动画抢这个属性会把两块摆歪
     for (const block of starting) {
       expect(block, '@starting-style 里出现了 transform，会和定位打架').not.toMatch(/[^-]transform:/)
@@ -147,10 +148,18 @@ describe('选中态的声明方式', () => {
     }
   })
 
-  it('圆底的选中态走描边环，不碰背景', () => {
-    const disc = css.match(/\.pet-actions button\[data-id\]\.on \{([^}]*)\}/)?.[1] ?? ''
-    expect(disc, '圆底没有自己的选中态规则').toContain('outline')
-    expect(disc).not.toContain('background')
+  it('圆底没有视觉选中态，副板不参与出场动画（两条都是拍板，不是遗漏）', () => {
+    // ① 描边环试过，用户说「不要出现外面的一个黑圈」——所以圆底上不许再有 outline / background
+    const disc = css.match(/\.pet-actions button\[data-id\][^{]*\.on[^{]*\{([^}]*)\}/)?.[1]
+    expect(disc, '圆底又被加了视觉选中态（用户明确不要那圈黑环）').toBeUndefined()
+    // ② 副板直接出现：基类不许有 scale/translate 过渡，也不许进 @starting-style
+    const plate = css.match(/\.pet-plate \{([^}]*)\}/)?.[1] ?? ''
+    expect(plate, '副板被加回了胀开动画').not.toMatch(/transition:[^;]*(scale|translate)/)
+    const enter = [...css.matchAll(/@starting-style\s*\{([\s\S]*?)\n\}/g)].map((m) => m[1] ?? '')
+    expect(enter.length, '一个 @starting-style 块都没读到').toBe(3)   // 根淡入 / 按钮出场 / 气泡淡入
+    for (const block of enter) {
+      expect(block, '副板又进了 @starting-style').not.toContain('pet-plate')
+    }
   })
 })
 
