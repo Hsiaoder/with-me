@@ -73,25 +73,24 @@ try {
     join('spike', 'out', 'bubble-crop.png'),
   ])
 
-  // 过渡宽度：在主泡**最宽那一行**上，从方框左沿往里扫到第一个不透明列，
+  // 过渡宽度：在**穿过矩形身子中间那一行**上，从方框左沿往里扫到第一个不透明列，
   // 数「桌面 → 描边」摊开在几个像素上。越小说明越硬：矢量应当是 1~2 个设备像素
   // （一次 alpha 覆盖），二次重采样的位图会摊到 3~5 个。
-  // 两个坑：① 不能走框的纵向中点——这版尾巴在**正下方**，主泡圆心被顶到框内 y=91.67，
-  //   走 110 读到的是尾巴根那条通道；② 不能从框沿起算固定偏移——外沿圆离框沿还有
-  //   18.4 个 CSS 像素（viewBox 512 里 42.67 单位），那是形状不是模糊。所以先自己找那条边。
+  // 矩形版两个坑：① 中线矩形是 x 6..434、环厚 12 → 外沿正好切在 viewBox 边上，
+  //   所以左沿的预期就是 **0**，别再按圆版那个 42.67 单位去等（那是上一版的形状）；
+  //   ② 采样行走身子中间（(6+246)/2 = 126 单位 → CSS 63），走到尾巴那几行读到的是斜边。
   const raw = execFileSync(FF, ['-v', 'error', '-i', join('spike', 'out', 'bubble-shot.png'), '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { maxBuffer: 1 << 28 })
   const alphaAt = (x, y) => raw[(y * imgW + x) * 4 + 3]
   const k = P.w / 220                                  // CSS 像素 → 设备像素（框宽 220 CSS）
-  const midY = P.y + Math.round((213.33 / 512 * 220) * k)   // 主泡圆心，不在框正中
+  const midY = P.y + Math.round((126 / 440 * 220) * k) // 身子中间的采样行
   let edge = -1
   for (let x = 0; x < P.w; x++) {
     if (alphaAt(P.x + x, midY) > 200) { edge = x; break }
   }
-  // 预期位置：外沿圆 256−213.33 = 42.67 单位，换算 42.67 × (220/512) CSS × 2 设备 ≈ 37 个设备像素。
-  const want = Math.round(42.67 * (220 / 512) * k)
-  console.log(edge < 0 ? '✗ 中心行上没找到气泡左沿'
-    : `主泡左沿：实测 x=${edge} 设备像素（预期 ≈${want}）；过渡 alpha：${Array.from({ length: 6 }, (_, i) => alphaAt(P.x + edge - 2 + i, midY)).join(' ')}`)
-  console.log(`量到的气泡框：${JSON.stringify(geo)}（该是 220×220）`)
+  const want = 0                                       // 外沿切在框边，容 1 格是反走样
+  console.log(edge < 0 ? '✗ 采样行上没找到气泡左沿'
+    : `气泡左沿：实测 x=${edge} 设备像素（预期 ${want}）；过渡 alpha：${Array.from({ length: 6 }, (_, i) => alphaAt(P.x + edge + i, midY)).join(' ')}`)
+  console.log(`量到的气泡框：${JSON.stringify(geo)}（该是 ${220}×${160}）`)
   console.log('已存：spike/out/bubble-shot.png + bubble-crop.png')
 } finally {
   await app.close()

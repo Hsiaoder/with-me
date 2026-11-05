@@ -5,6 +5,7 @@ import {
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_INNER_BOTTOM,
+  BUBBLE_CAVITY, BUBBLE_RING_W,
   FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
 } from '../src/shared/config.js'
 import { mimeOf } from '../src/main/protocol.js'
@@ -191,7 +192,7 @@ describe('气泡尺寸', () => {
     expect(code.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).not.toMatch(/image-rendering:\s*pixelated/)
   })
 
-  it('文字与按钮都留在纯白内腔里（底边压在 BUBBLE_INNER_BOTTOM，四角落在内腔圆内）', () => {
+  it('文字与按钮都留在纯白内腔里（底边压在 BUBBLE_INNER_BOTTOM，四角不碰描边也不进圆角）', () => {
     const css = readFileSync('src/renderer/style.css', 'utf8')
     const block = (sel: string): string => css.match(new RegExp(`[.]${sel} [{]([^}]*)[}]`))?.[1] ?? ''
     const px = (sel: string, prop: string): number =>
@@ -207,37 +208,41 @@ describe('气泡尺寸', () => {
     expect(px('pet-bubble-nosuch', 'top')).toBe(-1)
 
     /**
-     * 内腔是**圆**，不是矩形——只验底边会放过「四角戳到描边上」那种错。
-     * 圆心与半径都从素材里算出来，不在测试里抄一份数字（抄了就是第二本账，素材改了测试还绿着）：
-     * bubble.svg 是一条**中线**轮廓 + 描边，所以
-     *   中线半径 = 路径里那条 `A r r` 的 r，环厚 = stroke-width，
-     *   内腔半径 = 中线半径 − 环厚/2，
-     *   圆心 = 路径起点（中线圆的最高点）往下挪一个中线半径。
-     * 尾巴在正下方，所以圆心**不在框正中**——这正是这条算式存在的理由。
+     * 内腔是**圆角矩形**（上一版是圆，再上一版是椭圆），所以分两步：
+     * ① 从素材读 viewBox 与 stroke-width，钉住「显示比例 = 素材比例」和「环厚 = BUBBLE_RING_W」——
+     *    这是素材与 config 之间唯一能机器核对的两条关系；素材换了形状而 config 没重算，这里就红。
+     * ② 用 config 的 BUBBLE_CAVITY（内腔界，算法写在那条注释里）验内容块：
+     *    先在矩形界内，再看有没有哪个角落进「两个方向都进了角区」的那块——那里要躲开圆弧。
      */
     const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8').replace(/<!--[\s\S]*?-->/g, '')
     const vb = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
     expect(vb, 'bubble.svg 读不到 viewBox').not.toBeNull()
     const [vbW, vbH] = [Number(vb![1]), Number(vb![2])]
-    expect(vbW, '这条算式按正方框写的').toBe(vbH)
-    const midR = Number(svg.match(/A([\d.]+) [\d.]+ 0 0 1/)?.[1] ?? -1)
-    const band = Number(svg.match(/stroke-width="([\d.]+)"/)?.[1] ?? -1)
-    const start = /M([\d.]+) ([\d.]+)/.exec(svg)
-    expect(midR, 'bubble.svg 读不到中线弧半径').toBeGreaterThan(0)
-    expect(band, 'bubble.svg 读不到 stroke-width').toBeGreaterThan(0)
-    expect(start, 'bubble.svg 读不到路径起点').not.toBeNull()
+    const stroke = Number(svg.match(/stroke-width="([\d.]+)"/)?.[1] ?? -1)
+    expect(stroke, 'bubble.svg 读不到 stroke-width').toBeGreaterThan(0)
     const k = BUBBLE_W / vbW
-    const cavityR = (midR - band / 2) * k
-    const cx = Number(start![1]) * k
-    const cy = (Number(start![2]) + midR) * k
-    // 用户点名「边框要设置的细一点」：环厚按原图比例只有 9.2 CSS px，
-    // 上一版（iconfont 那支）是 18.3。这条钉住别哪天手滑又画粗回去。
-    expect(band * k, `环厚 ${band * k}px，比 12px 还粗就不叫细了`).toBeLessThanOrEqual(12)
+    expect(vbH * k, `素材 ${vbW}×${vbH} 换算过来高 ${vbH * k}，和 BUBBLE_H=${BUBBLE_H} 不是同一个比例`).toBeCloseTo(BUBBLE_H, 1)
+    // 用户两次点名「边框要细」：18.3 → 9.2 → 6。粗回去或细到发虚都会红。
+    expect(stroke * k, `环厚 ${(stroke * k).toFixed(1)}px，和 BUBBLE_RING_W=${BUBBLE_RING_W} 对不上`).toBeCloseTo(BUBBLE_RING_W, 1)
+    expect(BUBBLE_RING_W, '环厚低于 4px 在 2× 远程桌面上会开始发虚').toBeGreaterThanOrEqual(4)
+
+    const cav = BUBBLE_CAVITY
+    // 内容下界不许低过内腔底边（低过了就是字压到描边上），而且要有余量：留 14px 是这版的解。
+    expect(BUBBLE_INNER_BOTTOM, `内容下界 ${BUBBLE_INNER_BOTTOM} 低过内腔底边 ${cav.y + cav.h}`).toBeLessThanOrEqual(cav.y + cav.h)
+    expect(cav.y + cav.h - BUBBLE_INNER_BOTTOM, '下界离内腔底边太近，字会看着像要掉出去').toBeGreaterThanOrEqual(8)
     for (const sel of ['pet-bubble-text', 'pet-bubble-reply']) {
       const box = { x: px(sel, 'left'), y: px(sel, 'top'), w: px(sel, 'width'), h: px(sel, 'height') }
+      expect(box.x, `${sel} 越过内腔左沿`).toBeGreaterThanOrEqual(cav.x)
+      expect(box.y, `${sel} 越过内腔上沿`).toBeGreaterThanOrEqual(cav.y)
+      expect(box.x + box.w, `${sel} 越过内腔右沿`).toBeLessThanOrEqual(cav.x + cav.w)
+      expect(box.y + box.h, `${sel} 越过内腔下沿`).toBeLessThanOrEqual(cav.y + cav.h)
       const corners: [number, number][] = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]]
-      const worst = Math.max(...corners.map(([x, y]) => Math.hypot(x - cx, y - cy)))
-      expect(worst, `${sel} 的角点离圆心 ${worst.toFixed(1)}，内腔半径只有 ${cavityR.toFixed(1)}`).toBeLessThan(cavityR)
+      for (const [x, y] of corners) {
+        const fx = x < cav.x + cav.r ? cav.x + cav.r : x > cav.x + cav.w - cav.r ? cav.x + cav.w - cav.r : null
+        const fy = y < cav.y + cav.r ? cav.y + cav.r : y > cav.y + cav.h - cav.r ? cav.y + cav.h - cav.r : null
+        if (fx === null || fy === null) continue
+        expect(Math.hypot(x - fx, y - fy), `(${x},${y}) 扎进圆角里了`).toBeLessThanOrEqual(cav.r)
+      }
     }
   })
 })

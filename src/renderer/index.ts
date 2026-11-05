@@ -279,6 +279,20 @@ function bootstrap(skin: SkinPayload): void {
     recomputeInteraction()
   }
 
+  /**
+   * 立刻收掉气泡，并把那条一次性定时器一起撤掉。
+   * 只调 `bubble.hide()` 会留一条没人认领的尾巴：定时器在下一次 say 之前的空档里还会
+   * firing 一次（`onReply` 那条注释踩过同一个坑）。
+   * 收起之后必须收尾交互区——气泡是 bubble.ts 自己摘掉的 DOM，不会有光标事件来纠正
+   * `wantGrab`（problem/01 §1.15）。
+   */
+  function dismissBubble(): void {
+    if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
+    bubbleDeadline = null
+    bubble.hide()
+    recomputeInteraction()
+  }
+
   /** 光标压在气泡上就算「还在读」。判据用坐标，不用 CSS :hover：穿透一开就收不到 mouseleave。 */
   function overBubble(p: Point): boolean {
     const r = bubble.rect()
@@ -601,8 +615,12 @@ function bootstrap(skin: SkinPayload): void {
     if (Math.hypot(p.x - pressPoint.x, p.y - pressPoint.y) < DRAG_START_PX) return
     dragStarted = true
     closePanel()          // 拖拽期间不挂菜单：它一路跟着宠物飘，也不是用户此刻要用的东西
+    // 气泡同理，而且它比菜单更该走：话说到一半人被拎起来，那句还钉在原来的位置上飘着，
+    // 读起来像 bug 而不是话（用户拍的板：拖拽时不弹气泡）。
+    dismissBubble()
     requestClip('drag')
-    sayFor('drag')
+    // 这里原来还有一句 sayFor('drag')——「被拎起来必回一句」和「拖拽时不弹气泡」是冲突的，
+    // 用户 2026-11-05 选了后者，所以台词一起去掉，不留一条走不到的路径。
   })
   window.addEventListener('pointerup', () => {
     if (!dragging) return
@@ -681,11 +699,7 @@ function bootstrap(skin: SkinPayload): void {
     },
     /** 立刻收掉气泡。e2e 用它收尾，免得残留的气泡影响后面几条检查的命中判定。 */
     hideBubble: (): boolean => {
-      bubble.hide()
-      if (bubbleDeadline !== null) clearTimeout(bubbleDeadline)
-      bubbleDeadline = null
-      // 和真实收起路径一致（定时器到期、点回应按钮都会重算），不然 e2e 测的是另一套行为
-      recomputeInteraction()
+      dismissBubble()
       return true
     },
     /**

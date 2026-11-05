@@ -12,7 +12,7 @@
 import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_IDLE_PROB, TALK_MAX_CHARS } from './config.js'
 import { labelWidth } from './text.js'
 
-export type TalkReason = 'idle' | 'hungry' | 'blue' | 'feed' | 'game' | 'status' | 'drag'
+export type TalkReason = 'idle' | 'hungry' | 'blue' | 'feed' | 'game' | 'status'
 
 /** 自己搭话的几档：都要过「闲够了 + 概率」那道门。事件驱动的（喂/玩/拖）不受它管。 */
 export const SELF_TALK_REASONS: readonly TalkReason[] = ['idle', 'hungry', 'blue']
@@ -67,11 +67,8 @@ export const TALK_LINES: Record<TalkReason, Line[]> = {
     { say: '有点想睡觉', reply: '睡吧' },
     { say: '今天状态满分', reply: '真棒' },
   ],
-  drag: [
-    { say: '呀——要去哪', reply: '换个地方待' },
-    { say: '轻一点啦', reply: '知道了' },
-    { say: '被拎着走好丢人', reply: '不丢人' },
-  ],
+  // 没有 drag 这一档：拖拽时不弹气泡（用户 2026-11-05 拍的板），
+  // 「被拎起来必回一句」和它冲突，所以整条路径删掉而不是留着没人调。
 }
 
 /** 折叠换行、去首尾空白，超长按码点截断加省略号。空的一律变空串。 */
@@ -85,7 +82,7 @@ export function clamp(text: string): string {
 /**
  * 该不该开口、说什么。返回 null 就是这句不说。
  *
- * 概率只作用于「自己搭话」那几档（idle / hungry / blue）：用户做了动作（喂、拖、点）
+ * 概率只作用于「自己搭话」那几档（idle / hungry / blue）：用户做了动作（喂、点按钮）
  * 就该有回应，掷骰子决定「要不要理你」会把反馈丢掉。冷却对两者都生效，
  * 否则连点按钮会一句话接一句话刷屏。
  *
@@ -106,7 +103,7 @@ export const replyFits = (line: Line): boolean => labelWidth(line.reply) <= REPL
 
 /**
  * 台词表摊平成一条有序流：面板「说话」按钮按顺序逐条放，走完绕回。
- * 顺序就是 `TALK_LINES` 里 reason 的书写顺序（idle → feed → game → status → drag），
+ * 顺序就是 `TALK_LINES` 里 reason 的书写顺序（idle → feed → game → status），
  * 再按各池里的行序——调试时要能预期「下一条是哪句」，所以这里刻意不用随机。
  */
 export const TALK_FLOW: readonly Line[] = (Object.keys(TALK_LINES) as TalkReason[])

@@ -1065,6 +1065,44 @@ check('拖拽动画挂在「真的拖起来了」那一刻，松手就切回环�
   assert.match(seen.after.front, /^idle\//, `松手后前台没回到环境链：${seen.after.front}`)
 })
 
+check('拖拽时气泡消失，而且拖拽本身不再冒出新的气泡', async () => {
+  /**
+   * 用户拍的板：「当气泡弹出时，拖拽宠物进行移动，这时气泡要消失」。
+   * 原来这里还有一句 sayFor('drag')——「被拎起来必回一句」和这条冲突，所以整条路径删了
+   * （台词表里 drag 那一档一起删，不留走不到的路）。
+   * 三步各钉一件事：话挂着 → 真的拖起来那刻收掉 → 拖的过程中不自己冒回来。
+   */
+  const seen = await page.evaluate(async () => {
+    const h = window.__petDebug.hitBox
+    const from = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    const to = { x: from.x + 140, y: from.y - 40 }
+    const fire = (type, p) => window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
+    window.__petDebug.hideBubble()
+    // ms 给足 60 秒：这条要验的是「拖拽把它收掉」，不是定时器把它收掉
+    const opened = window.__petDebug.say('先说一句挂着', 60000)
+    await new Promise((r) => setTimeout(r, 120))
+    const before = window.__petDebug.bubbleOpen
+    fire('pointerdown', from)
+    // 没过阈值那一次不该收：只是按住，还没拖
+    fire('pointermove', { x: from.x + 2, y: from.y })
+    const held = window.__petDebug.bubbleOpen
+    fire('pointermove', to)
+    const afterStart = window.__petDebug.bubbleOpen
+    const poolAtMove = window.__petDebug.current.pool
+    await new Promise((r) => setTimeout(r, 400))
+    const stillClosed = window.__petDebug.bubbleOpen
+    fire('pointerup', to)
+    window.__petDebug.hideBubble()
+    return { opened, before, held, afterStart, stillClosed, poolAtMove }
+  })
+  assert.equal(seen.opened, true, '前置：say 没把气泡叫出来')
+  assert.equal(seen.before, true, '前置：拖之前气泡该挂着')
+  assert.equal(seen.held, true, `只按住没移动就把气泡收了：那是「点」不是「拖」`)
+  assert.equal(seen.afterStart, false, '真的拖起来了，气泡还挂着——它会被一路拖着飘，读起来像 bug')
+  assert.equal(seen.stillClosed, false, '拖拽过程中气泡自己又冒出来（drag 台词没删干净？）')
+  assert.equal(seen.poolAtMove, 'drag', `越过阈值那一步没判成拖拽，上面收的其实是「点」：${seen.poolAtMove}`)
+})
+
 check('点一下不动是「点」：走 click 池，绝不碰 drag', async () => {
   // 按下立刻算拖起是老逻辑的副产品：点身体也吃 drag 动画。加了位移阈值之后，
   // 没过阈值的那次必须是 click，否则「点一下」没有任何反应（点了必须有反应）。

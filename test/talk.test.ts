@@ -14,7 +14,8 @@ const ctx = (over: Partial<{ now: number; idleMs: number; lastTalkAt: number }> 
   lastTalkAt: 0,
   ...over,
 })
-const REASONS: TalkReason[] = ['idle', 'feed', 'game', 'status', 'drag']
+// 没有 'drag'：拖拽时不弹气泡（用户 2026-11-05 拍的板），台词表里那一档一起删了
+const REASONS: TalkReason[] = ['idle', 'feed', 'game', 'status']
 
 describe('台词表', () => {
   for (const r of REASONS) {
@@ -55,7 +56,6 @@ describe('pickTalk', () => {
 
   it('事件驱动的台词必说，不看概率', () => {
     expect(pickTalk('feed', ctx(), seq(0.99, 0))).not.toBeNull()
-    expect(pickTalk('drag', ctx(), seq(0.99, 0))).not.toBeNull()
   })
 
   it('rng 决定组内哪一句，且不会越界', () => {
@@ -104,7 +104,7 @@ describe('调试台词流（面板「说话」按钮按顺序放）', () => {
     expect(TALK_FLOW.length).toBe(total)
     expect(new Set(TALK_FLOW.map((l) => l.say)).size).toBe(total)
     expect(TALK_FLOW[0]).toEqual(TALK_LINES.idle[0])
-    expect(TALK_FLOW.at(-1)).toEqual(TALK_LINES.drag.at(-1))
+    expect(TALK_FLOW.at(-1)).toEqual(TALK_LINES.status.at(-1))
   })
 
   it('每条都装得进气泡：正文不超上限，回复放得下那颗按钮', () => {
