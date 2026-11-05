@@ -563,6 +563,37 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   assert.equal((await dbg()).open, false, '再点一下没能把面板收掉')
 })
 
+check('五枚图标按实测墨迹逐枚定尺寸，说话那枚不被拉方', async () => {
+  assert.ok(await openOnBody(), '前置：面板叫不出来就量不到图标')
+  // 真实鼠标停在上一处点击的位置，悬停的 scale(1.15) 会把量到的矩形放大——先挪开
+  await page.mouse.move(2, 2)
+  await page.waitForTimeout(150)
+  const icons = await page.evaluate(async () => {
+    const list = [...document.querySelectorAll('.pet-actions button[data-id]')]
+    await Promise.all(list.map((b) => b.querySelector('img').decode().catch(() => {})))
+    return list.map((b) => {
+      const i = b.querySelector('img')
+      const r = i.getBoundingClientRect()
+      return {
+        id: b.dataset.id,
+        box: `${Math.round(r.width)}x${Math.round(r.height)}`,
+        nat: [i.naturalWidth, i.naturalHeight],
+        shadow: getComputedStyle(i).filter,
+      }
+    })
+  })
+  assert.deepEqual(icons.map((i) => `${i.id}:${i.box}`),
+    ['feed:20x20', 'game:24x24', 'status:24x24', 'settings:20x20', 'talk:18x21'],
+    `图标尺寸和实测表不一致：${JSON.stringify(icons.map((i) => i.box))}`)
+  const talk = icons.find((i) => i.id === 'talk')
+  assert.ok(Math.abs(talk.box.split('x')[0] / talk.box.split('x')[1] - talk.nat[0] / talk.nat[1]) < 0.02,
+    `说话那枚又被拉方了：渲染 ${talk.box} vs 素材 ${talk.nat.join('x')}`)
+  // 只有白色实心那枚需要投影分边；深墨的四枚加投影只会在 2× 远程桌面上糊出灰晕
+  const shadowed = icons.filter((i) => i.shadow !== 'none').map((i) => i.id)
+  assert.deepEqual(shadowed, ['talk'], `投影没只留给白气泡：${JSON.stringify(shadowed)}`)
+  await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
 check('「说话」按钮：按顺序放台词，走完绕回，冷却拦不住它', async () => {
   // 这颗按钮是给调试气泡用的：必须**每点必出**，且能逐条把台词表走一遍。
   // 走 pickTalk 那条路就会被 25 秒冷却吞掉，点下去没反应——所以它绕开冷却，这条要钉住。
@@ -687,17 +718,23 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   assert.equal(plate.pad, '3px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
   // 格子底是 square_depth_line；翻页键是箭头图。两者都走那两条白名单，
   // 名字写错就是 404：格子变白片、箭头变空框，所以必须真的 decode 一次。
+  // 格子退回 CSS 白卡：底板和格子以前铺同一套四层边，56px 上糊成框中框。
+  // 所以这里要钉的是「格子**没有**背景图、板面是白卡」，而不是某个素材名。
   const art = await page.evaluate(async () => {
-    const cell = getComputedStyle(document.querySelector('.pet-food')).backgroundImage
+    const cs = getComputedStyle(document.querySelector('.pet-food'))
     const imgs = [...document.querySelectorAll('.pet-page img')]
     await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
     return {
-      cell,
+      cellBg: cs.backgroundImage,
+      cellRadius: cs.borderTopLeftRadius,
+      cellFont: cs.fontSize,
       arrows: imgs.map((i) => ({ src: i.getAttribute('src'), ok: i.naturalWidth > 0 })),
       labels: imgs.map((i) => i.closest('button')?.getAttribute('aria-label')),
     }
   })
-  assert.match(art.cell, /icons\/button_square_depth_line\.png/, `格子底不是 square_depth_line：${art.cell}`)
+  assert.equal(art.cellBg, 'none', `格子还铺着素材底，框中框没拆掉：${art.cellBg}`)
+  assert.equal(art.cellRadius, '8px', `格子该是白卡的圆角：${art.cellRadius}`)
+  assert.equal(art.cellFont, '12px', `格子字号该跟面板其余文字一致：${art.cellFont}`)
   assert.deepEqual(art.arrows, [
     { src: 'icons/arrow_basic_w_small.svg', ok: true },
     { src: 'icons/arrow_basic_e_small.svg', ok: true },

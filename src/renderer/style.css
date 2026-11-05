@@ -253,18 +253,46 @@ body.pet-over {
 /* 动作视图的五颗：图标底下垫一枚 Kenney `button_round_depth_line`（CC0，白底 + 灰环 + 一点蓝内圈，
    外环的下半圈是更深的 747487，所以看着像有厚度；上一版用的是没有这道暗边的 button_round_line）。
    以前这里刻意什么都不画，结果白色系的图标（米饭碗）压在浅色壁纸上会糊成一片，
-   也看不出哪里能点。40px 的方块仍然是命中区——图标才 26px，按图标本身点太费眼睛。
+   也看不出哪里能点。40px 的方块仍然是命中区——图标只有 20~24px，按图标本身点太费眼睛。
    选择器用 `button[data-id]`：只有动作按钮带 data-id，设置/列表/状态视图的按钮各有自己的底板。 */
 .pet-panel button[data-id] {
   background: url("icons/button_round_depth_line.svg") center / 100% 100% no-repeat;
 }
 
+/* 图标尺寸逐枚定，不用一个 26 卡死。iconfont 那几张内部留白差得远
+   （spike/icon-metrics.mjs 实测墨迹占方框 0.75~1.00），同一个方框里碗的筷子和齿轮的齿
+   会戳出圆底青圈——青圈内半径 = 25/64 × 40 = 15.6px，而 26px 方框的墨迹半对角有 18.4px；
+   反过来爱心和手柄又空出一大圈。下面的值按实测墨迹最远半径反推，统一压进 14px 以内，
+   五颗的光学尺寸才真的一致。 */
 .pet-icon {
-  width: 26px;
-  height: 26px;
   display: block;
-  /* 圆底是白的，白色系图标还是得靠这道投影分边；深色桌面上投影也顺手把整颗按钮托起来。 */
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.pet-panel button[data-id="feed"] .pet-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.pet-panel button[data-id="game"] .pet-icon,
+.pet-panel button[data-id="status"] .pet-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.pet-panel button[data-id="settings"] .pet-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* 说话那枚是 Kenney Vector 32×38——**不是像素图**（实测 28 个颜色里有半透明过渡，是抗锯齿），
+   所以绝不能加 image-rendering: pixelated，加了反而阶梯化。
+   以前被塞进 26×26 的方框，横向凭空拉宽 18%，气泡看着矮胖；这里按原比例给 18×21。
+   投影也只留给它一个人：它是唯一的白色实心图，需要和浅色圆底分边；
+   另外四枚本来就是深墨，投影在 2× 远程桌面上只会把 1.6px 的细描边糊出一圈灰晕。 */
+.pet-panel button[data-id="talk"] .pet-icon {
+  width: 18px;
+  height: 21px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.22));
 }
 
 /* 悬停时整颗一起放大，不是只放大图标：只放大图标会戳出圆底外沿，看着像画歪了。 */
@@ -313,17 +341,24 @@ body.pet-over {
   width: 150px;
 }
 
-.pet-plate.is-stats button {
+/* 状态栏与设置视图里的文字卡片。两条规则以前只差 padding（3/7 vs 4/8），合并成一条统一 4px 8px。
+   卡片必须有**真边框**：`.pet-panel button.on` 靠 border-color 加深来表意「当前生效」，
+   而基类是 `border: none`——那行一直是死声明，选中态只剩底色加粗，等于靠颜色单独表意。 */
+.pet-plate.is-stats button,
+.pet-plate.is-settings button {
   width: auto;
   height: auto;
-  padding: 3px 7px;
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 6px;
   box-shadow: none;
   background: rgba(255, 255, 255, 0.9);
   font: 12px/1 "Microsoft YaHei UI", sans-serif;
 }
 
-.pet-plate.is-stats button:hover {
+/* 悬停换底色。动作视图不画底色——那里没有底板，画了就成了悬浮的方片。 */
+.pet-plate.is-stats button:hover,
+.pet-plate.is-settings button:hover {
   background: #eef6f4;
 }
 
@@ -412,20 +447,23 @@ body.pet-over {
   will-change: transform;
 }
 
-/* 选择器要压过基类 `.pet-panel button`（那条把尺寸和边框都定了），
-   所以这里带上 .pet-panel 一层——单写 .pet-food 权重不够，格子会被打回 40px 无边圆片。
-   格子底是 Kenney `button_square_depth_line`（64×64，和底板同一套四层边 + 底影）：
-   素材是正方形、格子也是正方形，等比缩到 56 不会变形，所以整张铺满就行，不用九宫格。
-   文字色跟着素材走：板面是浅灰蓝（218,220,231），白字会糊，留深色。 */
+/* 格子里现在是文字（图片以后同尺寸替换）。
+   以前格子铺 Kenney `button_square_depth_line`，和底板是同一套四层边 + 各自底影：
+   56px 尺度下每层只剩 3.5 个设备像素，蓝线灰线糊成一片，还和底板形成「框中框」，
+   两层底影叠在一起。现在定一条规则：**外板用 Kenney 素材，板内的可点项用 CSS 白卡**——
+   和状态栏、设置里的卡片同一套语言，蓝线全场只剩底板那一道。
+   顺带：净宽从 42px 回到 54px，字号跟着面板其余文字收到 12px（原来 13px 时
+   「糖葫芦」三个字 39px 挤在 42px 里，每侧只剩 1.5px）。
+   选择器要压过基类 `.pet-panel button`（那条把尺寸和边框都定了），所以带上 .pet-panel 一层。 */
 .pet-panel .pet-food {
   flex: 0 0 auto;
   width: 56px;
   height: 56px;
-  border: none;
-  border-radius: 0;
-  background: url("icons/button_square_depth_line.png") center / 100% 100% no-repeat;
-  color: #23283a;
-  font-size: 13px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2b2f36;
+  font-size: 12px;
 }
 
 /* 翻页键：以前是文字符号 `‹ ›`，在板面上对比不够、也看不出是按钮。
@@ -442,52 +480,47 @@ body.pet-over {
 }
 
 .pet-arrow {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: block;
 }
 
-/* 到边就置灰：能滚的方向没得滚了还亮着，是骗人去点。 */
+/* 到边就置灰：能滚的方向没得滚了还亮着，是骗人去点。
+   以前只压到 .35，在浅板面上算出来是 (151,198,226)——几乎看不见，
+   看着像按钮没了而不是「这头到头了」。改成 .5 再去掉一半饱和：
+   灰下去的是颜色强度，不是存在本身。 */
 .pet-panel .pet-page:disabled {
-  opacity: 0.35;
+  opacity: 0.5;
+  filter: saturate(0.45);
   cursor: default;
 }
 
 /* 横条在长方形下面，是自绘控件不是浏览器滚动条：透明覆盖层里要的是「能画成什么样都行」，
-   而且 ::-webkit-scrollbar 塞不进「矩形下面单独一条」这个形状。 */
+   而且 ::-webkit-scrollbar 塞不进「矩形下面单独一条」这个形状。
+   颜色以前是纯黑压灰（滑块 rgba(0,0,0,.42) 落在板面上算出 (126,128,134)，蓝偏只有 8），
+   是整块板里最暗、最「系统控件」的元素，还压过了格子自己的底影。
+   现在改用素材家族的影灰 #747487（蓝偏 19），并把它收到 5px 高——
+   箭头已经能翻页，这条横条的活是「现在在哪一段」，不是抢视线。
+   宽度 236 是 thumbGeometry 的契约（比例换算靠它），别动。 */
 .pet-scroll {
   position: relative;
   /* 宽度必须等于 thumbGeometry 用的视口宽，比例换算才对得上像素。 */
   width: 236px;
-  height: 8px;
-  margin-top: 4px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.12);
+  height: 5px;
+  margin-top: 3px;
+  border-radius: 3px;
+  background: rgba(116, 116, 135, 0.22);
 }
 
 .pet-thumb {
   position: absolute;
   left: 0;
   top: 0;
-  height: 8px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.42);
+  height: 5px;
+  border-radius: 3px;
+  background: #747487;
   cursor: grab;
   touch-action: none;
-}
-
-.pet-plate.is-settings button {
-  width: auto;
-  height: auto;
-  padding: 4px 8px;
-  border-radius: 6px;
-  box-shadow: none;
-  background: rgba(255, 255, 255, 0.9);
-}
-
-/* 悬停反馈只在设置视图里换底色；动作视图没有底板，画底色就成了一块方片。 */
-.pet-plate.is-settings button:hover {
-  background: #eef6f4;
 }
 
 .pet-setting {

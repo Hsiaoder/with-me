@@ -18,11 +18,11 @@ export type Food = {
   anim?: { pool: string; name: string }
 }
 
-/** 一格 56px、字号 13px，汉字约 13px 宽 → 上限按「几个汉字」算。 */
+/** 一格 56px、字号 12px，汉字约 12px 宽 → 上限按「几个汉字」算。 */
 export const FOOD_LABEL_WIDTH = 4
 
 export const FOODS: readonly Food[] = [
-  { id: 'token', name: 'Token', anim: { pool: 'eat', name: 'token' } },
+  { id: 'token', name: '代币', anim: { pool: 'eat', name: 'token' } },
   { id: 'rice', name: '白饭', anim: { pool: 'eat', name: 'rice' } },
   { id: 'tanghulu', name: '糖葫芦', anim: { pool: 'eat', name: 'tanghulu' } },
   { id: 'crab', name: '大闸蟹', anim: { pool: 'eat', name: 'crab' } },
