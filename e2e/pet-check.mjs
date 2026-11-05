@@ -720,7 +720,7 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   assert.equal(plate.slice, '8 8 12', `九宫格切片不对（多写了 fill 中心就会退回素材的浅灰）：${plate.slice}`)
   assert.equal(plate.w, '8px/8px/12px/8px', `四边厚度不对（下边要比别处多 4px 底影）：${plate.w}`)
   assert.equal(plate.pad, '3px', `留白变了，格子尺寸契约跟着动：${plate.pad}`)
-  assert.equal(plate.bg, 'rgb(220, 234, 245)', `板面中心不是那个浅蓝：${plate.bg}`)
+  assert.equal(plate.bg, 'rgb(221, 238, 248)', `板面中心不是那个浅蓝：${plate.bg}`)
   assert.equal(plate.clip, 'padding-box', `背景没裁到内沿，圆角缺口处会露出方角浅蓝：${plate.clip}`)
   // 格子底是 square_depth_line；翻页键是箭头图。两者都走那两条白名单，
   // 名字写错就是 404：格子变白片、箭头变空框，所以必须真的 decode 一次。

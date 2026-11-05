@@ -26,13 +26,20 @@ const app = await electron.launch({
 })
 
 const pngSize = (buf) => ({ w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) })
+/**
+ * A 套「品牌蓝白」的色名表：R=环 #6990A7，S=下边底影 #3E718C，
+ * f=素材面色 #EBF5FB（留白带），P=板心 #DDEEF8（CSS 填的，和 f 差一档亮度，
+ * 两条都要——它们本来就该是两个来源），w=白高光，B=青内框。
+ */
 const colorName = (r, g, bl, a) => {
   if (a < 40) return '.'
   const d = (x, y) => Math.abs(x - y)
-  if (d(r, 150) < 30 && d(g, 150) < 30 && d(bl, 163) < 30) return '#'
-  if (r > 240 && g > 240 && bl > 240) return 'w'
+  if (d(r, 62) < 18 && d(g, 113) < 18 && d(bl, 140) < 18) return 'S'
+  if (d(r, 105) < 18 && d(g, 144) < 18 && d(bl, 167) < 18) return 'R'
   if (bl > 200 && r < 120) return 'B'
-  if (d(r, 218) < 26 && d(g, 220) < 26 && d(bl, 231) < 26) return '.'
+  if (r > 240 && g > 240 && bl > 240) return 'w'
+  if (d(r, 235) < 8 && d(g, 245) < 8 && d(bl, 251) < 8) return 'f'
+  if (d(r, 221) < 8 && d(g, 238) < 8 && d(bl, 248) < 8) return 'P'
   return '?'
 }
 const runs = (line) => {
@@ -76,6 +83,17 @@ try {
     return buf
   }
   await shot('actions-shot.png')
+  // 圆底单独裁一张放大 3 倍：五枚的重染是否一致、图标有没有戳出青圈，只有看像素才说得清
+  const aRect = await page.evaluate(() => {
+    const a = document.querySelector('.pet-actions').getBoundingClientRect()
+    return { x: a.x, y: a.y, w: a.width, h: a.height, s: window.devicePixelRatio }
+  })
+  execFileSync(FF, [
+    '-v', 'error', '-y',
+    '-i', join('spike', 'out', 'actions-shot.png'),
+    '-vf', `crop=${Math.round(aRect.w * aRect.s) + 24}:${Math.round(aRect.h * aRect.s) + 24}:${Math.max(0, Math.round(aRect.x * aRect.s) - 12)}:${Math.max(0, Math.round(aRect.y * aRect.s) - 12)},scale=iw*3:ih*3:flags=neighbor`,
+    join('spike', 'out', 'actions-crop.png'),
+  ])
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')
   await page.waitForTimeout(400)
