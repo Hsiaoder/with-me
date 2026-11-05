@@ -475,6 +475,54 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(panel.el.querySelector('.pet-plate .pet-setting')).not.toBeNull()
   })
 
+  /**
+   * 出场动画的前提，比动画本身更要紧：按钮条必须是**同一批节点**跨视图活着。
+   * 每次换视图都重建的话，「从 display:none 出来才跑一次」的 @starting-style 会变成
+   * 「每次 render 都跑」——数值快照每 60 秒推一次，五颗就会在列表开着时重新弹一遍。
+   */
+  it('换视图不重建按钮条：节点是同一个', () => {
+    const { panel } = mount()
+    panel.show({ x: 0, y: 0 })
+    const before = panel.el.querySelector('.pet-actions')
+    panel.setView('foods')
+    expect(panel.el.querySelector('.pet-actions')).toBe(before)
+    panel.setView('stats')
+    expect(panel.el.querySelector('.pet-actions')).toBe(before)
+  })
+
+  it('从设置页回来才重建按钮条（离开时摘掉，回来是新的一批）', () => {
+    const { panel } = mount()
+    panel.show({ x: 0, y: 0 })
+    const before = panel.el.querySelector('.pet-actions')
+    panel.setView('settings')
+    expect(panel.el.querySelector('.pet-actions')).toBeNull()
+    panel.setView('foods')
+    const after = panel.el.querySelector('.pet-actions')
+    expect(after).not.toBeNull()
+    expect(after).not.toBe(before)
+  })
+
+  it('高亮跟着当前视图走（复用节点后必须单独同步，不能再靠重建带上）', () => {
+    const { panel } = mount()
+    panel.show({ x: 0, y: 0 })
+    const on = () => panel.el.querySelector('button.on')?.getAttribute('data-id')
+    expect(on()).toBeUndefined()
+    panel.setView('foods')
+    expect(on()).toBe('feed')
+    panel.setView('stats')
+    expect(on()).toBe('status')
+    panel.setView('actions')
+    expect(on()).toBeUndefined()
+  })
+
+  it('错峰档位 --i：中间那颗 0，向两边各 +1（出场从中心向外长）', () => {
+    const { panel } = mount()
+    panel.show({ x: 0, y: 0 })
+    const i = [...panel.el.querySelectorAll<HTMLElement>('.pet-actions button[data-id]')]
+      .map((b) => b.style.getPropertyValue('--i'))
+    expect(i).toEqual(['2', '1', '0', '1', '2'])
+  })
+
   it('主块尺寸跟着视图走：设置视图量到的是设置板，不是按钮条', () => {
     const actions = mount()
     actions.panel.show({ x: 0, y: 0 })

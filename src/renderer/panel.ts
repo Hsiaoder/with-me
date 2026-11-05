@@ -350,8 +350,11 @@ export function createPanel(
   function renderActions(): HTMLElement {
     const row = document.createElement('div')
     row.className = 'pet-actions'
-    for (const a of actions) {
+    actions.forEach((a, k) => {
       const b = iconBtn(a)
+      // 出场的错峰档位：`--i` = 离中心第几格（中间那颗 0，往外各 +1）。CSS 拿它乘 40ms。
+      // 写在 style 而不是 :nth-child，是因为按钮数量由 config 决定，写死 5 颗的序号会骗人。
+      b.style.setProperty('--i', String(Math.abs(k - (actions.length - 1) / 2)))
       b.addEventListener('click', () => {
         // 带 view 的按钮是切视图，带 pool 的才是点歌；两者都由 config 说清楚。
         // 再点一次同一个视图按钮 = 收回副板：不然列表开着时除了等自动收起没有别的关法。
@@ -363,7 +366,7 @@ export function createPanel(
         if (pool !== undefined) handlers.action({ ...a, pool })
       })
       row.append(b)
-    }
+    })
     return row
   }
 
@@ -386,14 +389,26 @@ export function createPanel(
     host.append(back)
   }
 
+  /**
+   * 重绘两块。**按钮条跨视图复用**，不跟着每次重建，两个原因：
+   * ① 出场的错峰动画靠的是「从 display:none 出来」那一次状态变化，节点要是每次换视图都重建，
+   *    数值快照每 60 秒推过来（`setStats` 会 render）就会把五颗重新弹一遍，列表开着时最明显；
+   * ② 重建还会把监听器与焦点状态一起丢掉。
+   * 副板（列表 / 读数 / 设置）内容随视图变，照旧整块换——它换一次就是「来了一张新卡片」，该弹。
+   */
   function render(): void {
-    el.replaceChildren()
-    foodRefs = null                 // 旧节点已经不在了，别让 syncScroll 去摸它们
-    actionsEl = null
-    plateEl = null
-    // 设置视图整块替换：那是文字行，旁边再挂一排按钮只会挤成两截，它自己就是主块。
-    // 其余视图按钮条常驻，副板（列表 / 读数）另算一块。
-    if (current !== 'settings') {
+    const wantActions = current !== 'settings'
+    if (plateEl !== null) {
+      plateEl.remove()
+      plateEl = null
+    }
+    foodRefs = null                 // 旧列表节点已经不在了，别让 syncScroll 去摸它们
+    if (!wantActions) {
+      if (actionsEl !== null) {
+        actionsEl.remove()
+        actionsEl = null
+      }
+    } else if (actionsEl === null) {
       actionsEl = renderActions()
       el.append(actionsEl)
     }
@@ -406,9 +421,20 @@ export function createPanel(
       else renderSettings(plateEl)
       el.append(plateEl)
     }
+    // 按钮条跨视图复用之后，「哪一颗是当前视图」得单独同步——以前是重建时顺手带上的
+    syncActive()
     // 视图换了尺寸就变，锚在旧矩形上会飘：两块各按自己的锚点重贴
     place(primary(), at)
     place(plateEl, hasSecondAnchor(current) ? plateAt : null)
+  }
+
+  /** 带 view 的按钮里，当前视图那一颗高亮。 */
+  function syncActive(): void {
+    if (actionsEl === null) return
+    for (const b of actionsEl.querySelectorAll<HTMLButtonElement>('button[data-id]')) {
+      const view = actions.find((a) => a.id === b.dataset.id)?.view
+      b.classList.toggle('on', view !== undefined && view === current)
+    }
   }
 
   function switchTo(v: PanelView): void {

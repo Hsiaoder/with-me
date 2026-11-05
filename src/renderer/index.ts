@@ -350,6 +350,9 @@ function bootstrap(skin: SkinPayload): void {
     // 主块永远走同一条锚点：动作/食物/状态视图里它是按钮条（贴脚下，脚下没地方翻头顶），
     // 设置视图里它是那块板（整块替换按钮条，位置规则一样）。
     const at = panelAnchor(body, size, screen, PANEL_GAP)
+    // 出场动画的方向：按钮条和副板都从「靠宠物那一侧」浮进来，翻到头顶时就得反过来。
+    // 这个信息 CSS 只能从根节点拿，所以写在这里——它是唯一一处同时知道 side 和 DOM 的地方。
+    panel.el.dataset.side = at.side
     panel.show(at)
     // 副板各走各的锚点，而且和主块在同一次同步任务里摆完——中间不是一帧，不会闪错位。
     const ps = panel.plateSize()

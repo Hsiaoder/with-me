@@ -93,6 +93,39 @@ describe('食物列表的尺寸', () => {
   })
 })
 
+describe('面板出场动画的形状约束', () => {
+  // 一律先剥注释：这类「读 CSS 形状」的断言把注释算进去，注释里提一句属性名就把自己判红（真发生过两次）
+  const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const starting = [...css.matchAll(/@starting-style\s*\{([\s\S]*?)\n\}/g)].map((m) => m[1] ?? '')
+
+  it('有出场起始态：scale + translate，且绝不碰 transform', () => {
+    expect(starting.length, '一个 @starting-style 块都没读到').toBeGreaterThan(0)
+    expect(starting.join('\n'), '起始态该用独立的 scale 属性').toContain('scale: var(--enter-scale)')
+    // transform 是 place() 每帧写的定位，按钮悬停也占着它——动画抢这个属性会把两块摆歪
+    for (const block of starting) {
+      expect(block, '@starting-style 里出现了 transform，会和定位打架').not.toMatch(/[^-]transform:/)
+    }
+  })
+
+  it('两条「别动」出口都在：系统减少动效 + data-no-motion（e2e 用它关掉再量几何）', () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)/)
+    expect(css).toMatch(/\[data-no-motion\]/)
+    // 出口是把旋钮拧回中性值，不是删规则——所以两处都得同时归零 scale 与错峰
+    for (const sel of ['@media (prefers-reduced-motion: reduce)', '[data-no-motion]']) {
+      const block = css.slice(css.indexOf(sel))
+      expect(block, `${sel} 该把 --enter-scale 拧回 1`).toMatch(/--enter-scale: 1/)
+      expect(block, `${sel} 该把错峰归零`).toMatch(/--stagger: 0ms/)
+    }
+  })
+
+  it('悬停规则不再自带 transition 简写：那会把出场的 scale/translate 整个清掉', () => {
+    const hover = css.match(/\.pet-panel button\[data-id\]:hover \{([^}]*)\}/)?.[1] ?? ''
+    expect(hover).toContain('transform: scale(1.15)')
+    expect(hover, 'transition 该写在基类那条里，和出场的几条合并声明').not.toContain('transition')
+    expect(css.match(/\.pet-panel button\[data-id\] \{([^}]*)\}/)?.[1]).toContain('transition: transform 0.12s ease, scale')
+  })
+})
+
 describe('操作型视图共用宽裕的收起延时', () => {
   it('VIEW_HIDE_MS 是 5000，旧名字 SETTING_HIDE_MS 已经不存在', () => {
     expect(VIEW_HIDE_MS).toBe(5000)

@@ -116,6 +116,12 @@ body.pet-over {
   /* display 也在过渡里，且允许离散属性参与：这样收起时有淡出，
      淡出结束才真的移出布局（Chromium 117+ 的 transition-behavior）。 */
   transition: opacity 0.18s ease, display 0.18s allow-discrete;
+  /* 出场动画的四个旋钮（见下面 @starting-style 那段）。关掉动画就是把它们拧回中性值，
+     而不是去删动画规则——这样系统级「减少动效」和 e2e 的 data-no-motion 共用同一条出口。 */
+  --enter-scale: 0.82;
+  --enter-shift: 6px;
+  --enter-dir: 1;
+  --stagger: 40ms;
 }
 
 /* 主块：一排图标。空隙不吃命中——看不见的地方不该吞桌面的点击。 */
@@ -150,6 +156,9 @@ body.pet-over {
   pointer-events: auto;
   cursor: var(--pet-cursor);
   will-change: transform;
+  /* 出场的两条（写在基类这一条里，不要另开一条 .pet-plate——
+     e2e 那条「光标只有一处定义」的探针是按 selectorText 数规则的，多一条同名规则就判红）。 */
+  transition: scale 0.18s ease, translate 0.18s ease;
 }
 
 .pet-panel[hidden] {
@@ -165,6 +174,64 @@ body.pet-over {
   .pet-panel:not([hidden]) {
     opacity: 0;
   }
+}
+
+/* ---- 出场动画：五颗从中间向两边错峰弹出，副板沿「离宠物那一侧」浮进来 ----
+   三条约束决定了它只能这么写，下次想改先读这三条：
+   ① **不碰 transform**。那是 place() 每帧写的定位（拖着宠物走时它得跟上），
+      按钮悬停也占着 transform: scale(1.15)。独立的 scale / translate 属性会和 transform
+      自动相乘，所以动画住在这两个属性里，和定位、悬停互不打扰。
+   ② **只在「从 display:none 出来」那一次跑**。靠 @starting-style，也靠 render() 跨视图复用按钮条：
+      节点要是每次换视图都重建，数值快照每 60 秒推一次就会把五颗重新弹一遍。
+   ③ **淡入淡出仍由根节点那层 opacity 管**，这里只管「怎么长出来」，不再叠一层透明度；
+      收起不做反向动作——缩回去会和「下次还是从脚下长出来」打架。
+   方向由根节点的 data-side 给（装配层写），位移量乘 --enter-dir：脚下 +6px、头顶 -6px。 */
+.pet-panel[data-side='above'] {
+  --enter-dir: -1;
+}
+
+.pet-panel button[data-id] {
+  /* 悬停的 0.12s 和出场的 0.18s 必须写在同一条里：transition 是简写，
+     在 :hover 里再声明一次就会把出场那几条整个清掉（原来就是这么分开写的）。 */
+  transition: transform 0.12s ease, scale 0.18s ease, translate 0.18s ease;
+}
+
+/* --i 是「离中心第几格」，由 panel.ts 按按钮数量算好写进 style（中间那颗 0）。 */
+.pet-actions button[data-id] {
+  transition-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* 卡片该从贴着按钮条的那条边长出来，而不是从自己的中心胀开。 */
+.pet-panel[data-side='below'] .pet-plate {
+  transform-origin: 50% 0;
+}
+
+.pet-panel[data-side='above'] .pet-plate {
+  transform-origin: 50% 100%;
+}
+
+@starting-style {
+  .pet-panel:not([hidden]) .pet-actions button[data-id],
+  .pet-panel:not([hidden]) .pet-plate {
+    scale: var(--enter-scale);
+    translate: 0 calc(var(--enter-shift) * var(--enter-dir));
+  }
+}
+
+/* 两种「别动」：系统说我要减少动效，或者测试/低配机器把 data-no-motion 挂上。
+   拧回中性值而不是删规则，所以这里连 transition-delay 一起归零就够了。 */
+@media (prefers-reduced-motion: reduce) {
+  .pet-panel {
+    --enter-scale: 1;
+    --enter-shift: 0px;
+    --stagger: 0ms;
+  }
+}
+
+.pet-panel[data-no-motion] {
+  --enter-scale: 1;
+  --enter-shift: 0px;
+  --stagger: 0ms;
 }
 
 /* 头顶气泡。收起 = 真的移出布局，和面板同一条规矩（problem/05 §5.3）：
@@ -320,10 +387,11 @@ body.pet-over {
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.22));
 }
 
-/* 悬停时整颗一起放大，不是只放大图标：只放大图标会戳出圆底外沿，看着像画歪了。 */
+/* 悬停时整颗一起放大，不是只放大图标：只放大图标会戳出圆底外沿，看着像画歪了。
+   时长写在上面那条 `button[data-id]` 的 transition 里，这里只改终值——
+   在这儿再写一遍 transition 简写会把出场那几条清掉。 */
 .pet-panel button[data-id]:hover {
   transform: scale(1.15);
-  transition: transform 0.12s ease;
 }
 
 /* 食物列表**不再单独铺素材底板**：它和状态读数、设置行共用上面那条 `.pet-plate` 的 CSS 卡片。

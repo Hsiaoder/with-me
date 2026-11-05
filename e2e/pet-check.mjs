@@ -39,6 +39,24 @@ check('页面从 app:// 起来，装配没有抛错', async () => {
   assert.deepEqual(pageErrors, [], `渲染层抛了异常：${pageErrors.join('\n')}`)
 })
 
+/**
+ * 出场动画对几何断言是纯干扰：面板刚出现那 200ms 里，两块的位置在动、尺寸也在胀。
+ * 这套检查量矩形的方式（getBoundingClientRect）拿到的会是动画中途的值，
+ * 于是每条几何断言都得配一句「再等一等」，那种等待既没完也没意义。
+ * 所以在这里把动画整个关掉——CSS 留了这条出口（`--enter-scale: 1` 那三个旋钮归中性），
+ * 根节点整个生命周期只有一个节点，设一次就够。
+ * 动画本身由 test/config.test.ts 钉形状、真机验收看观感。
+ */
+check('关掉出场动画：几何断言不该和 200ms 的位移赛跑', async () => {
+  await page.evaluate(() => document.querySelector('.pet-panel').setAttribute('data-no-motion', ''))
+  const off = await page.evaluate(() => {
+    const p = document.querySelector('.pet-panel')
+    return { attr: p.hasAttribute('data-no-motion'), scale: getComputedStyle(p).getPropertyValue('--enter-scale').trim() }
+  })
+  assert.equal(off.attr, true)
+  assert.equal(off.scale, '1', `挂了 data-no-motion 但旋钮没归中性：${off.scale}`)
+})
+
 check('覆盖层没有焦点时 rAF 不被节流到走一步卡一下', async () => {
   // 这扇窗是 focusable:false 的，常态就是"没有焦点"。若 Chromium 因此节流渲染，
   // 走路会变成一秒跳一下，心跳也会失准（就是这么发现问题的）。
@@ -673,6 +691,9 @@ check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢�
     const b = document.querySelector('.pet-actions').getBoundingClientRect()
     return { x: b.x, y: b.y, w: b.width, h: b.height }
   })
+  // 出场动画往哪边浮，只看根节点这个属性——它是装配层递给 CSS 的唯一方向信息，
+  // 值要是没跟着翻边走，动画就会在头顶那版里从错误的一侧长出来。
+  const side = () => page.evaluate(() => document.querySelector('.pet-panel').dataset.side)
   const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
 
   // 宠物挪到屏幕中间：脚底下有整块地方 → 面板必须在身体下方
@@ -684,6 +705,7 @@ check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢�
   assert.ok(pr.h > 0, '面板量到 0 高：它没开着，或者已被移出布局')
   assert.ok(pr.y >= body.y + body.h, `脚下有地方时面板该在下方：panel.y=${pr.y} bodyBottom=${body.y + body.h}`)
   assert.ok(pr.x >= 0 && pr.x + pr.w <= inner.w, `横向溢出：${pr.x}+${pr.w} vs ${inner.w}`)
+  assert.equal(await side(), 'below', '面板在脚下，data-side 却不是说')
 
   // 宠物站回地上：脚底下只剩屏幕边那几像素 → 翻到头顶
   await page.evaluate((p) => window.__petDebug.moveTo(p), { x: 600, y: inner.h - 200 })
@@ -692,6 +714,7 @@ check('面板默认跟在脚底下，脚下没地方才翻到头顶，且不溢�
   pr = await panelRect()
   assert.ok(pr.y + pr.h <= body.y + 1, `脚下放不下时面板该翻到头顶：panelBottom=${pr.y + pr.h} bodyTop=${body.y}`)
   assert.ok(pr.y >= 0, `顶部溢出：${pr.y}`)
+  assert.equal(await side(), 'above', '面板翻到头顶了，data-side 还停在下面')
 })
 
 check('点喂食出食物列表；点一格播 click 池并回一句', async () => {
