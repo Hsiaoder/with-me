@@ -514,21 +514,23 @@ describe('状态视图', () => {
     expect(row(LEVEL_CUM.at(-1)! + 500).querySelector('.pet-stat-value')?.textContent).toBe(`Lv.${MAX_LEVEL}`)
   })
 
-  it('经验条在卡片最下面：写「还差多少」，本级比例跟着走', () => {
+  it('经验条紧跟等级那一行：标签「经验值」，写的数是还差多少', () => {
     /**
-     * 用户 2026-11-07 要「状态栏下面增加一个经验值条，显示当前升级还需要多少经验值」。
-     * 三件事要钉住：它**排在最后一行**（不是夹在读数中间）、它**不挂 .pet-stat**
-     * （那个类专指四条会报警的读数，经验只涨不跌，混进去就多出第五条报警）、以及数字对得上表。
+     * 用户 2026-11-07 两次调整这条：先要「状态栏下面加一条，显示当前升级还需要多少经验值」，
+     * 看过之后改成「标签叫经验值、放到等级下面」——「现在几级」和「到下一级还差多少」
+     * 是同一件事的两半，被四条读数隔开就读不连贯了。
+     * 另一件要钉住的：它**不挂 .pet-stat**（那个类专指四条会报警的读数，数条数的地方都靠它）。
      */
     const panel1 = open(snap(82, 0)).panel
-    const kids = () => [...panel1.el.querySelectorAll('.pet-plate.is-stats > *')]
-    const exp = () => panel1.el.querySelector<HTMLElement>('.pet-exp')!
-    expect(kids().at(-1), '经验条没排在最下面').toBe(exp())
-    expect(exp().classList.contains('pet-stat'), '经验条不该冒充一条数值读数').toBe(false)
-    expect(exp().querySelector('.pet-stat-label')?.textContent).toBe('还差：')
-    expect(exp().querySelector('.pet-exp-value')?.textContent).toBe(String(LEVEL_STEPS[0]))
-    expect(exp().querySelector('.pet-exp-bar > i')?.getAttribute('style')).toContain('width: 0%')
-    // 攒到本级一半：条跟着走一半，还差的那个数是门槛减已攒
+    const kids = [...panel1.el.querySelectorAll('.pet-plate.is-stats > *')]
+    const exp = panel1.el.querySelector<HTMLElement>('.pet-exp')!
+    const level = panel1.el.querySelector<HTMLElement>('.pet-stat-line[data-key="level"]')!
+    expect(kids.indexOf(exp), '经验条没紧跟在等级下面').toBe(kids.indexOf(level) + 1)
+    expect(exp.classList.contains('pet-stat'), '经验条不该冒充一条数值读数').toBe(false)
+    expect(exp.querySelector('.pet-stat-label')?.textContent).toBe('经验值：')
+    expect(exp.querySelector('.pet-exp-value')?.textContent).toBe(String(LEVEL_STEPS[0]))
+    expect(exp.querySelector('.pet-exp-bar > i')?.getAttribute('style')).toContain('width: 0%')
+    // 攒到本级一半：条跟着走一半，写的那个数是「门槛减已攒」
     const half = LEVEL_CUM[1]! + LEVEL_STEPS[1]! / 2
     const panel2 = open(snap(82, half)).panel
     const bar2 = panel2.el.querySelector<HTMLElement>('.pet-exp-bar > i')!

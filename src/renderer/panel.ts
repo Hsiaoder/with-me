@@ -360,7 +360,7 @@ export function createPanel(
   }
 
   /**
-   * 状态栏：昵称一行、性别一行、等级一行，下面四条读数，最后「此刻」两行，
+   * 状态栏：昵称一行、性别一行，然后「等级 + 经验值」两行挨着，下面四条读数，最后「此刻」两行，
    * 没有返回按钮（收起靠再点一次状态键）。
    * 它是 qqpet 那种「一眼看到当前值」的面板，不是设置页——唯一还能就地改的是性别。
    */
@@ -376,13 +376,17 @@ export function createPanel(
     // 条画的是「到下一级攒了多少」，但那件事在状态栏里没有可操作的对象——
     // 饥饿/心情低了你能喂、能逗，等级攒到多少你什么都做不了，画条反而像「这项快满了」。
     // 经验怎么涨的挪到 title 里，想知道就悬停。
-    // 2026-11-07 用户改口要一条经验条，但位置在**整张卡最下面**，不是贴回这一行旁边——
-    // 所以这条拍板仍然成立：等级行自己还是不带条。
     const level = plainLine('等级', `Lv.${levelOf(snap.exp)}`, 'pet-stats-level')
     level.dataset.key = 'level'
     level.title = `累计经验 ${snap.exp.toFixed(1)}（只增不减）。在线挂机每分钟 ${IDLE_EXP_PER_MIN}，` +
       `喂食 ${EXP_GAIN.feed}、小游戏 ${EXP_GAIN.play}、点回应 ${EXP_GAIN.reply}`
     host.append(tight(level))
+
+    // 经验条紧跟在等级下面（用户 2026-11-07 两次调整：先要「状态栏下面加一条，显示还差多少」，
+    // 看过之后改成「标签叫经验值、位置放到等级下面」——「现在几级」和「到下一级还差多少」
+    // 是同一件事的两半，隔在四条读数两头就读不连贯了）。
+    // 等级行自己**仍然不带条**（11-05 那条拍板没变）：条是单独一行，不是挂在等级那一行右边。
+    host.append(expLine())
 
     for (const key of STAT_KEYS) {
       const v = snap.stats[key]
@@ -397,28 +401,35 @@ export function createPanel(
     const on = plainLine('在线时间', runtime === null ? '…' : runtime.online, 'pet-stats-online')
     host.append(act, on)
     runtimeRefs = { activity: valueNode(act), online: valueNode(on) }
+  }
 
-    // 经验条排在**最下面**（用户 2026-11-07 要「状态栏下面增加一个经验值条，显示当前升级还需要多少」）。
-    // 刻意不挂 `.pet-stat`：那个类专指「四条数值读数」，测试按它数条数、CSS 按它上色报警，
-    // 而经验既不会掉、也不是能靠喂食当场救回来的东西——混进去就会把「这栏有六条数值」读回来。
-    const lv = levelOf(snap.exp)
-    const maxed = lv >= MAX_LEVEL
+  /**
+   * 经验那一行：标签「经验值」+ 本级比例条 + 还差多少。
+   * 刻意不挂 `.pet-stat`：那个类专指「四条数值读数」，测试按它数条数、CSS 按它上色报警，
+   * 而经验既不会掉、也不是能靠喂食当场救回来的东西——混进去就多出第五条假警报。
+   * 调用方只在快照已到时会走到这里，所以里面的 `snap!` 不是将就。
+   */
+  function expLine(): HTMLElement {
     const exp = document.createElement('div')
     exp.className = 'pet-exp'
     exp.dataset.key = 'exp'
     const expBar = document.createElement('span')
     expBar.className = 'pet-exp-bar'
     const expFill = document.createElement('i')
-    expFill.style.width = `${Math.round(levelFraction(snap.exp) * 100)}%`
+    expFill.style.width = `${Math.round(levelFraction(snap!.exp) * 100)}%`
     expBar.append(expFill)
+    const lv = levelOf(snap!.exp)
+    const maxed = lv >= MAX_LEVEL
     const expOut = document.createElement('span')
     expOut.className = 'pet-stat-value pet-exp-value'
-    expOut.textContent = maxed ? '满级' : String(Math.ceil(expToNext(snap.exp)))
-    exp.append(makeLabel('还差'), expBar, expOut)
+    // 写的数是**还差多少**（用户最初那句「显示当前升级还需要多少经验值」），
+    // 标签换成「经验值」之后这一点全靠 title 和条来说清——单看数字分不出「已攒」还是「还差」。
+    expOut.textContent = maxed ? '满级' : String(Math.ceil(expToNext(snap!.exp)))
+    exp.append(makeLabel('经验值'), expBar, expOut)
     exp.title = maxed
       ? `已到 Lv.${MAX_LEVEL}。经验继续累计，但不再升级`
-      : `Lv.${lv} → Lv.${lv + 1} 共需 ${LEVEL_STEPS[lv - 1]}，还差 ${expToNext(snap.exp).toFixed(1)}`
-    host.append(exp)
+      : `Lv.${lv} → Lv.${lv + 1} 共需 ${LEVEL_STEPS[lv - 1]}，还差 ${expToNext(snap!.exp).toFixed(1)}。累计经验 ${snap!.exp.toFixed(1)}（只增不减）`
+    return exp
   }
 
   /**

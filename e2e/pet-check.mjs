@@ -1441,9 +1441,10 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
       expRow: (() => {
         const kids = [...document.querySelectorAll('.pet-plate.is-stats > *')]
         const n = document.querySelector('.pet-exp')
-        if (n === null) return { last: false, cls: '(没画出来)', text: '', label: '' }
+        if (n === null) return { afterLevel: false, cls: '(没画出来)', text: '', label: '' }
         return {
-          last: kids[kids.length - 1] === n,
+          // 「紧跟等级」而不是「在卡片某处」：位置是用户点名要的，隔开一行就算没做到
+          afterLevel: kids[kids.indexOf(level) + 1] === n,
           cls: n.className,
           text: n.querySelector('.pet-exp-value')?.textContent ?? '',
           label: n.querySelector('.pet-stat-label')?.textContent ?? '',
@@ -1476,12 +1477,12 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   const exp = Number(/累计经验 ([\d.]+)/.exec(g.level.hint ?? '')?.[1] ?? Number.NaN)
   assert.ok(Number.isFinite(exp) && exp >= 0, `等级行的经验读数取不出来：${g.level.hint}`)
   assert.equal(g.level.text, `Lv.${levelOf(exp)}`, `等级和它对不上：${g.level.text} vs 经验 ${exp}`)
-  // 经验条（2026-11-07 用户要）：排在卡片最后一行，写的「还差」必须等于门槛减已攒。
+  // 经验条（2026-11-07 用户要，同日第二次调整：标签「经验值」、位置紧跟等级那一行）。
   // 不抄表里的数：那条差值用 expToNext 现算，和渲染走同一份表。
-  assert.equal(g.expRow.last, true, '经验条没排在状态栏最下面')
+  assert.equal(g.expRow.afterLevel, true, '经验条没紧跟在等级那一行下面')
   assert.equal(g.expRow.cls, 'pet-exp', '经验条错挂了 .pet-stat：那是四条数值读数的类')
   assert.equal(g.expRow.text, String(Math.ceil(expToNext(exp))), `经验条写的数和表对不上：${g.expRow.text}`)
-  assert.equal(g.expRow.label, '还差：', `经验条的标签不对：${g.expRow.label}`)
+  assert.equal(g.expRow.label, '经验值：', `经验条的标签不对：${g.expRow.label}`)
   // 颜色必须跟着数字：分档写死在渲染里就会出「数值红了、条还是蓝的」那种假读数
   const bandOf = (v) => (v > 60 ? 'high' : v > 20 ? 'mid' : 'low')
   for (const r of g.rows) {
