@@ -15,6 +15,7 @@ import {
   PANEL_GAP,
   PANEL_HIDE_MS,
   PLATE_GAP,
+  STATS_LIFT,
   VIEW_HIDE_MS,
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
@@ -538,10 +539,11 @@ function bootstrap(skin: SkinPayload): void {
     } else if (panel.view === 'stats') {
       // 读数竖挂宠物**右侧**：脚下那一横条已经是按钮条的地盘，挤在一起两边都读不到。
       // 锚的是**看得见的身子**（`inkRect`），不是命中框：dshtry 的命中框比墨迹左右各宽 37~40px，
-      // 按命中框摆的话 `PANEL_GAP=16` 在屏幕上是 53px——用户说的「状态栏里角色太远了」就是这个。
+      // 按命中框摆的话 `PANEL_GAP=10` 在屏幕上会再多出那圈透明区域——用户说的「状态栏里角色太远了」
+      // 以前就是 16 + 37 = 53px。
       // 按钮条和飘字那两条锚点照旧走命中框：它们要的是「脚下那一格」和「头顶那一片」，
       // 换墨迹会把已有的间距账（`FLOAT_HEAD_OFFSET` 按命中框顶沿量的）一起挪掉。
-      panel.showPlate(statsAnchor(inkRect(body, inkInsets), ps, screen, PANEL_GAP))
+      panel.showPlate(statsAnchor(inkRect(body, inkInsets), ps, screen, PANEL_GAP, STATS_LIFT))
     }
   }
 

@@ -151,14 +151,24 @@ export function stackAnchor(
  * 右边放不下（宠物贴右边缘）才翻到左边——**不是夹进屏幕**：夹过来会压在宠物身上，
  * 那正是气泡那条踩过的坑（见 problem/05 §5.10）。两边都不行才夹回屏幕内。
  *
- * 纵向与身体中线对齐后夹回屏幕内：宠物站在地上时状态栏有一半在屏幕外是没用的。
+ * 纵向：先和身体中线对齐，再往上抬 `lift`，最后夹回屏幕内。
+ * 为什么要 `lift` 这个数而不是继续居中：这张卡比身体高（实测 182 vs 165），
+ * 居中就必然从身体底沿再往下挂 8px 多，而那正是按钮条的地盘。往上抬 12 之后
+ * 底沿离按钮条 13px、顶沿离气泡底边 14px，两头都空出来——气泡底边拉直（不再鼓云包）
+ * 才腾得出这 14px，两件事是一起算的。
  */
-export function statsAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Point {
+export function statsAnchor(
+  body: Rect,
+  size: { w: number; h: number },
+  screen: Rect,
+  gap: number,
+  lift = 0,
+): Point {
   const right = body.x + body.w + gap
   const left = body.x - gap - size.w
   const x0 = right + size.w <= screen.x + screen.w ? right : left
   const x = Math.min(Math.max(x0, screen.x), Math.max(screen.x, screen.x + screen.w - size.w))
-  const centered = body.y + body.h / 2 - size.h / 2
+  const centered = body.y + body.h / 2 - size.h / 2 - lift
   const y = Math.min(Math.max(centered, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
   return { x, y }
 }

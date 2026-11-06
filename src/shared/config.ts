@@ -252,7 +252,17 @@ export const SKIN_HOST = 'skin'
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}/`
 /** 素材地址由 JS 拼绝对 URL，不走相对解析。 */
 export const SKIN_ORIGIN = `${APP_SCHEME}://${SKIN_HOST}/`
-/** 面板与身体框之间的间距；脚底下放不下时同一个间距翻到头顶。 */
-export const PANEL_GAP = 16
+/**
+ * 面板与身体框之间的间距；按钮条用它贴脚底，状态栏用它贴身子右侧。
+ * 2026-11-06 16 → 10（用户「按钮离身体有点远了」）。两处共用一个数是故意的：
+ * 这条量的都是「贴着看得见的身子留多少空气」，空气该一样多。
+ */
+export const PANEL_GAP = 10
+/**
+ * 状态栏从「和身体中线对齐」再往上抬这么多（用户「状态栏盖住下面的按钮了」）。
+ * 居中不够：这张卡 182 高、身体 165 高，居中就从身体底沿再挂 8px 多，正好压在按钮条上。
+ * 抬 12 后底沿离按钮条 13px、顶沿离气泡底边 14px——后一半是气泡底边拉直才让出来的。
+ */
+export const STATS_LIFT = 12
 /** 按钮条与副板（食物列表）之间的间距。比 PANEL_GAP 小：这两块是一组，不该看着像两个东西。 */
 export const PLATE_GAP = 6

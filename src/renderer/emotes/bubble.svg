@@ -1,12 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 416 376">
   <!-- 生成物：别手改。改形状去改 src/shared/bubble-shape.ts 那份图元清单，再跑 node tools/make-bubble-svg.mjs -->
-  <g fill="#92c7e3">
+  <g fill="#5492b2">
     <rect x="0" y="96" width="416" height="234" rx="74" />
     <circle cx="108" cy="108" r="80" />
     <circle cx="208" cy="98" r="98" />
     <circle cx="313" cy="108" r="78" />
-    <circle cx="84" cy="318" r="48" />
-    <circle cx="322" cy="318" r="50" />
     <circle cx="218" cy="310" r="40" />
     <circle cx="208" cy="338" r="28" />
     <circle cx="200" cy="356" r="20" />
@@ -16,8 +14,6 @@
     <circle cx="108" cy="108" r="68" />
     <circle cx="208" cy="98" r="86" />
     <circle cx="313" cy="108" r="66" />
-    <circle cx="84" cy="318" r="36" />
-    <circle cx="322" cy="318" r="38" />
     <circle cx="218" cy="310" r="28" />
     <circle cx="208" cy="338" r="16" />
     <circle cx="200" cy="356" r="8" />

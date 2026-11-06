@@ -11,7 +11,7 @@ import {
   FOOD_CELL, FOOD_ICON, FOOD_GAP, FOOD_VISIBLE, ONLINE_TICK_MS, VIEW_HIDE_MS,
   FLOAT_CHIP, FLOAT_MS, FLOAT_HEAD_OFFSET,
 } from '../src/shared/config.js'
-import { CLOUD, cloudScale, fitsInsideCloud } from '../src/shared/bubble-shape.js'
+import { CLOUD, cloudCircles, cloudScale, fitsInsideCloud } from '../src/shared/bubble-shape.js'
 import { STAT_KEYS, STAT_TICK_MS } from '../src/shared/stats.js'
 import { fitsLabel } from '../src/shared/text.js'
 import { mimeOf } from '../src/main/protocol.js'
@@ -413,5 +413,43 @@ describe('气泡尺寸', () => {
     // 用户两次点名「边框要细」：18.3 → 9.2 → 6。粗回去、或细到 2× 远程桌面上发虚，都会红。
     expect(BUBBLE_RING_W).toBeGreaterThanOrEqual(4)
     expect(BUBBLE_RING_W, '环又画回粗的了').toBeLessThanOrEqual(7)
+  })
+
+  it('底边是一条直线：底边云包必须为空，尾巴仍是最低的墨迹', () => {
+    // 用户 2026-11-06 看完真机点名「云的下边缘改成直的，红框框起来的变成一条直线」。
+    // 上一轮才按「下面也变成云朵形状」加上两朵，所以这条是**防止它自己又长回来**的桩。
+    expect(CLOUD.foots, '底边又鼓出云包了').toEqual([])
+    // 尾巴还在：底边拉直后它是画布里最低的那一个，画布高度才是 376 而不是身子的 330。
+    const lowest = Math.max(...cloudCircles(CLOUD).map((c) => c.y + c.r))
+    expect(lowest, '尾巴不再是最低点（气泡就不指着宠物了）').toBe(364)
+    expect(CLOUD.vb.h, '画布下沿和「尾巴含环」对不上').toBe(lowest + CLOUD.ring)
+  })
+})
+
+describe('气泡的两支颜色：环是容器、回应按钮是动作，各自过自己的门槛', () => {
+  const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8')
+  const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  /** 素材里两层同形状：先画的带色那层 = 环，后画的白层 = 内腔。 */
+  const fills = [...svg.matchAll(/fill="(#[0-9a-f]{6})"/g)].map((m) => (m[1] ?? '').toLowerCase())
+  const ring = fills[0] ?? ''
+  const cavity = fills[1] ?? ''
+  const reply = css.match(/--reply-fill: (#[0-9a-f]{6})/)?.[1] ?? ''
+
+  it('环对白内腔、对浅桌面都过 UI 组件的 3:1（旧那支 #92c7e3 只有 1.83 / 1.61）', () => {
+    expect(ring, 'bubble.svg 第一层不是环色').toBe('#5492b2')
+    expect(cavity, '内腔不是纯白就没法当对比度的底').toBe('#ffffff')
+    expect(contrast(ring, cavity), `环对白色内腔只有 ${contrast(ring, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
+    // 浅壁纸是三面邻色里最暗的那个，所以拿它反解；深壁纸由整块白色身子去压，不在这条账里
+    expect(contrast(ring, '#eef1f5'), `环对浅桌面只有 ${contrast(ring, '#eef1f5').toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
+    expect(fills, '旧那支压不住浅色桌面的环又回来了').not.toContain('#92c7e3')
+  })
+
+  it('回应按钮：白字过 4.5:1，而且和环不是同一档', () => {
+    expect(reply, '--reply-fill 不是解出来的那支实心蓝').toBe('#007eb6')
+    expect(contrast('#ffffff', reply), `白字对按钮只有 ${contrast('#ffffff', reply).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(reply, cavity), `按钮对白内腔只有 ${contrast(reply, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
+    // 上一版的毛病就是这两个同格（都取 #a9d4ef 那一档），层级塌了才要改的
+    expect(reply, '按钮又和环同色了').not.toBe(ring)
+    expect(contrast(reply, ring), '按钮和环差得太少，一眼分不出谁是动作').toBeGreaterThanOrEqual(1.25)
   })
 })

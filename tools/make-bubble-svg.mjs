@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { CLOUD } from '../src/shared/bubble-shape.ts'
 
 const OUT = join('src', 'renderer', 'emotes', 'bubble.svg')
-const RING_FILL = '#92c7e3'
+const RING_FILL = '#5492b2'
 const CAVITY_FILL = '#ffffff'
 
 /** 外扩 t：圆就是半径加 t，圆角矩形是四边各外扩、圆角再加 t（Minkowski 膨胀对这两类都是闭式）。 */

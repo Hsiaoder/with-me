@@ -14,7 +14,8 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_CELL, FOOD_GAP, FOOD_ICON, FOOD_VISIBLE, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_CELL, FOOD_GAP, FOOD_ICON, FOOD_VISIBLE, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STATS_LIFT, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { CLOUD, cloudScale } from '../src/shared/bubble-shape.ts'
 import { FOODS } from '../src/shared/food.ts'
 import { pageStep } from '../src/shared/scroll.ts'
 import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.ts'
@@ -1368,10 +1369,12 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
     const b = window.__petDebug.hitBox
     const ink = window.__petDebug.inkBox
     const p = document.querySelector('.pet-plate').getBoundingClientRect()
+    const bar = document.querySelector('.pet-actions').getBoundingClientRect()
     const level = document.querySelector('.pet-stat-line[data-key="level"]')
     return {
       bodyRight: b.x + b.w, panelLeft: p.x, panelRight: p.right, inner: window.innerWidth,
-      inkRight: ink.x + ink.w,
+      inkRight: ink.x + ink.w, inkBottom: ink.y + ink.h,
+      panelTop: p.top, panelBottom: p.bottom, barTop: bar.top, barRight: bar.right,
       name: document.querySelector('.pet-stats-name')?.textContent,
       lines: [...document.querySelectorAll('.pet-stat-line .pet-stat-label')].map((n) => n.textContent),
       keys: [...document.querySelectorAll('.pet-stat')].map((r) => r.dataset.key),
@@ -1425,6 +1428,37 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
     assert.equal(r.band, `pet-stat-bar is-${bandOf(r.value)}`, `${r.value} 该是 ${bandOf(r.value)} 档：${r.band}`)
     assert.equal(r.fill, `${Math.round(r.value)}%`, `条宽和读数不一致：${r.fill} vs ${r.value}`)
   }
+  // 三块的净空（用户 2026-11-06 两条：状态栏盖住下面的按钮了 + 按钮离身体有点远了）。
+  // 这一条要**同时开着气泡**量：状态栏往上抬以后，下一个被撞的就是气泡的右下角。
+  await page.evaluate(() => window.__petDebug.say('在这儿呢', 60000))
+  await page.waitForTimeout(150)
+  const lay = await page.evaluate(() => {
+    const ink = window.__petDebug.inkBox
+    const r = (sel) => document.querySelector(sel).getBoundingClientRect()
+    const bar = r('.pet-actions')
+    const plate = r('.pet-plate.is-stats')
+    const bub = r('.pet-bubble')
+    return {
+      inkBottom: ink.y + ink.h, barTop: bar.top,
+      plateTop: plate.top, plateBottom: plate.bottom, plateLeft: plate.left,
+      bubTop: bub.top, bubBottom: bub.bottom, bubRight: bub.right,
+    }
+  })
+  assert.ok(Math.abs(lay.barTop - lay.inkBottom - PANEL_GAP) < 1.5,
+    `按钮条顶沿离看得见的身子 ${(lay.barTop - lay.inkBottom).toFixed(1)}px，应该是 PANEL_GAP(${PANEL_GAP})`)
+  assert.ok(lay.plateBottom <= lay.barTop,
+    `状态栏底沿 ${lay.plateBottom.toFixed(1)} 还压在按钮条顶沿 ${lay.barTop.toFixed(1)} 上`)
+  // 气泡的底边现在是**一条直线**（清单里 foots 为空），所以状态栏那一段 x 区间里
+  // 真正会撞上的高度是「身子下沿 + 环」，不是整块画布底沿（画布底沿是尾巴尖，它在中间）。
+  const straight = lay.bubTop + (CLOUD.body.y + CLOUD.body.h + CLOUD.ring) * cloudScale(CLOUD, BUBBLE_W)
+  const xOver = lay.bubRight - lay.plateLeft
+  if (xOver > 0) {
+    assert.ok(lay.plateTop >= straight,
+      `状态栏顶沿 ${lay.plateTop.toFixed(1)} 撞进气泡了（直边在 ${straight.toFixed(1)}，横向重叠 ${xOver.toFixed(1)}px）`)
+  }
+  // 抬了也不许出屏幕上沿：STATS_LIFT 是净空，不是把卡片顶到屏幕外
+  assert.ok(lay.plateTop >= 0, `状态栏抬出屏幕上沿了：${lay.plateTop.toFixed(1)}`)
+  assert.ok(STATS_LIFT > 0, `STATS_LIFT=${STATS_LIFT} 抬不动就不算修过`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 

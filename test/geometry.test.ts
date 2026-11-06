@@ -204,6 +204,15 @@ describe('statsAnchor', () => {
     expect(statsAnchor(body, size, screen, 12)).toEqual({ x: 852, y: 730 })
   })
 
+  it('lift 就是「从居中再往上抬」：卡片比身体高时，居中会挂进按钮条那一横条', () => {
+    // 用户 2026-11-06：状态栏盖住了下面的按钮。抬 20 之后底沿从 850 收到 830。
+    expect(statsAnchor(body, size, screen, 12, 20)).toEqual({ x: 852, y: 710 })
+    // 横向不受 lift 影响——左右距离是另一条账（PANEL_GAP）
+    expect(statsAnchor(body, size, screen, 10, 20).x).toBe(850)
+    // 抬过头也不许出屏幕：夹回上沿，这是宠物贴屏幕顶那种情况
+    expect(statsAnchor({ x: 700, y: 20, w: 140, h: 180 }, size, screen, 12, 200).y).toBe(0)
+  })
+
   it('右侧放不下时翻到左侧——不是夹进屏幕把状态栏压在宠物身上', () => {
     const right = { x: 1500, y: 700, w: 140, h: 180 }
     expect(statsAnchor(right, size, screen, 12)).toEqual({ x: 1338, y: 730 })
