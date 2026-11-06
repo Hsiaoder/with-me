@@ -11,11 +11,12 @@ import { _electron as electron } from 'playwright'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_ICON, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_CELL, FOOD_GAP, FOOD_ICON, FOOD_VISIBLE, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
 import { FOODS } from '../src/shared/food.ts'
+import { pageStep } from '../src/shared/scroll.ts'
 import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.ts'
 
 const require = createRequire(import.meta.url)
@@ -764,7 +765,7 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await page.click('.pet-panel button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')
   assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '点喂食没进食物视图')
-  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), 6)
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-panel .pet-food').length), FOODS.length)
   // 食物列表改用和状态读数同一张 CSS 卡片：没有 border-image、1px 描边、10px 圆角、6px 留白。
   // （以前这里钉的是 Kenney depth_line 的不对称九宫格 `8 8 12` 与 padding-box 配对，
   //   那套写法的理由留在 problem/03 §3.9；这一圈框被否掉了，见 §3.12。）
@@ -818,8 +819,15 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   }, FOODS.map((f) => f.icon))
   assert.equal(art.cellBg, 'none', `格子还铺着素材底，框中框没拆掉：${art.cellBg}`)
   assert.equal(art.cellRadius, '8px', `格子该是白卡的圆角：${art.cellRadius}`)
-  assert.deepEqual(art.cellText, ['', '', '', '', '', ''], '格子里还留着文字：图和字并排会挤')
-  assert.deepEqual(art.labels, FOODS.map((f) => f.name), `读屏名和菜名对不上：${JSON.stringify(art.labels)}`)
+  /**
+   * 格子里**不该有菜名**（图和字并排会挤），但**可以有解锁角标**——那是另一件事：
+   * 它说的不是「这是什么」，而是「为什么这点下去没反应」。
+   * 期望值从 FOODS 现推，不写死：这一轮列表从 6 格变 12 格，写死的版本当场就红了。
+   */
+  assert.deepEqual(art.cellText, FOODS.map((f) => (f.level > 1 ? `Lv.${f.level}` : '')),
+    '格子里的角标和等级表对不上（或还留着菜名）')
+  assert.deepEqual(art.labels, FOODS.map((f) => (f.level > 1 ? `${f.name}（Lv.${f.level} 解锁）` : f.name)),
+    `读屏名和菜名对不上：${JSON.stringify(art.labels)}`)
   for (const i of art.icons) {
     assert.equal(i.src, i.want, `格子指的图不对：${i.src} 应为 ${i.want}`)
     assert.ok(i.ok, `${i.want} 没解出像素（404？抠空了？）`)
@@ -862,7 +870,7 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await page.waitForSelector('.pet-panel .pet-food')
   // 一屏只露 4 格：视口是 overflow:hidden，其余靠滚
   // 12 格全在条上（视口只是没露出来），滚动才有东西可滚
-  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-food-strip > *').length), 6)
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-food-strip > *').length), FOODS.length)
   assert.ok(await page.evaluate(() => {
     const v = document.querySelector('.pet-food-viewport')
     return v.getBoundingClientRect().width < v.scrollWidth
@@ -1014,28 +1022,37 @@ check('吃饭期间拖拽：吃相一路不被打断，格子也一路灰着', a
     }))
   }
   const midMeal = await mealState()
-  assert.equal(midMeal.count, 6, '前置：列表没叫出来')
+  assert.equal(midMeal.count, FOODS.length, '前置：列表没叫出来')
   assert.equal(midMeal.allGrey, midMeal.pool === 'eat',
     `灰态和「正在吃饭」对不上：pool=${midMeal.pool} 格子灰=${midMeal.allGrey}`)
 
   await notEating()
   const done = await mealState()
   assert.notEqual(done.pool, 'eat', `演完了池子还停在 eat：${done.pool}`)
-  assert.equal(done.allGrey, false, '演完了格子还灰着：用户会以为喂食坏了')
-  assert.equal(done.count, 6)
+  // 「饭后解开」要问得准：12 格里有 8 格**本来就该灰着**（等级不够），
+  // 用「整列不再全灰」当判据会在这一轮之后永远为真——它不再说明吃饭那层灰解开了。
+  // 所以问的是 Lv.1 那几格：它们既不该因吃饭灰，也不该因等级灰。
+  const freeAfter = await page.evaluate(() =>
+    [...document.querySelectorAll('.pet-panel .pet-food')]
+      .filter((c) => !c.classList.contains('is-locked'))
+      .map((c) => c.dataset.food + (c.disabled ? '=灰' : '=亮')))
+  assert.deepEqual(freeAfter, ['token=亮', 'rice=亮', 'noodle=亮', 'youtiao=亮'],
+    `演完这一口之后 Lv.1 那四格没全亮：${JSON.stringify(freeAfter)}`)
+  assert.equal(done.count, FOODS.length)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
 check('皮肤里没做的那一口：回落到 click，而不是随机播一口别的', async () => {
-  // block 皮肤的 eat 池只有 rice / hotpot。点饺子（没做）该播 click——
+  // block 皮肤的 eat 池只有 rice / hotpot。点油条（没做）该播 click——
   // 播「池里随便一条」就是「点火锅播白饭的吃相」那个 bug 的样子，比不播更误导。
+  // 挑油条而不是饺子：饺子现在是 Lv.2 的，那一格是 disabled 的，点下去根本不会报（那是另一条检查）。
   await page.evaluate(() => window.__petDebug.hidePanel())
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
   await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
 
   await page.waitForSelector('.pet-panel .pet-food')
-  await page.click('.pet-panel .pet-food[data-food="dumpling"]')
+  await page.click('.pet-panel .pet-food[data-food="youtiao"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
   assert.equal((await dbg()).pool, 'click')
   await page.evaluate(() => window.__petDebug.hidePanel())
@@ -1055,14 +1072,20 @@ check('食物列表：整屏步进、到底置灰、拖横条、收起后复位'
   assert.equal(await disabled('prev'), true, '到顶了 prev 还亮着')
   assert.equal(await disabled('next'), false)
 
-  await page.click('.pet-page[data-page="next"]')
-  // 6 格只有 308 宽，视口 204 → 最大滚动 104，比一整屏步进 208 还小，按一次就到头。
-  assert.equal(await strip(), 'translateX(-104px)', '6 格一步到底该是 -104')
+  // 滚动那几个数从 FOODS 与 config 推（12 格 620 宽、视口 204 → 最大 416，一步 204）。
+  // 上一版写着「6 格一步到底 -104」，列表一扩就红，而且红得看不出谁对谁错。
+  const VIEW_W = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
+  const CONTENT_W = FOODS.length * FOOD_CELL + (FOODS.length - 1) * FOOD_GAP
+  const MAX_SCROLL = CONTENT_W - VIEW_W
+  const STEP = pageStep(FOOD_VISIBLE, FOOD_CELL, FOOD_GAP)
+  const clicksToEnd = Math.ceil(MAX_SCROLL / STEP)
+  for (let i = 0; i < clicksToEnd; i++) await page.click('.pet-page[data-page="next"]')
+  assert.equal(await strip(), `translateX(${-MAX_SCROLL}px)`, `${FOODS.length} 格按 ${clicksToEnd} 次该到底（${CONTENT_W}−${VIEW_W}=${MAX_SCROLL}）`)
 
   // 按到置灰为止，不是盲目按 8 次：到底之后 next 就该 disabled（上一条断言要的就是它），
   // 拿 page.click 去点一个 disabled 的按钮只会 30 秒超时——那是在等一个不该发生的事。
   for (let i = 0; i < 6 && !(await disabled('next')); i++) await page.click('.pet-page[data-page="next"]')
-  assert.equal(await strip(), 'translateX(-104px)', '最大滚动该是 308−204=104')
+  assert.equal(await strip(), `translateX(${-MAX_SCROLL}px)`, `最大滚动该是 ${CONTENT_W}−${VIEW_W}=${MAX_SCROLL}`)
   assert.equal(await disabled('next'), true, '到底了 next 还亮着，骗人去点')
 
   // 拖滑块：位移按轨道比例换算回去，所以拖 100px 不等于按一次翻页
@@ -1494,7 +1517,8 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
 
   await page.waitForSelector('.pet-panel .pet-food')
-  await page.click('.pet-panel .pet-food[data-food="hotpot"]')
+  // 挑 Lv.1 的白饭：这一条要验的是「喂了会不会落盘」，不该被解锁门槛挡在门外
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
 
   let stats = null
   for (let i = 0; i < 30; i++) {
@@ -1660,14 +1684,15 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
   assert.ok(before, '前置：存档里读不到 stats')
 
   const cell = await page.evaluate(() => {
-    const r = document.querySelector('.pet-panel .pet-food[data-food="hotpot"]').getBoundingClientRect()
+    const r = document.querySelector('.pet-panel .pet-food[data-food="rice"]').getBoundingClientRect()
     return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
   })
   await feed(cell)
-  await page.click('.pet-panel .pet-food[data-food="hotpot"]')
-  // 必须是皮肤真有其口的那一档：大闸蟹在 block 皮肤里没有对应吃相，会回落到 click 池，
-  // 那条也起动画、也会被挂起判据管到，但 `pool === 'eat'` 这个前置就不成立了。
-  await page.waitForFunction(() => window.__petDebug.current.name === 'hotpot', null, { timeout: 5000 })
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
+  // 必须是皮肤真有其口、且 Lv.1 就放开的那一档：大闸蟹在 block 皮肤里没有对应吃相会回落到 click 池，
+  // 那条也起动画、也会被挂起判据管到，但 `pool === 'eat'` 这个前置就不成立了；
+  // 而 Lv.2 以上的格子此刻是 disabled 的，点下去根本不会报。
+  await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 5000 })
 
   const after = await (async () => {
     // 落盘是异步的：轮一会儿，直到存档里至少有一格和喂之前不一样
@@ -1939,13 +1964,20 @@ check('吃饭期间整列食物点不动（置灰是真 disabled），饭后自�
   await page.click('.pet-actions button[data-id="feed"]')
   await page.waitForSelector('.pet-panel .pet-food')
   const cells = () => page.evaluate(() => [...document.querySelectorAll('.pet-panel .pet-food')].map((c) => ({
+    id: c.dataset.food,
     disabled: c.disabled,
+    locked: c.classList.contains('is-locked'),
     cursor: getComputedStyle(c).cursor,
   })))
   const free = await cells()
-  assert.equal(free.length, 6)
-  assert.ok(free.every((c) => !c.disabled), `没在吃饭也把格子灰了：${JSON.stringify(free)}`)
-
+  assert.equal(free.length, FOODS.length)
+  // Lv.1 时「没在吃饭」不等于「全都能点」：解锁灰与吃饭灰都表现为 disabled，
+  // 分开看的是 is-locked 这个**原因标记**（面板把两件事的判据合成一个 disabled，
+  // 但只有它能告诉用户「为什么点不动」）。
+  const unlocked = free.filter((c) => !c.locked)
+  assert.deepEqual(unlocked.map((c) => c.id), ['token', 'rice', 'noodle', 'youtiao'], 'Lv.1 该放开那四样')
+  assert.ok(unlocked.every((c) => !c.disabled), `没在吃饭也把能吃的格子灰了：${JSON.stringify(unlocked)}`)
+  assert.ok(free.filter((c) => c.locked).every((c) => c.disabled), '没解锁的格子没灰')
 
   await page.evaluate(() => window.__petDebug.setLastTalk(0))
   await page.click('.pet-panel .pet-food[data-food="rice"]')
@@ -1954,25 +1986,147 @@ check('吃饭期间整列食物点不动（置灰是真 disabled），饭后自�
   assert.ok(grey.every((c) => c.disabled), `吃饭期间还有格子没灰：${JSON.stringify(grey)}`)
   assert.ok(grey.every((c) => c.cursor === 'not-allowed'), `灰格子的游标不是 not-allowed：${grey[0]?.cursor}`)
 
-  // 绕过 Playwright 的 enabled 等待，直接问浏览器：灰格子还吃不吃点击
-  await page.evaluate(() => document.querySelector('.pet-panel .pet-food[data-food="hotpot"]')?.click())
+  // 绕过 Playwright 的 enabled 等待，直接问浏览器：灰格子还吃不吃点击。
+  // 挑 noodle：它是 Lv.1（不因为等级灰着），此刻只因为「正在吃饭」而灰——
+  // 用它才问得出「吃饭这一条拦不拦得住」，拿 Lv.4 的格子问会两件事混在一起。
+  await page.evaluate(() => document.querySelector('.pet-panel .pet-food[data-food="noodle"]')?.click())
   await page.waitForTimeout(200)
   assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'rice' }, '灰格子被点出第二口：置灰只是画给人看的')
 
-  // 饭后必须自己解锁。不解锁的话列表一直灰着，用户会以为喂食这个功能坏了
+  // 饭后必须自己解开「吃饭」那一层灰。解开之后等级那层灰照旧——两件事各归各的。
   await page.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
   await page.waitForTimeout(200)
   const after = await cells()
-  assert.ok(after.every((c) => !c.disabled), `饭吃完了格子还灰着：${JSON.stringify(after)}`)
+  assert.ok(after.filter((c) => !c.locked).every((c) => !c.disabled), `饭吃完了能吃的格子还灰着：${JSON.stringify(after)}`)
+  assert.equal(after.filter((c) => c.locked && !c.disabled).length, 0, '饭后把没解锁的也一起点亮了')
   // 解锁之后要真能喂出去第二口
   await page.evaluate(() => window.__petDebug.setLastTalk(0))
-  await page.click('.pet-panel .pet-food[data-food="hotpot"]')
-  await page.waitForFunction(() => window.__petDebug.current.name === 'hotpot', null, { timeout: 5000 })
-  assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'hotpot' }, '饭后格子点亮了却喂不进去')
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
+  await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 5000 })
+  assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'rice' }, '饭后格子点亮了却喂不进去')
   // 收尾：这口吃完之前别把面板留给下一条——吃饭期间延时会重新上弦，
   // 「等满 1500ms 该收起」那类前置会因此假红（§5.13 的残局坑换了个方向）。
   await notEating()
   await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
+check('等级解锁：Lv.1 只放开四格，跨过级那一口同时解开 Lv.2 并说一句', async () => {
+  /**
+   * 这条要另开一只宠物：判据是**存档里的 exp**，而主套那只是空档（exp 0 = Lv.1），
+   * 喂一口才 0.2 经验，跑到 Lv.2 要 50 口、Lv.4 要 150 口——那不该是 e2e 等的事。
+   * 所以这里带一份写好的 save.json 起第二只（单实例锁按 userData 分目录，和主套不冲突）。
+   *
+   * 一次验三件只有真跑得起来才验得出的事：
+   * ① 存档带着 exp 时列表按**那只宠物的等级**摆，不是永远 Lv.1；
+   * ② 跨级那一刻 Lv.2 那四格当场解开（不用重开列表）；
+   * ③ 跨级要说一句 levelup 台词，而且气泡里就是那句。
+   */
+  const dir = mkdtempSync(join(tmpdir(), 'pet-e2e-lv-'))
+  writeFileSync(join(dir, 'save.json'), JSON.stringify({
+    version: 2,
+    skin: 'block',
+    identity: { name: '小鲸', gender: 'female' },
+    stats: { hunger: 40, mood: 40, weight: 40, bond: 40 },
+    // 差 0.4 就跨级：打开面板那一刻「每天第一次」给 0.2（→ 9.8，还是 Lv.1），
+    // 再喂一口白饭给 0.2 → 正好 10.0 = Lv.2。
+    // 为什么留两口的量：daily-open 那 0.2 是**开面板**发的，不把它算进来，
+    // 种子写 9.8 会在「叫出面板」那一瞬就悄悄跨级，于是后面「喂一口才升级」那条断言验的是空气。
+    exp: 9.6,
+    lastSeenAt: Date.now(),
+  }), 'utf8')
+  const app2 = await electron.launch({
+    args: ['.'],
+    cwd: process.cwd(),
+    env: { ...process.env, PET_USER_DATA: dir, PET_FREEZE_CURSOR: '1' },
+  })
+  try {
+    const p2 = await app2.firstWindow()
+    await p2.waitForFunction(() => document.querySelectorAll('video').length === 2, null, { timeout: 30_000 })
+    await p2.waitForTimeout(1200)
+    const inner = await p2.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+    await p2.evaluate((q) => window.__petDebug.moveTo(q), { x: Math.round(inner.w / 2) - 90, y: inner.h - 260 })
+    await p2.waitForTimeout(200)
+    const c2 = await p2.evaluate(() => {
+      const b = window.__petDebug.hitBox
+      return { x: b.x + b.w / 2, y: b.y + b.h / 2 }
+    })
+    await p2.evaluate((q) => {
+      const fire = (t) => window.dispatchEvent(new PointerEvent(t, { clientX: q.x, clientY: q.y, bubbles: true }))
+      fire('pointerdown')
+      fire('pointerup')
+    }, c2)
+    await p2.waitForSelector('.pet-actions')
+    const tap2 = (sel) => p2.evaluate((s) => document.querySelector(s)?.click(), sel)
+    await tap2('.pet-panel button[data-id="feed"]')
+    await p2.waitForSelector('.pet-panel .pet-food')
+
+    const read2 = () => p2.evaluate(() => [...document.querySelectorAll('.pet-panel .pet-food')].map((c) => ({
+      id: c.dataset.food,
+      disabled: c.disabled,
+      locked: c.classList.contains('is-locked'),
+      badge: c.querySelector('.pet-food-lock')?.textContent ?? '',
+    })))
+    // 先看 Lv.1 的列表摆得对不对
+    const before = await read2()
+    assert.deepEqual(before.filter((c) => !c.locked).map((c) => c.id), ['token', 'rice', 'noodle', 'youtiao'],
+      'Lv.1 只该放开那四样')
+    assert.equal(before.filter((c) => c.locked).length, 8, '该有八格带角标')
+    assert.ok(before.every((c) => c.locked === (c.badge !== '')), '角标与 is-locked 不是一件事：有一个是空话')
+    // 等级行也得自洽：状态栏那个 Lv. 与格子的锁是同一份 exp 算出来的，两边不一致就是有两本账。
+    // （只能在状态视图开着时读——那一行不在别的视图里，写在这儿顺序才不是「等一个不存在的节点」。）
+    await tap2('.pet-panel button[data-id="status"]')
+    await p2.waitForSelector('.pet-stats-level')
+    assert.equal(await p2.evaluate(() => document.querySelector('.pet-stats-level')?.textContent), 'Lv.1',
+      'exp 9.6 + 日开 0.2 该还停在 Lv.1')
+
+    // 喂这一口：feed 再给 0.2 → 经验跨过 10 → Lv.2
+    await p2.evaluate(() => window.__petDebug.setLastTalk(0))
+    await tap2('.pet-panel button[data-id="feed"]')
+    await p2.waitForSelector('.pet-panel .pet-food')
+    await tap2('.pet-panel .pet-food[data-food="rice"]')
+    await p2.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
+    /**
+     * 先验跨级那句台词，**趁气泡还在**。
+     * 快照是喂的那一瞬间就广播并结算的（不用等这口演完），所以气泡里这时候已经是
+     * levelup 那句了——但气泡只活 5 秒，把它放到「等饭后」之后再验就是在赌时序。
+     */
+    const levelupLines = await p2.evaluate(() => window.__petDebug.talkLines('levelup'))
+    assert.ok(levelupLines.length > 0, '台词表里根本没有 levelup 那一档')
+    await p2.waitForFunction(
+      (lines) => lines.includes(window.__petDebug.bubbleText), levelupLines, { timeout: 6000 })
+    const said = await p2.evaluate(() => window.__petDebug.bubbleText)
+    assert.ok(levelupLines.includes(said), `跨级说的是「${said}」，不在 levelup 那一档里`)
+
+    // 等级真的落进快照了：状态栏那一行自己变 Lv.2（切回状态视图才读得到）
+    await tap2('.pet-panel button[data-id="status"]')
+    await p2.waitForFunction(
+      () => document.querySelector('.pet-stats-level')?.textContent === 'Lv.2', null, { timeout: 15000 })
+    // 这一口演完再看格子：吃饭那层灰和等级那层灰都表现为 disabled，
+    // 嘴里还含着饭的时候「该放开的还灰着」是**对的**，验不出解锁。
+    await p2.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
+    await tap2('.pet-panel button[data-id="feed"]')
+    await p2.waitForSelector('.pet-panel .pet-food')
+    const after = await read2()
+    assert.deepEqual(after.filter((c) => c.locked).map((c) => c.id).sort(),
+      ['crab', 'hotpot', 'icecream', 'niangao'].sort(), 'Lv.2 该把 Lv.4 那四样继续锁着')
+    assert.ok(after.filter((c) => !c.locked).every((c) => !c.disabled), 'Lv.2 了还有该放开的格子灰着')
+    // 刚解锁的那一格要真能喂出去，不是只把灰擦掉。
+    // dumpling 在 block 皮肤里没有对应吃相（会回落到 click 池），所以这里**不问动画，问账**：
+    // 喂饺子该让饥饿动起来。
+    const hungerBefore = JSON.parse(readFileSync(join(dir, 'save.json'), 'utf8')).stats.hunger
+    await p2.evaluate(() => window.__petDebug.setLastTalk(0))
+    await tap2('.pet-panel .pet-food[data-food="dumpling"]')
+    let hungerAfter = hungerBefore
+    for (let i = 0; i < 40 && !(hungerAfter > hungerBefore); i++) {
+      await p2.waitForTimeout(100)
+      hungerAfter = JSON.parse(readFileSync(join(dir, 'save.json'), 'utf8')).stats.hunger
+    }
+    assert.ok(hungerAfter > hungerBefore,
+      `Lv.2 刚解开的饺子格点下去没喂进去（饥饿 ${hungerBefore} → ${hungerAfter}）`)
+  } finally {
+    await app2.close()
+    try { rmSync(dir, { recursive: true, force: true }) } catch { /* 句柄没放干净就算了 */ }
+  }
 })
 
 check('点气泡的回应按钮后：光标一动不动也要立刻放开鼠标', async () => {

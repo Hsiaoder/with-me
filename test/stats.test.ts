@@ -13,6 +13,7 @@ import {
   gainText,
   gainsToFloat,
   INITIAL_STATS,
+  addExp,
   isBlue,
   isCheerful,
   isChubby,
@@ -117,9 +118,10 @@ describe('离线补算（温和档）', () => {
 })
 
 describe('喂食效果', () => {
-  it('六种食物各有饥饿与热量，热量高的一般也更顶饱', () => {
+  it('十二种食物各有饥饿与热量（键是 clip slug，与 FOODS 的 anim.name 对齐）', () => {
     expect(Object.keys(FOOD_EFFECT).sort()).toEqual(
-      ['crab', 'dumpling', 'hotpot', 'rice', 'tanghulu', 'token'].sort(),
+      ['token', 'rice', 'lunch', 'breakfast', 'tanghulu', 'dumpling', 'watermelon', 'snack',
+        'crab', 'hotpot', 'ricecake', 'icecream'].sort(),
     )
     for (const f of Object.values(FOOD_EFFECT)) {
       expect(f.hunger).toBeGreaterThan(0)
@@ -217,6 +219,23 @@ describe('经验与等级', () => {
     expect(levelOf(-5)).toBe(1)
     // 垃圾值不许把等级读成 Lv.0 或负数
     expect(levelOf(-50)).toBe(1)
+  })
+
+  it('加经验按一位小数收口：浮点误差不能把「攒满 10 级」变成永远差一口气', () => {
+    /**
+     * 这条是 e2e 逼出来的真 bug：所有增量都是 0.1 的倍数，但二进制存不下 0.1，
+     * 于是 9.6 + 0.2 + 0.2 = 9.999999999999998，`levelOf` floor 出来还是 Lv.1——
+     * 用户喂到第 50 口就是不升级，而且**没有任何地方报错**。
+     */
+    expect(9.6 + 0.2 + 0.2).toBeLessThan(EXP_PER_LEVEL)   // 裸加法的现状，钉住「为什么需要收口」
+    expect(addExp(addExp(9.6, 0.2), 0.2)).toBe(EXP_PER_LEVEL)
+    expect(levelOf(addExp(addExp(9.6, 0.2), 0.2))).toBe(2)
+    // 连喂 50 口也不漂：每一步都收口，不是只在最后修一次
+    let exp = 0
+    for (let i = 0; i < 50; i++) exp = addExp(exp, 0.2)
+    expect(exp).toBe(EXP_PER_LEVEL)
+    // 0.1 的倍数之外也别丢精度：0.4 那档（逗玩）加三次
+    expect(addExp(addExp(addExp(0, 0.4), 0.4), 0.4)).toBe(1.2)
   })
 
   it('逗玩与回复的经验就是它们那份亲密（写成引用，两处不会漂）', () => {

@@ -25,8 +25,8 @@ import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
-import { clamp, nextTalkIndex, pickTalk, TALK_FLOW, type TalkReason } from '../shared/talk.js'
-import { gainsToFloat, isBlue, isHungry, type FloatGain } from '../shared/stats.js'
+import { clamp, nextTalkIndex, pickLine, pickTalk, TALK_FLOW, TALK_LINES, type TalkReason } from '../shared/talk.js'
+import { gainsToFloat, isBlue, isHungry, levelOf, type FloatGain } from '../shared/stats.js'
 import { formatOnline } from '../shared/text.js'
 import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
@@ -299,6 +299,18 @@ function bootstrap(skin: SkinPayload): void {
     // 反馈挂在这里而不是挂在喂食/逗玩/回应各调用点，是因为那四条路都会走到这一句，
     // 分开喊迟早漏一条（qqpet 就是五个调用点各喊一遍）。
     if (prev !== null) floatGains(prev, s)
+    /**
+     * 跨级那一刻说一句。判据是**前后两份快照的 Lv**而不是「刚才喂了没」：
+     * 逗玩、回应、每日首开也都进经验，五条路都走到这一句，只在喂食那儿判迟早漏一条
+     * （和上面 floatGains 挂在这里是同一个理由）。
+     *
+     * 这里用 `pickLine`（绕开冷却）而不是 `sayFor`：喂一口正好跨级时，喂食那句 1 毫秒前才说完，
+     * 走冷却的话跨级这句永远说不出口——而它几十口才一次，比「这是吃的」重要，该盖掉前一句。
+     */
+    if (prev !== null && levelOf(s.exp) > levelOf(prev.exp)) {
+      const line = pickLine('levelup', talkRng)
+      if (line !== null) say({ text: line.say, reply: line.reply })
+    }
   })
 
   // ---- 气泡 ----
@@ -909,6 +921,13 @@ function bootstrap(skin: SkinPayload): void {
     get panelView(): string {
       return panel.view
     },
+    /**
+     * 某一档台词的正文清单。e2e 拿它对照「这一刻气泡里说的是不是这一档」，
+     * 而不是自己抄一份句子——抄一份就是第二本账，改台词时它会假装通过。
+     * 为什么不从测试里直接 import `shared/talk.js`：talk.ts 自己 import 了 config，
+     * 而 e2e 是直接载 .ts 源码的，Node 不把 `./config.js` 指回 .ts（见 config.ts 顶部那条）。
+     */
+    talkLines: (reason: TalkReason): string[] => TALK_LINES[reason].map((l) => l.say),
     get grabRequested(): boolean {
       return wantGrab
     },

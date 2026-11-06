@@ -61,14 +61,32 @@ export const CHEER_ABOVE = 70
 export const CHUBBY_ABOVE = 75
 
 export type FoodEffect = { hunger: number; weight: number }
-/** 饥饿按「顶饱程度」、体重按热量。名字是皮肤里的 clip slug，与 FOODS 对齐。 */
+/**
+ * 饥饿按「顶饱程度」、体重按热量。名字是皮肤里的 clip slug，与 FOODS 对齐。
+ *
+ * 12 条一起排的时候守三条：
+ * ① **顶饱 ≠ 热量**——西瓜顶饱 10 但只有 0.3（水分大），零食顶饱 7 却有 1.4（不长饭但长肉）；
+ *    这两个数拉不开，「吃什么会长胖」这件事就没有答案。
+ * ② 每档（Lv.1/2/4）里都要有「顶饱但清淡」和「不顶饱但厚味」各一，
+ *    不然玩家只会挑数值最高那条，选择就变成了比大小。
+ * ③ 单条不超过火锅的 22/1.5（那是这一版的上界），要加更大的先回来看这条。
+ */
 export const FOOD_EFFECT: Record<string, FoodEffect> = {
+  // Lv.1 家常
   token: { hunger: 6, weight: 0.6 },
   rice: { hunger: 14, weight: 0.4 },
+  lunch: { hunger: 16, weight: 0.8 },        // 面条（一碗汤面扎实，但不厚）
+  breakfast: { hunger: 12, weight: 1.6 },    // 油条（顶饱一般、热量最高的一档之一）
+  // Lv.2 有滋味
   tanghulu: { hunger: 8, weight: 0.9 },
+  dumpling: { hunger: 16, weight: 1.2 },
+  watermelon: { hunger: 10, weight: 0.3 },   // 西瓜：水分大，几乎不长肉
+  snack: { hunger: 7, weight: 1.4 },         // 零食：不顶饱，专管长肉
+  // Lv.4 讲究
   crab: { hunger: 18, weight: 1.0 },
   hotpot: { hunger: 22, weight: 1.5 },
-  dumpling: { hunger: 16, weight: 1.2 },
+  ricecake: { hunger: 18, weight: 1.8 },     // 年糕：糯米扎实，热量这版最高
+  icecream: { hunger: 8, weight: 1.3 },      // 冰淇淋：凉甜，不太顶饱
 }
 
 export const FEED_MOOD = 2
@@ -143,6 +161,16 @@ export function bondGain(e: StatEvent | 'daily-open', ctx: EventCtx): number {
  * 一个月 Lv.11 —— 桌面陪伴不是游戏，升级就该是慢的。
  */
 export const EXP_PER_LEVEL = 10
+
+/**
+ * 加经验，**并按一位小数收口**。
+ *
+ * 为什么不是 `prev + gain` 直接加：所有增量都是 0.1 的倍数，但二进制浮点存不下 0.1，
+ * 于是 9.6 + 0.2 + 0.2 = **9.999999999999998**，`levelOf` 那一档 floor(0.9999…)=0 → 永远差一口气到 Lv.2。
+ * 实测撞上过（e2e 里喂到第 10.0 那一口就是不升级）。收口到一位小数是这台的读数精度，
+ * 也是 `toFixed(1)` 显示出来的精度——攒的人看到的和升级判据用的是同一个数。
+ */
+export const addExp = (prev: number, gain: number): number => Math.round((prev + gain) * 10) / 10
 
 /**
  * 每条动作给多少经验。**和亲密度的账分开记**：喂食也涨等级，但不该顺带动那条已经调好平衡的亲密条

@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
-import { PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
+import { PANEL_BUTTONS, REQUIRED_POOLS, FOOD_CELL, FOOD_GAP, FOOD_VISIBLE } from '../src/shared/config.js'
+import { pageStep } from '../src/shared/scroll.js'
 import { FOODS } from '../src/shared/food.js'
 import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.js'
 import type { StatsSnapshot } from '../src/shared/save.js'
@@ -205,16 +206,28 @@ const pointer = (type: string, x: number): MouseEvent =>
   new MouseEvent(type, { clientX: x, bubbles: true })
 
 describe('食物视图', () => {
-  const mountFoods = () => {
+  /**
+   * exp 决定当前等级，也就决定哪几格是锁着的（2026-11-06 的按等级解锁）。
+   * 默认给 Lv.1 的经验——**没推快照时面板也按 Lv.1 处理**，所以这两种情况行为一致。
+   */
+  const mountFoods = (exp = 0) => {
     const pick = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
       { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
+    panel.setStats({
+      stats: { hunger: 50, mood: 50, weight: 50, bond: 50 },
+      identity: { name: '小鲸', gender: 'female' },
+      exp,
+      startedAt: 1_000,
+    })
     panel.setView('foods')
     return { panel, pick }
   }
+  /** Lv.4 全开（经验 30 = 第四级）。 */
+  const mountAll = () => mountFoods(30)
 
   it('切到 foods 后副板是那块可见底板：格子数等于 FOODS 长度', () => {
     const { panel } = mountFoods()
@@ -226,8 +239,8 @@ describe('食物视图', () => {
     expect(panel.el.querySelectorAll('.pet-food').length).toBe(FOODS.length)
   })
 
-  it('格子里是图，名字退到 title 与读屏 label（图挂了也不留空白，label 还在）', () => {
-    const { panel } = mountFoods()
+  it('格子里是图，名字退到 title 与读屏 label；锁着的格子把门槛一起说清', () => {
+    const { panel } = mountAll()
     const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     expect(cells.length).toBe(FOODS.length)
     cells.forEach((cell, i) => {
@@ -239,6 +252,15 @@ describe('食物视图', () => {
       expect(img, `${f.id} 格子里没有图`).not.toBeNull()
       expect(img!.getAttribute('src')).toBe(f.icon)
     })
+    // Lv.1 时 Lv.2/Lv.4 那八格：title 要说「为什么点不动」，角标要把等级写在格子上
+    const low = mountFoods().panel
+    const lockedCells = [...low.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
+    const locked = lockedCells.filter((c) => c.classList.contains('is-locked'))
+    expect(locked).toHaveLength(8)
+    expect(locked[0]!.title).toBe('糖葫芦（Lv.2 解锁）')
+    expect(locked[0]!.getAttribute('aria-label')).toBe('糖葫芦（Lv.2 解锁）')
+    expect(locked[0]!.textContent).toBe('Lv.2')
+    expect(locked[0]!.disabled).toBe(true)
   })
 
   it('点一格把整个 food 报给 pick，并且不切视图', () => {
@@ -250,17 +272,65 @@ describe('食物视图', () => {
   })
 
   /**
+   * 按等级解锁（用户 2026-11-06 要「等级低只能吃简单的」）。
+   * 面板这半边钉三件事：灰态与角标跟着等级翻、**不重建列表**、以及升级那一刻当场生效。
+   * 「灰格子真不吃点击」是浏览器行为，由 e2e 在真 Chromium 里验。
+   */
+  it('Lv.1 只放开 Lv.1 那四格；升到 Lv.4 八格当场解锁', () => {
+    const { panel } = mountFoods()
+    const cells = () => [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
+    expect(cells().filter((c) => !c.disabled).map((c) => c.dataset.food))
+      .toEqual(['token', 'rice', 'noodle', 'youtiao'])
+    const first = cells()[0]
+    // 升级：主进程推一份 exp 更高的快照过来，面板只翻属性，不重建（滚动位置是用户的）
+    panel.setStats({
+      stats: { hunger: 50, mood: 50, weight: 50, bond: 50 },
+      identity: { name: '小鲸', gender: 'female' },
+      exp: 30,
+      startedAt: 1_000,
+    })
+    expect(cells().every((c) => !c.disabled), 'Lv.4 了还有格子灰着').toBe(true)
+    expect(cells().every((c) => c.querySelector('.pet-food-lock')?.textContent === '')).toBe(true)
+    expect(panel.el.querySelector('.pet-food')).toBe(first)
+  })
+
+  it('没推快照时按 Lv.1 处理：Lv.1 那四格能点，其余灰着——不是整列都能点', () => {
+    // 这一条管的是「数据还没到」的默认方向。猜成「全开」会让用户点到一格喂出个不该有的东西，
+    // 猜成「全关」会让刚开列表的人以为功能坏了；取 Lv.1 是因为它等于「按最保守的已知档位摆」。
+    const pick = vi.fn()
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, identity: vi.fn() })
+    panel.show({ x: 0, y: 0 })
+    panel.setView('foods')
+    const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
+    expect(cells.filter((c) => !c.disabled)).toHaveLength(4)
+  })
+
+  /**
    * 吃饭期间整列点不动（用户拍的板）。这里只钉面板这一半：状态推过来时格子必须翻对、
    * 而且**不许重建列表**。「灰格子真的不吃点击」是浏览器行为，由 e2e 在真 Chromium 里验。
    */
   it('setEating(true) 把整列格子翻成 disabled，false 再翻回来', () => {
-    const { panel } = mountFoods()
+    const { panel } = mountAll()      // 全解锁，这样灰态只可能来自「正在吃饭」这一件事
     const cells = () => [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     expect(cells().every((c) => !c.disabled), '没吃饭时格子就该能点').toBe(true)
     panel.setEating(true)
     expect(cells().every((c) => c.disabled)).toBe(true)
     panel.setEating(false)
     expect(cells().every((c) => !c.disabled)).toBe(true)
+  })
+
+  it('吃饭与没解锁两件事取「或」：饭后只回到「按等级该灰的还灰着」', () => {
+    const { panel } = mountFoods()    // Lv.1：八格本来就锁着
+    panel.setEating(true)
+    const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
+    expect(cells.every((c) => c.disabled)).toBe(true)
+    panel.setEating(false)
+    // 灰态**不该整列解开**：锁着的八格还得锁着
+    expect(cells.filter((c) => !c.disabled).map((c) => c.dataset.food))
+      .toEqual(['token', 'rice', 'noodle', 'youtiao'])
   })
 
   it('翻灰态不重建节点：滚动位置与用户手里的旧节点都得留着', () => {
@@ -296,17 +366,29 @@ describe('食物视图', () => {
     expect(['prev', 'next'].map((d) => one(d).textContent)).toEqual(['', ''])
   })
 
+  /**
+   * 滚动那几个数一律从 FOODS 与 config 推，不写字面量。
+   * 上一版这里写着「6 格 308、最大 104、按一次就到头」，列表一扩到 12 格
+   * 这两条就同时红了——而且红得毫无信息量（谁对谁错看不出来）。
+   */
+  const SCROLL = (() => {
+    const view = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
+    const content = FOODS.length * FOOD_CELL + (FOODS.length - 1) * FOOD_GAP
+    return { view, content, max: content - view, step: pageStep(FOOD_VISIBLE, FOOD_CELL, FOOD_GAP) }
+  })()
+  const clicksToEnd = Math.ceil(SCROLL.max / SCROLL.step)
+
   it('点 ‹ › 改变滚动，内容条跟着平移，且不会滚出边界', () => {
     const { panel } = mountFoods()
     const strip = () => (panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform
     const next = panel.el.querySelector('.pet-page[data-page="next"]') as HTMLElement
     const prev = panel.el.querySelector('.pet-page[data-page="prev"]') as HTMLElement
     expect(strip()).toBe('translateX(0px)')
-    // 6 格 48 + 5 缝 4 = 308，视口 204 → 最大滚动只有 104，比一整屏步进 208 还小，
-    // 所以按一次就到头。数字要按 FOODS 实际长度算，不能照 12 格的老期望写。
-    next.click(); expect(strip()).toBe('translateX(-104px)')
-    next.click(); expect(strip()).toBe('translateX(-104px)')
-    for (let i = 0; i < 4; i++) prev.click()
+    for (let i = 0; i < clicksToEnd; i++) next.click()
+    expect(strip()).toBe(`translateX(${-SCROLL.max}px)`)
+    next.click()
+    expect(strip(), '到底了还能往下滚').toBe(`translateX(${-SCROLL.max}px)`)
+    for (let i = 0; i < clicksToEnd + 1; i++) prev.click()
     expect(strip()).toBe('translateX(0px)')
   })
 
@@ -316,7 +398,7 @@ describe('食物视图', () => {
     const prev = panel.el.querySelector('.pet-page[data-page="prev"]') as HTMLButtonElement
     expect(prev.disabled).toBe(true)
     expect(next.disabled).toBe(false)
-    next.click()
+    for (let i = 0; i < clicksToEnd; i++) next.click()
     expect(next.disabled).toBe(true)
     expect(prev.disabled).toBe(false)
   })
@@ -329,12 +411,14 @@ describe('食物视图', () => {
     thumb.dispatchEvent(pointer('pointerdown', 40))
     window.dispatchEvent(pointer('pointermove', 60))
     window.dispatchEvent(pointer('pointerup', 60))
-    // 拖 20px 该停在**中间**，不是 0 也不是到底。6 格只有 120px 可滚，
-    // 拖 100px 会直接撞到头，那条断言就退化成「不等于步进」，测不出比例换算。
-    // 内容条往左走（负数），滑块往右走（正数），所以各取各的号，别用一个 negate 糊过去
+    // 拖 20px 该停在**中间**，不是 0 也不是到底。
+    // 内容比视口宽得多，轨道就短，所以位移要按「内容 : 轨道」的比例放大回去——
+    // 1:1 的话拖到头只滚了一小截。这里要的是「比 20 大、但远没到底」，
+    // 到底的话断言会退化成「等于 -max」，测不出比例换算。
     const num = (sel: string) => parseFloat((panel.el.querySelector(sel) as HTMLElement).style.transform.replace(/[^0-9.-]/g, ''))
-    expect(num('.pet-food-strip')).toBeLessThan(0)
-    expect(num('.pet-food-strip')).toBeGreaterThan(-120)
+    const moved = -num('.pet-food-strip')
+    expect(moved, '拖了没滚').toBeGreaterThan(20)
+    expect(moved, '拖 20px 就撞到头了').toBeLessThan(SCROLL.max)
     expect(num('.pet-thumb')).toBeGreaterThan(0)
   })
 

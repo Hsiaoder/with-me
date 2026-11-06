@@ -3,9 +3,14 @@
  * 设计文档里的每个数字都在这里落地，其他文件只 import，不许再写字面量。
  *
  * 这一文件**刻意不 import 任何东西**：e2e 是直接 `import '../src/shared/config.ts'` 的，
- * Node 的类型剥离不会把 `./x.js` 再指回 `./x.ts`，所以这里写一条相对 import 就会
- * `ERR_MODULE_NOT_FOUND`（2026-11-06 想把气泡尺寸改成从形状清单推导时就撞上了）。
- * 需要从一个清单推导的量，由 `test/config.test.ts` 现算来钉住，不在这里 import。
+ * Node 的类型剥离只处理被点名的那个文件，不会把里面的 `./x.js` 再指回 `./x.ts`，
+ * 所以这里写一条相对 import 就会 `ERR_MODULE_NOT_FOUND`
+ * （2026-11-06 一天撞上两次：先是气泡尺寸想从形状清单推导，后是 e2e 想直接 import talk）。
+ * 推论：**e2e 直接 import 的 shared 模块必须自己也是零 import 的**
+ * （config / food / stats / text / scroll 都是）。
+ * 需要从一个清单推导的量，由 `test/config.test.ts` 现算来钉住，不在这里 import；
+ * 测试要读跨模块的内容，就从渲染层开一个 debug 读数口（`__petDebug.talkLines` 就是这么来的），
+ * 也别在测试里抄一份——抄的那份改台词时不会红。
  */
 
 // ---- 素材合同（皮肤的画布与锚点，改这三个数等于重做所有素材）----

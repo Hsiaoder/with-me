@@ -197,7 +197,7 @@ export function createPanel(
   const STEP = pageStep(FOOD_VISIBLE, FOOD_CELL, FOOD_GAP)
   let scrollX = 0
   /** 食物视图的节点引用。每次 renderFoods 重新赋值，syncScroll 只改这几个节点，不重建列表。 */
-  let foodRefs: { strip: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement; thumb: HTMLElement | null; cells: HTMLButtonElement[] } | null = null
+  let foodRefs: { strip: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement; thumb: HTMLElement | null; items: { cell: HTMLButtonElement; badge: HTMLElement; food: Food }[] } | null = null
   /**
    * 「正在吃饭」——装配层推过来的，面板自己不判断（判断要读行为链，那是两份账）。
    * 存在这里是因为**列表可能在吃饭中途才被叫出来**：那时候格子得直接以灰态建出来。
@@ -271,18 +271,21 @@ export function createPanel(
     viewport.className = 'pet-food-viewport'
     const strip = document.createElement('div')
     strip.className = 'pet-food-strip'
-    const cells: HTMLButtonElement[] = []
+    const items: { cell: HTMLButtonElement; badge: HTMLElement; food: Food }[] = []
     for (const f of FOODS) {
       // 格子里放图，名字退成 title/aria-label——和两个翻页键同一套约定（imgBtn）。
       // 以前这里是一格一个汉字名，六个格子看下来像一张菜单文字表；换成图之后「点哪格吃哪口」
       // 要一眼认出来，靠的是形状而不是识字。
       const cell = imgBtn(f.name, f.icon, { food: f.id }, 'pet-food-icon')
       cell.classList.add('pet-food')
-      // 建的时候就带上灰态：正在吃饭时把列表叫出来，不该先亮一下再暗
-      cell.disabled = eating
+      // 解锁角标那一枚。**每格都建一个**而不是只给没解锁的建：
+      // 升级那一刻要能把字清空变回普通格子，留着节点比来回增删省事也不会晃眼。
+      const badge = document.createElement('span')
+      badge.className = 'pet-food-lock'
+      cell.append(badge)
       cell.addEventListener('click', () => handlers.pick(f))
       strip.append(cell)
-      cells.push(cell)
+      items.push({ cell, badge, food: f })
     }
     viewport.append(strip)
 
@@ -309,17 +312,40 @@ export function createPanel(
     row.append(prev, main, next)
     host.append(row)
 
-    foodRefs = { strip, prev, next, thumb, cells }
+    foodRefs = { strip, prev, next, thumb, items }
     syncScroll()
+    // 建完就同步一次：正在吃饭时把列表叫出来，格子该直接以灰态出现，不该先亮一下再暗
+    syncCells()
   }
 
   /**
-   * 就地翻格子的 `disabled`。列表不在布局里时（食物视图没开着）什么都不做——
-   * 状态已经存在 `eating` 里了，下一次 `renderFoods` 会带着它建格子。
+   * 就地翻格子的 `disabled`、角标与 title。列表不在布局里时（食物视图没开着）什么都不做——
+   * 状态都存在 `eating` 与 `snap` 里，下一次 `renderFoods` 会带着它们建格子。
+   *
+   * 两件事会同时动这一列的灰态，所以合成一个函数：
+   * ① **正在吃饭**（一口没吃完，整列点不动，用户拍的板）；
+   * ② **还没到解锁等级**（2026-11-06 的「等级低只能吃简单的」）。
+   * 判据分开算、`disabled` 取两者的或；升级那一刻只翻这几个属性，**不重建列表**——
+   * 重建会把用户的滚动位置与他手里的旧节点一起弄丢（和 `syncScroll` 同一条理由）。
    */
-  function syncEating(): void {
+  function syncCells(): void {
     if (foodRefs === null) return
-    for (const c of foodRefs.cells) c.disabled = eating
+    const lv = levelNow()
+    for (const { cell, badge, food: f } of foodRefs.items) {
+      const locked = f.level > lv
+      cell.disabled = eating || locked
+      cell.classList.toggle('is-locked', locked)
+      badge.textContent = locked ? `Lv.${f.level}` : ''
+      // 图不带字，悬停与读屏是唯一的说明——锁住的那格必须连「为什么点不动」一起说清
+      const text = locked ? `${f.name}（Lv.${f.level} 解锁）` : f.name
+      cell.title = text
+      cell.setAttribute('aria-label', text)
+    }
+  }
+
+  /** 现在几级。快照还没到就当 Lv.1：列表要能点开，只是高级那几格先灰着。 */
+  function levelNow(): number {
+    return snap === null ? 1 : levelOf(snap.exp)
   }
 
   /**
@@ -601,6 +627,9 @@ export function createPanel(
       // 数值是主进程每 tick / 每次动作推过来的，状态栏开着就得跟着改；
       // 只在这里重绘，收起时不重绘——省掉一批没人看的 DOM 操作。
       if (current === 'stats') render()
+      // 列表开着时升级要当场解锁：只翻格子，不重建整块（滚动位置是用户的）。
+      // 没开着时 foodRefs 是 null，这一句自己 no-op。
+      else syncCells()
     },
     setRuntime(r) {
       runtime = r
@@ -612,7 +641,7 @@ export function createPanel(
     setEating(on) {
       if (on === eating) return
       eating = on
-      syncEating()
+      syncCells()
     },
   }
 }

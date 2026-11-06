@@ -12,7 +12,7 @@
 import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_IDLE_PROB, TALK_MAX_CHARS } from './config.js'
 import { labelWidth } from './text.js'
 
-export type TalkReason = 'idle' | 'hungry' | 'blue' | 'feed' | 'game' | 'status'
+export type TalkReason = 'idle' | 'hungry' | 'blue' | 'feed' | 'game' | 'status' | 'levelup'
 
 /** 自己搭话的几档：都要过「闲够了 + 概率」那道门。事件驱动的（喂/玩/拖）不受它管。 */
 export const SELF_TALK_REASONS: readonly TalkReason[] = ['idle', 'hungry', 'blue']
@@ -67,6 +67,13 @@ export const TALK_LINES: Record<TalkReason, Line[]> = {
     { say: '有点想睡觉', reply: '睡吧' },
     { say: '今天状态满分', reply: '真棒' },
   ],
+  // 攒够经验跨级那一刻说一句（渲染层比的是**前后两份快照的 Lv**，不是「有没有喂」）。
+  // 事件驱动的一档：只受冷却管，不看概率——升级是结果，结果必须有反馈。
+  levelup: [
+    { say: '我感觉自己变强了', reply: '恭喜升级' },
+    { say: '到新的一级了', reply: '继续加油' },
+    { say: '我又长大了一点', reply: '真棒' },
+  ],
   // 没有 drag 这一档：拖拽时不弹气泡（用户 2026-11-05 拍的板），
   // 「被拎起来必回一句」和它冲突，所以整条路径删掉而不是留着没人调。
 }
@@ -94,6 +101,19 @@ export function pickTalk(reason: TalkReason, ctx: TalkCtx, rng: () => number): L
     if (ctx.idleMs <= IDLE_LONG_MS) return null
     if (rng() >= TALK_IDLE_PROB) return null
   }
+  const lines = TALK_LINES[reason]
+  return lines[Math.floor(rng() * lines.length) % lines.length] ?? null
+}
+
+/**
+ * 抽一句，**不看冷却**。
+ *
+ * 只给「跨级」用：喂食那一口正好把经验顶过门槛时，喂食的台词先说了（点击那一刻），
+ * 快照随后才到（IPC 往返），于是 `pickTalk` 的 25 秒冷却会把跨级这句挡掉——
+ * 而跨级是**几十口才一次**的事，比「这是吃的」重要得多，该盖掉前一句。
+ * 气泡本来就是「覆盖而不是叠加」（同一时刻只许有一个），盖掉是它已有的行为，不需要新机制。
+ */
+export function pickLine(reason: TalkReason, rng: () => number): Line | null {
   const lines = TALK_LINES[reason]
   return lines[Math.floor(rng() * lines.length) % lines.length] ?? null
 }

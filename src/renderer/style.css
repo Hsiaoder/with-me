@@ -693,12 +693,32 @@ body.pet-over {
    出现两种量级，而且把底板撑到比按钮排宽 82px、两端各空 41px 谁也不对齐谁。
    选择器要压过基类 `.pet-panel button`（那条把尺寸和边框都定了），所以带上 .pet-panel 一层。 */
 .pet-panel .pet-food {
+  position: relative;
   flex: 0 0 auto;
   width: 48px;
   height: 48px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
+}
+
+/* 还没解锁那格的角标（`Lv.4`）。灰态本身说不清是「这口还没吃完」还是「等级不够」，
+   所以等级不够的那几格把门槛写在右下角，悬停 title 里也说一遍。
+   已解锁的格子里这个节点是**空的**（每格都建一个，升级那一刻只清字、不增删节点——
+   增删会让用户手里的旧节点变成死节点，和 syncScroll 那条同一个理由）。
+   角标自己不吃鼠标：说明文字不该变成第二个点击目标。 */
+.pet-panel .pet-food .pet-food-lock {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  /* 角标压在图上（格子才 48，图 40 已经顶满），所以它自己得有一层底：
+     没有底的时候「Lv.4」那三个字会和大闸蟹的腿、冰淇淋的蛋筒糊在一起（截图量出来过）。 */
+  padding: 1px 3px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  font: 600 11px/1 "Microsoft YaHei UI", sans-serif;
+  color: #5a6472;
+  pointer-events: none;
 }
 
 /* 格子里的图。40 = 48 减左右描边后留 3px 呼吸；PNG 自己是 128×128 带内边距的方图

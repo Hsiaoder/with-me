@@ -1,4 +1,5 @@
 import {
+  addExp,
   applyEvent,
   eventDeltas,
   expGain,
@@ -117,7 +118,9 @@ export function startStats(o: {
       lastEventAt = applied.lastEventAt
       // 经验走的是**另一本账**：只增不减，所以冷落几天亲密条会掉、等级不会退。
       // 数值本身入库，等级不落库——它是从经验算出来的读数，存了就等于有两份真相。
-      if (gain > 0) save.exp = (save.exp ?? 0) + gain
+      // 加它必须走 `addExp`（按一位小数收口）：9.6+0.2+0.2 在浮点里是 9.999999999999998，
+      // 于是「攒满 10 升一级」永远差最后一口气，e2e 就是这么抓到的。
+      if (gain > 0) save.exp = addExp(save.exp ?? 0, gain)
       // 只有这条跨 20 小时的门槛要落盘；其余动作的时刻仍是内存软闸
       if (e.kind === 'daily-open') save.dailyOpenAt = t
       lastInteractionAt = t

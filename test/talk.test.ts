@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clamp, nextTalkIndex, pickTalk, REPLY_MAX_WIDTH, replyFits, TALK_FLOW, TALK_LINES, type TalkReason } from '../src/shared/talk.js'
+import { clamp, nextTalkIndex, pickLine, pickTalk, REPLY_MAX_WIDTH, replyFits, TALK_FLOW, TALK_LINES, type TalkReason } from '../src/shared/talk.js'
 import { labelWidth } from '../src/shared/text.js'
 import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_MAX_CHARS } from '../src/shared/config.js'
 
@@ -14,10 +14,16 @@ const ctx = (over: Partial<{ now: number; idleMs: number; lastTalkAt: number }> 
   lastTalkAt: 0,
   ...over,
 })
-// 没有 'drag'：拖拽时不弹气泡（用户 2026-11-05 拍的板），台词表里那一档一起删了
-const REASONS: TalkReason[] = ['idle', 'feed', 'game', 'status']
+// 从台词表本身推，而不是手抄一份：上一版这里写死四个 reason，hungry/blue 早就加进表里了却没进这份清单，
+// 「冷却期内各组一律闭嘴」那几条就悄悄少验了两组。
+// 清单里**没有 'drag'** 是有意的：拖拽时不弹气泡（用户 2026-11-05 拍的板），台词表那一档一起删了。
+const REASONS = Object.keys(TALK_LINES) as TalkReason[]
 
 describe('台词表', () => {
+  it('reason 就是表里这些：drag 不许被加回来，levelup 是这一轮新加的', () => {
+    expect(REASONS.slice().sort()).toEqual(['blue', 'feed', 'game', 'hungry', 'idle', 'levelup', 'status'])
+  })
+
   for (const r of REASONS) {
     it(`${r} 组有台词，每句都带一句主人的短回复`, () => {
       expect(TALK_LINES[r].length).toBeGreaterThan(0)
@@ -104,7 +110,22 @@ describe('调试台词流（面板「说话」按钮按顺序放）', () => {
     expect(TALK_FLOW.length).toBe(total)
     expect(new Set(TALK_FLOW.map((l) => l.say)).size).toBe(total)
     expect(TALK_FLOW[0]).toEqual(TALK_LINES.idle[0])
-    expect(TALK_FLOW.at(-1)).toEqual(TALK_LINES.status.at(-1))
+    // 流的末尾跟着 TALK_LINES 里最后一个 reason——现在是 levelup（跨级那一句）
+    expect(TALK_FLOW.at(-1)).toEqual(TALK_LINES.levelup.at(-1))
+  })
+
+  it('pickLine 绕开冷却：跨级那句不被刚才那句喂食挡掉', () => {
+    /**
+     * 喂食的台词在点击那一刻说完，快照随后才到（IPC 往返），
+     * 所以「喂一口正好跨级」时 `pickTalk` 的 25 秒冷却必然挡住跨级那句。
+     * 跨级是几十口才一次的事，比「这是吃的」重要——它该盖掉前一句，
+     * 而气泡本来就是「覆盖而不是叠加」，盖掉不需要新机制。
+     */
+    const justSaid = ctx({ lastTalkAt: 100000 - 1, idleMs: 0 })
+    expect(pickTalk('levelup', justSaid, seq(0, 0)), '冷却还该管住普通事件台词').toBeNull()
+    const line = pickLine('levelup', seq(0.5))
+    expect(line, 'pickLine 该照抽不误').not.toBeNull()
+    expect(TALK_LINES.levelup).toContain(line)
   })
 
   it('每条都装得进气泡：正文不超上限，回复放得下那颗按钮', () => {
