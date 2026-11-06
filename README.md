@@ -124,7 +124,7 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
   「被拎起来必回一句」和「拖拽时气泡要消失」是冲突的，用户 2026-11-05 选了后者，
   `TALK_LINES.drag` 那一档一起删掉，不留走不到的路径。
   底图是 `src/renderer/emotes/bubble.svg`——**圆角矩形 + 底部居中的三角尾巴**，内腔填实心白。
-  形状的前四版：SVG Repo 那颗正圆 + 尖（`E:\ai-pet\svg\chat-speech-bubble-svgrepo-com.svg`，
+  形状的前四版：SVG Repo 那颗正圆 + 尖（`E:\ai-pet\svg\归档-未采用\chat-speech-bubble-svgrepo-com.svg`，
   量出来重画、路径没搬——它的授权页两次 429，商用条款没核到原文，所以只借形状与比例）、
   iconfont 的聊天气泡（尾巴歪左下、下沿是平的）、肥皂泡（没尾巴，所以不指宠物）、
   Kenney Emotes 的空气泡位图（CC0，经 `spike/emote-thin.mjs` 削描边 + `spike/emote-shorten.mjs` 删中段得到 32×32，CSS 放大 5 倍显示后
