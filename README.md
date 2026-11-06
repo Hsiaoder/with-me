@@ -23,7 +23,7 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
 | 命令 | 做什么 |
 |---|---|
 | `npm run typecheck` | TypeScript 检查，不产出文件 |
-| `npm test` | 纯逻辑单测（29 个文件 425 条，约 1.9 秒） |
+| `npm test` | 纯逻辑单测（29 个文件 427 条，约 1.6 秒） |
 | `npm run build` | `tsc` + 复制 html/css/svg/png 与 preload。没有打包器 |
 | `npm run e2e` | 真 Electron 上验播放器、面板、气泡、列表、光标、心跳、可见性子进程（48 项） |
 | `npm run e2e:skin` | 真 Electron 上验「换皮肤」这条轴（3 项） |
