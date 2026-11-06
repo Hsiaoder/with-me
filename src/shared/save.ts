@@ -14,7 +14,13 @@ import { INITIAL_STATS, STAT_KEYS, type Stats } from './stats.js'
  * 所以放在同时认识两者的这里，让渲染层与主进程用同一个名字（不放 main/，
  * 渲染层不该 import 主进程模块；也不放 stats.ts，那会让两个模块互相 import）。
  */
-export type StatsSnapshot = { stats: Stats; identity: Identity; exp: number }
+/**
+ * 主进程推给渲染层的那一份「宠物此刻怎么样」。
+ * `startedAt` 是**本次进程启动的时刻**（不入库）：状态栏那行「在线时间」读的是
+ * 「这只宠物这次陪了你多久」，跟存档里的 `lastSeenAt`（上次见到你是多久前）不是一回事，
+ * 两者混用会把「关机八小时」显示成「在线八小时」。
+ */
+export type StatsSnapshot = { stats: Stats; identity: Identity; exp: number; startedAt: number }
 
 /** 性别只有两档，落盘存 ascii，显示用中文（动物的说法：雌/雄）。 */
 export type Gender = 'female' | 'male'

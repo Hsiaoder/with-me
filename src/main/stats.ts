@@ -55,7 +55,11 @@ export function startStats(o: {
   const { save, persist, broadcast, now } = o
   const MIN_MS = 60_000
 
-  const snapshot = (): StatsSnapshot => ({ stats: save.stats, identity: save.identity, exp: save.exp ?? 0 })
+  /** 本次进程启动的时刻。状态栏「在线时间」读它，不入库（入库就变成累计陪伴时长，那是另一件事）。 */
+  const startedAt = now()
+  const snapshot = (): StatsSnapshot => ({
+    stats: save.stats, identity: save.identity, exp: save.exp ?? 0, startedAt,
+  })
 
   /** 上次结算到的时刻。开机先拿存档里的 lastSeenAt 补一次离线，再把起点拧到现在。 */
   let lastTick = now()

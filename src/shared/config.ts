@@ -83,6 +83,33 @@ export const LOOPING_POOLS = ['idle', 'turn', 'move'] as const
  */
 export const AMBIENT_POOLS = ['idle', 'turn'] as const
 
+/**
+ * 状态栏「状态」那一行的人话：池名 → 此刻在干什么。
+ *
+ * 这行读的是**当前动画池**，不是编出来的成长值——我们没有「经验自动涨」那套系统，
+ * 写「正在成长」就是假数据（用户给的参考图是 QQ 宠那种自动成长系统，口径不同）。
+ * 每个池都得有条：漏一个就落到 ACTIVITY_FALLBACK，而「正在发呆」出现在吃饭时就是 bug。
+ */
+export const ACTIVITY_LABELS: Record<string, string> = {
+  idle: '正在休息',
+  turn: '正在张望',
+  move: '正在散步',
+  click: '正在打招呼',
+  drag: '被拎着',
+  eat: '正在吃饭',
+}
+/** 皮肤里有自定义池（比如 sleep）时的兜底。 */
+export const ACTIVITY_FALLBACK = '正在发呆'
+
+/**
+ * 状态栏刷「在线时间」的节拍。
+ *
+ * 挂在定时器上而不是 rAF：这扇窗 `focusable:false`，没有焦点时 rAF 会被节流，
+ * 数字就跟着抖（心跳那条踩过同一个坑，见 renderer/index.ts 的 sendGrab）。
+ * 1 秒是「分秒」那档的最小粒度，再快也没有可读的变化。
+ */
+export const ONLINE_TICK_MS = 1000
+
 // ---- 说话 ----
 /** 气泡默认停留时长。光标还在气泡上会续命，见渲染层装配。 */
 export const BUBBLE_SHOW_MS = 5000

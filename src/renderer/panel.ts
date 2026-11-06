@@ -29,6 +29,15 @@ import type { Point, Rect } from '../shared/types.js'
 export type PanelAction = PanelButton
 export type PanelView = 'actions' | 'settings' | 'foods' | 'stats'
 
+/**
+ * 状态栏底下那两行「此刻」的读数。
+ *
+ * 它们不走 `setStats`：数值快照一分钟才推一把，而「在干什么」「陪了多久」得一秒一跳，
+ * 挂在同一条通道上要么让快照提频，要么让数字卡住，都不对。
+ * 文字也由装配层拼好：面板只管摆，不懂动画池叫什么。
+ */
+export type PanelRuntime = { activity: string; online: string }
+
 export interface PanelHandlers {
   /**
    * 按了动作视图里的某个按钮。带 `pool` 才回调——带 `view` 的那两颗（喂食、设置）
@@ -75,6 +84,8 @@ export interface Panel {
   setSettings(s: Settings): void
   /** 主进程推来的数值快照。开着状态视图时立刻重绘，没开就存着。 */
   setStats(s: StatsSnapshot): void
+  /** 「此刻」两行：状态、在线时间。开着状态视图时只改这两处的文字，不重绘整块。 */
+  setRuntime(r: PanelRuntime): void
   /**
    * 「正在吃饭」这个状态推给面板：食物列表整列置灰、点不动，饭后放开。
    * 就地翻 `disabled`，**不重建列表**——理由和 `syncScroll` 一样：重建会把滚动位置与
@@ -146,6 +157,14 @@ export function createPanel(
   let values = settings
   /** 主进程推来的数值快照。null = 还没推到（首帧），此时状态栏只显名字位、不编造读数。 */
   let snap: StatsSnapshot | null = null
+  /** 「此刻」两行的内容。null = 装配层还没推过，行里给省略号而不是猜一个。 */
+  let runtime: PanelRuntime | null = null
+  /**
+   * 那两行的值节点。`setRuntime` 一秒一跳，**只能就地改文字**：
+   * 每次重绘整块副板会把出场动画（从 display:none 出来那一次状态变化）每秒重放一遍。
+   * 和 `foodRefs` 同一个道理，所以也在 `render()` 开头清空——旧节点已经不在树里了。
+   */
+  let runtimeRefs: { activity: HTMLElement; online: HTMLElement } | null = null
   /** 两块内容节点。render 时重建，收起时都摘掉；null 表示这一视图里没有它。 */
   let actionsEl: HTMLElement | null = null
   let plateEl: HTMLElement | null = null
@@ -297,11 +316,12 @@ export function createPanel(
   }
 
   /**
-   * 状态栏：姓名一行、性别一行、等级一行，下面四条读数，没有返回按钮（收起靠再点一次状态键）。
+   * 状态栏：昵称一行、性别一行、等级一行，下面四条读数，最后「此刻」两行，
+   * 没有返回按钮（收起靠再点一次状态键）。
    * 它是 qqpet 那种「一眼看到当前值」的面板，不是设置页——唯一还能就地改的是性别。
    */
   function renderStats(host: HTMLElement): void {
-    host.append(plainLine('姓名', snap === null ? '…' : snap.identity.name, 'pet-stats-name'))
+    host.append(plainLine('昵称', snap === null ? '…' : snap.identity.name, 'pet-stats-name'))
     // 性别要读得出是哪一档才画：没快照时给个空符号比猜一个诚实。
     if (snap !== null) host.append(genderLine(snap.identity.gender))
 
@@ -321,6 +341,20 @@ export function createPanel(
       const v = snap.stats[key]
       host.append(barLine(`is-${statBand(v)}`, key, STAT_LABELS[key], Math.round(v), String(Math.round(v))))
     }
+
+    // 「此刻」两行排在读数下面：上面四条是「攒了多少」，这两条是「现在」，
+    // 混在一栏里读起来会变成「这栏有六条数值」。
+    // 用户参考的是 qqpet 的宠物档案，但那里第三行是「成长进度」——我们没有自动成长，
+    // 照抄就成了假数据，所以「状态」这一行读的是**当前动画池**（装配层查表推过来）。
+    const act = plainLine('状态', runtime === null ? '…' : runtime.activity, 'pet-stats-activity')
+    const on = plainLine('在线时间', runtime === null ? '…' : runtime.online, 'pet-stats-online')
+    host.append(act, on)
+    runtimeRefs = { activity: valueNode(act), online: valueNode(on) }
+  }
+
+  /** 取「标签 + 值」那一行的值节点（`plainLine` 固定把它放最后，这里只有一个用处，不值得为它改签名）。 */
+  function valueNode(line: HTMLElement): HTMLElement {
+    return line.lastElementChild as HTMLElement
   }
 
   /** 「标签 + 进度条 + 右端数值」一行，四条读数与等级共用。 */
@@ -439,6 +473,7 @@ export function createPanel(
       plateEl = null
     }
     foodRefs = null                 // 旧列表节点已经不在了，别让 syncScroll 去摸它们
+    runtimeRefs = null              // 同上：那两行的字要等下一次 renderStats 重新交出来
     if (!wantActions) {
       if (actionsEl !== null) {
         actionsEl.remove()
@@ -556,6 +591,13 @@ export function createPanel(
       // 数值是主进程每 tick / 每次动作推过来的，状态栏开着就得跟着改；
       // 只在这里重绘，收起时不重绘——省掉一批没人看的 DOM 操作。
       if (current === 'stats') render()
+    },
+    setRuntime(r) {
+      runtime = r
+      // 状态视图没开着就只存着，等 renderStats 建的时候带上——和 snap 一个待遇。
+      if (runtimeRefs === null) return
+      runtimeRefs.activity.textContent = r.activity
+      runtimeRefs.online.textContent = r.online
     },
     setEating(on) {
       if (on === eating) return

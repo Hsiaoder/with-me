@@ -507,11 +507,11 @@ body.pet-over {
   gap: 4px;
 }
 
-/* 状态栏：竖一条，名字在上、四条读数在下。宽度定死 150px——它站在宠物右侧，
+/* 状态栏：竖一条，昵称在上、四条读数在中间、「此刻」两行在下面。宽度定死 150px——它站在宠物右侧，
    再宽就会在宠物贴右边缘时顶出屏幕，那时它只能翻到左边，反而压住宠物。
-   行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）：这张卡上七行都是「标签 + 一条东西」的
-   同构形状，5px 时七行糊成一块灰，读到第四条得重新从上面数下来。9px 大约是行高（20px）的一半，
-   分组感才出来；再往上就变成「七张分开的卡片」而不是一栏读数了。
+   行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）：这张卡上每行都是「标签 + 一条东西」的
+   同构形状，5px 时糊成一块灰，读到第四条得重新从上面数下来。9px 大约是行高（20px）的一半，
+   分组感才出来；再往上就变成「九张分开的卡片」而不是一栏读数了。
    纵向变高由 statsAnchor 自己夹回屏幕内，不需要在这里防。 */
 .pet-plate.is-stats {
   flex-direction: column;
@@ -541,39 +541,52 @@ body.pet-over {
   background: var(--hover-fill);
 }
 
-/* 性别那一枚符号。符号自己已经说了性别，颜色是第二道冗余表意（粉=雌、蓝=雄），
-   所以这里不做「选中/未选中」对比——卡上只有这一枚，它没有对照组。
+/* 性别就一枚符号，**卡片整个去掉**（用户 2026-11-06 拍的板：「只要符号，不要背景」）。
+   以前给它描了淡底圈 + 同色边框，读起来像「这是一组里被选中的那一档」，
+   但卡上只有这一枚、没有对照组，那层底色纯属噪音——符号自己已经说了性别。
+   两点要留住：
+   ① 命中区撑到 24×24（WCAG 2.5.8 的下限）。符号只有 14px，不撑的话鼠标停在字边上就点不中，
+      而这是整张卡上唯一能改存档的东西。
+   ② 颜色要比原来深一档。原来它背后压着一层 rgba(255,255,255,.9) 的近白卡片，
+      #e0559a 在那上面实测 3.5:1；底色一去，它是直接站在副板的 #ddeef8 上的，
+      同一支色只剩 2.98:1。这里两支都压到 4.5:1 以上（♀ #b02a6b = 5.21:1、♂ #2a5fa8 = 5.36:1）。
    权重三层类名，压过上面那条 `.pet-plate.is-stats button`。 */
 .pet-plate.is-stats .pet-gender {
-  min-width: 30px;
-  padding: 1px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
   font-size: 14px;
   line-height: 1.25;
 }
 
 .pet-plate.is-stats .pet-gender.is-female {
-  color: #e0559a;
-  border-color: rgba(224, 85, 154, 0.45);
-  background: rgba(224, 85, 154, 0.1);
+  color: #b02a6b;
 }
 
 .pet-plate.is-stats .pet-gender.is-male {
-  color: #4a86d8;
-  border-color: rgba(74, 134, 216, 0.45);
-  background: rgba(74, 134, 216, 0.1);
+  color: #2a5fa8;
 }
 
-/* 它是卡上唯一能点的东西，悬停必须给反馈——加深自己那支颜色，
-   不要落到上面那条薄荷绿 hover 底色上（那是给雌雄两档文字按钮准备的）。 */
-.pet-plate.is-stats .pet-gender.is-female:hover {
-  background: rgba(224, 85, 154, 0.2);
+/* 它是卡上唯一能点的东西，底色没了总得留一条线索——用描边，不用填充：
+   「不要背景」说的是静止状态那张假卡片，悬停时浮出一圈细边是「这里能点」，不是「这里有个档」。
+   顺带把键盘焦点也走同一条（这扇窗不收键盘，但样式对了以后要收就不用再改）。 */
+.pet-plate.is-stats .pet-gender.is-female:hover,
+.pet-plate.is-stats .pet-gender.is-female:focus-visible {
+  box-shadow: 0 0 0 1.5px rgba(176, 42, 107, 0.5);
 }
 
-.pet-plate.is-stats .pet-gender.is-male:hover {
-  background: rgba(74, 134, 216, 0.2);
+.pet-plate.is-stats .pet-gender.is-male:hover,
+.pet-plate.is-stats .pet-gender.is-male:focus-visible {
+  box-shadow: 0 0 0 1.5px rgba(42, 95, 168, 0.5);
 }
 
-/* 姓名 / 性别这两行和读数行同列：值右对齐到数字那一栏。
+/* 昵称 / 性别 / 此刻这两行和读数行同列：值右对齐到数字那一栏。
    刻意不叫 .pet-stat——那个类专指「一条数值读数」，单测和 e2e 都按它数条数。 */
 .pet-stat,
 .pet-stat-line {

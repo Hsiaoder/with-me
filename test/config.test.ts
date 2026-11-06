@@ -2,14 +2,16 @@ import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  ACTIVITY_FALLBACK, ACTIVITY_LABELS, AMBIENT_POOLS,
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_INNER_BOTTOM,
   BUBBLE_CAVITY, BUBBLE_RING_W,
-  FOOD_CELL, FOOD_ICON, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
+  FOOD_CELL, FOOD_ICON, FOOD_GAP, FOOD_VISIBLE, ONLINE_TICK_MS, VIEW_HIDE_MS,
   FLOAT_CHIP, FLOAT_MS, FLOAT_HEAD_OFFSET,
 } from '../src/shared/config.js'
-import { STAT_KEYS } from '../src/shared/stats.js'
+import { STAT_KEYS, STAT_TICK_MS } from '../src/shared/stats.js'
+import { fitsLabel } from '../src/shared/text.js'
 import { mimeOf } from '../src/main/protocol.js'
 
 describe('素材合同', () => {
@@ -250,6 +252,84 @@ describe('飘字（属性涨了多少）的尺寸与时序', () => {
       .find((b) => b.includes('.pet-float'))
     expect(reduced, '找不到减少动效里关飘字动画的那条').toBeDefined()
     expect(reduced).toMatch(/animation: none/)
+  })
+})
+
+/**
+ * 相对亮度 → WCAG 对比度。样式里的色值都是 #rrggbb，够用。
+ * 公式和 spike/color-math.mjs 的 relLum/contrast 一致——上一轮给飘字挑色用的就是它，
+ * 两边算法不一样会出现「探针说够、单测说不够」这种更难查的分歧。
+ */
+function contrast(fg: string, bg: string): number {
+  const lum = (hex: string): number => {
+    const lin = (i: number): number => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    }
+    return 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5)
+  }
+  const a = lum(fg)
+  const b = lum(bg)
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+}
+
+describe('状态栏的「此刻」两行与性别符号', () => {
+  const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const genderBlock = (): string => css.match(/\.pet-plate\.is-stats \.pet-gender \{([^}]*)\}/)?.[1] ?? ''
+  /** 从已经剥过注释的 CSS 里抠一个数；抠不到就是那条规则被人改了/删了，直接说人话报错。 */
+  const pick = (re: RegExp, what: string): string => {
+    const found = css.match(re)?.[1]
+    if (found === undefined) throw new Error(`style.css 里读不到${what}`)
+    return found
+  }
+
+  it('每个可能出现在屏幕上的池都有一句人话', () => {
+    // current.pool 的取值范围 = 必需池 ∪ 环境池 ∪ eat（吃相）。漏一个就落到「正在发呆」，
+    // 而「正在发呆」贴在一条正在嚼饭的宠物旁边就是 bug——所以这条按并集来查，不按手写清单。
+    const pools = new Set<string>([...REQUIRED_POOLS, ...AMBIENT_POOLS, 'eat'])
+    for (const pool of pools) expect(ACTIVITY_LABELS[pool], `池「${pool}」没有对应的状态说法`).toBeTruthy()
+  })
+
+  it('每一句都放得下值栏：状态栏那一列是所有行对齐的，顶宽了整栏歪', () => {
+    const VALUE_MAX = (150 - 6 * 2 - 1 * 2 - 48 - 4) / 12
+    for (const [pool, label] of Object.entries(ACTIVITY_LABELS)) {
+      expect(fitsLabel(label, VALUE_MAX), `${pool} →「${label}」顶爆值栏`).toBe(true)
+    }
+    expect(fitsLabel(ACTIVITY_FALLBACK, VALUE_MAX)).toBe(true)
+  })
+
+  it('在线时间的节拍比数值 tick 快、且是 1 秒：再快没有可读变化，再慢那一档就不跳了', () => {
+    expect(ONLINE_TICK_MS).toBe(1000)
+    expect(ONLINE_TICK_MS).toBeLessThan(STAT_TICK_MS)
+  })
+
+  it('性别只剩符号：底色、描边、内边距都得是「没有」', () => {
+    // 用户 2026-11-06 的原话「只要符号，不要背景」。这行不是观感偏好，是**语义**：
+    // 那层淡底圈读起来像「一组里被选中的那一档」，而卡上只有这一枚，它没有对照组。
+    const block = genderBlock()
+    expect(block, '读不到 .pet-gender 块').not.toBe('')
+    for (const prop of ['background: none', 'border: none', 'padding: 0']) {
+      expect(block, `.pet-gender 还留着 ${prop}`).toContain(prop)
+    }
+  })
+
+  it('底色去掉了，命中区还得撑到 24×24：那是卡上唯一能改存档的东西', () => {
+    const num = (prop: string): number => Number(genderBlock().match(new RegExp(`${prop}: (\\d+)px`))?.[1] ?? 0)
+    expect(num('min-width')).toBeGreaterThanOrEqual(24)
+    expect(num('min-height')).toBeGreaterThanOrEqual(24)
+  })
+
+  it('符号的颜色在没有卡片垫底之后仍然够深（对副板底色 ≥4.5:1）', () => {
+    // 原来 #e0559a 压在 rgba(255,255,255,.9) 那层卡片上才有 3.5:1；卡片一去它直接站在 --plate-fill 上，
+    // 同一支只剩 2.98:1。这里两支都算一遍，别靠「看着挺清楚」过关。
+    const plate = pick(/--plate-fill: (#[0-9a-f]{6})/, '--plate-fill')
+    for (const g of ['female', 'male'] as const) {
+      const ink = pick(
+        new RegExp(`\\.pet-plate\\.is-stats \\.pet-gender\\.is-${g} \\{[^}]*color: (#[0-9a-f]{6})`),
+        `雌雄里 ${g} 那一支`,
+      )
+      expect(contrast(ink, plate), `${g} 的 ${ink} 对副板 ${plate} 只有 ${contrast(ink, plate).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+    }
   })
 })
 

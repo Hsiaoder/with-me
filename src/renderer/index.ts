@@ -1,4 +1,6 @@
 import {
+  ACTIVITY_FALLBACK,
+  ACTIVITY_LABELS,
   BUBBLE_GAP,
   BUBBLE_H,
   BUBBLE_SHOW_MS,
@@ -9,6 +11,7 @@ import {
   FLOAT_HEAD_OFFSET,
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
+  ONLINE_TICK_MS,
   PANEL_GAP,
   PANEL_HIDE_MS,
   PLATE_GAP,
@@ -24,6 +27,7 @@ import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayl
 import { createRuleEngine } from '../shared/rules.js'
 import { clamp, nextTalkIndex, pickTalk, TALK_FLOW, type TalkReason } from '../shared/talk.js'
 import { gainsToFloat, isBlue, isHungry, type FloatGain } from '../shared/stats.js'
+import { formatOnline } from '../shared/text.js'
 import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
@@ -136,6 +140,7 @@ function bootstrap(skin: SkinPayload): void {
         } else {
           current = nxt.ref
           syncEating()
+          syncRuntime()
           // 这一拍是「刚才那条动画演完了，决策权交回来」——攒着的数字就在这一刻冒出来。
           flushGains()
         }
@@ -158,6 +163,22 @@ function bootstrap(skin: SkinPayload): void {
   }
 
   /**
+   * 把「此刻」推给状态栏：状态 = 当前动画池的人话，在线时间 = 本次进程陪了多久。
+   *
+   * 为什么不并进数值快照那条通道：快照一分钟才推一把，而这两行要一跳一跳地动
+   * （见 panel.ts 的 `PanelRuntime`）。在线时长的起点是主进程记的 `startedAt`，
+   * 渲染层只拿它做一次减法——它自己不知道进程是什么时候起来的。
+   * 快照还没到就什么都不推：面板那两行会保持省略号，编一个「0秒」不如说「还不知道」。
+   */
+  function syncRuntime(): void {
+    if (snap === null) return
+    panel.setRuntime({
+      activity: ACTIVITY_LABELS[current.pool] ?? ACTIVITY_FALLBACK,
+      online: formatOnline(Date.now() - snap.startedAt),
+    })
+  }
+
+  /**
    * 播一条。给了名字就**必须播那条**（点哪格吃哪口），皮肤里没有这个名字返回 false，
    * 由调用方降级；没给名字就在池里随机挑一条（避开刚播过那条）。
    *
@@ -177,6 +198,7 @@ function bootstrap(skin: SkinPayload): void {
     if (!ref) return false
     current = ref
     syncEating()
+    syncRuntime()
     startChain()
     return true
   }
@@ -271,6 +293,8 @@ function bootstrap(skin: SkinPayload): void {
     const prev = snap
     snap = s
     panel.setStats(s)
+    // 第一份快照到了才推「此刻」：在那之前 `startedAt` 还没进过渲染层的账。
+    syncRuntime()
     // 上一份快照是「刚才屏幕上是什么」，这一份是「现在是什么」——两者一差就是刚才发生了什么。
     // 反馈挂在这里而不是挂在喂食/逗玩/回应各调用点，是因为那四条路都会走到这一句，
     // 分开喊迟早漏一条（qqpet 就是五个调用点各喊一遍）。
@@ -501,7 +525,11 @@ function bootstrap(skin: SkinPayload): void {
       panel.showPlate(stackAnchor({ x: at.x, y: at.y, w: size.w, h: size.h }, ps, screen, PLATE_GAP, at.side))
     } else if (panel.view === 'stats') {
       // 读数竖挂宠物**右侧**：脚下那一横条已经是按钮条的地盘，挤在一起两边都读不到。
-      panel.showPlate(statsAnchor(body, ps, screen, PANEL_GAP))
+      // 锚的是**看得见的身子**（`inkRect`），不是命中框：dshtry 的命中框比墨迹左右各宽 37~40px，
+      // 按命中框摆的话 `PANEL_GAP=16` 在屏幕上是 53px——用户说的「状态栏里角色太远了」就是这个。
+      // 按钮条和飘字那两条锚点照旧走命中框：它们要的是「脚下那一格」和「头顶那一片」，
+      // 换墨迹会把已有的间距账（`FLOAT_HEAD_OFFSET` 按命中框顶沿量的）一起挪掉。
+      panel.showPlate(statsAnchor(inkRect(body, inkInsets), ps, screen, PANEL_GAP))
     }
   }
 
@@ -587,6 +615,10 @@ function bootstrap(skin: SkinPayload): void {
   // Chromium 会把 rAF 节流到 1 帧/秒左右（实测 1.4 秒只跑了 2 帧），
   // 那样 250ms 的节拍根本兑现不了，租约照旧超时。
   setInterval(sendGrab, GRAB_HEARTBEAT_MS / 2)
+
+  // 「在线时间」的节拍，同样只能挂在定时器上（理由和心跳那条一样：这扇窗没有焦点，rAF 会被节流）。
+  // 面板没开着也照走：值是从 `startedAt` 现算的，不是累加的，所以状态栏一叫出来就是准的。
+  setInterval(syncRuntime, ONLINE_TICK_MS)
 
   // 不需要额外的「定时问一次规则层」：播放器从不设置 video.loop，每条动画都会真的播完，
   // 行为链在每次播完时已经问过规则层了（最快 4 秒一拍，足够接住 idleLongMs）。
@@ -851,6 +883,14 @@ function bootstrap(skin: SkinPayload): void {
     },
     get hitBox(): Rect {
       return hitBox()
+    },
+    /**
+     * 看得见的身子，不是拿来点的命中框。状态栏和飘字这两处「贴着宠物摆」的量的是它。
+     * e2e 拿这个做对照才问得出「卡片贴的是墨迹还是命中框」——注意它和卡片自己的矩形
+     * 是两条路子（这里由 manifest 算，那里由布局量），两边对得上才算真的摆对了。
+     */
+    get inkBox(): Rect {
+      return inkRect(hitBox(), inkInsets)
     },
     /**
      * 真的按在身体上没松手吗。e2e 用它自证前置：任何一条检查漏了 `pointerup`，

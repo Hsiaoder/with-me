@@ -383,6 +383,7 @@ describe('状态视图', () => {
     stats: { hunger, mood: 45, weight: 20, bond: 97 },
     identity: { name: '小鲸', gender: 'female' },
     exp,
+    startedAt: 1_000,
   })
   const open = (s = snap()) => {
     const m = mount()
@@ -424,10 +425,12 @@ describe('状态视图', () => {
     expect(bands).toEqual(['high', 'mid', 'low', 'high'])
   })
 
-  it('姓名一行、性别一行：性别是枚可点的粉色符号', () => {
+  it('昵称一行、性别一行：性别是枚可点的粉色符号', () => {
     const { panel } = open()
     const lines = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-line')]
-    expect(lines.map((l) => l.querySelector('.pet-stat-label')?.textContent)).toEqual(['姓名', '性别', '等级'])
+    // 前几行是「身份」，最后两行是「此刻」，中间夹着等级——顺序也是这个次序
+    expect(lines.map((l) => l.querySelector('.pet-stat-label')?.textContent))
+      .toEqual(['昵称', '性别', '等级', '状态', '在线时间'])
     expect(lines[0]?.querySelector('.pet-stats-name')?.textContent).toBe('小鲸')
     const g = panel.el.querySelector<HTMLButtonElement>('.pet-gender')!
     expect(g.textContent).toBe('♀')
@@ -437,6 +440,55 @@ describe('状态视图', () => {
     expect(g.getAttribute('aria-label')).toContain('雌')
     expect(g.getAttribute('aria-label')).toContain('换成雄')
     expect(g.getAttribute('title')).toBe(g.getAttribute('aria-label'))
+  })
+
+  /**
+   * 「状态」「在线时间」两行。
+   * 用户 2026-11-06 参考的是 qqpet 的宠物档案；那张卡第三行是「成长进度」，
+   * 我们没有自动成长那条系统，照抄就是假数据，所以这两行读的是**真的现在**：
+   * 当前动画池的人话 + 本次进程陪了多久。数值快照一分钟才推一把，喂不了这两行。
+   */
+  it('「此刻」两行走 setRuntime：没推过给省略号，不编一个 0 秒', () => {
+    const { panel } = open()
+    const activity = panel.el.querySelector('.pet-stats-activity')!
+    const online = panel.el.querySelector('.pet-stats-online')!
+    expect(activity.textContent).toBe('…')
+    expect(online.textContent).toBe('…')
+    panel.setRuntime({ activity: '正在吃饭', online: '2分5秒' })
+    expect(activity.textContent).toBe('正在吃饭')
+    expect(online.textContent).toBe('2分5秒')
+  })
+
+  it('setRuntime 只改这两处的文字，不重绘整块副板', () => {
+    /**
+     * 这条钉的是「一秒一跳」的实现方式。重建副板会把出场的 `display:none → 出现`
+     * 那一次状态变化每秒重放一遍（按钮条跨视图复用那条踩过同一个坑），
+     * 状态栏会一直闪。所以这里要的不是「文字对了」，而是**同一批节点还在树里**。
+     */
+    const { panel } = open()
+    const plate = panel.el.querySelector('.pet-plate.is-stats')!
+    const activity = plate.querySelector('.pet-stats-activity')!
+    panel.setRuntime({ activity: '正在散步', online: '3分0秒' })
+    expect(activity.textContent).toBe('正在散步')
+    expect(activity.isConnected, '值节点被换掉了，说明整块重绘了').toBe(true)
+    expect(panel.el.querySelector('.pet-plate.is-stats')).toBe(plate)
+  })
+
+  it('重绘副板时带上最后一次推的「此刻」：不是回到省略号', () => {
+    const m = open()
+    m.panel.setRuntime({ activity: '正在休息', online: '1分20秒' })
+    // 数值快照每 tick 推一次，会重绘整块副板——那两行不能因此丢掉已经知道的值
+    m.panel.setStats(snap(10))
+    expect(m.panel.el.querySelector('.pet-stats-activity')?.textContent).toBe('正在休息')
+    expect(m.panel.el.querySelector('.pet-stats-online')?.textContent).toBe('1分20秒')
+  })
+
+  it('视图切走再切回来也还在：runtime 存在面板里，不跟着副板一起丢', () => {
+    const m = open()
+    m.panel.setRuntime({ activity: '正在张望', online: '9分9秒' })
+    m.panel.setView('foods')
+    m.panel.setView('stats')
+    expect(m.panel.el.querySelector('.pet-stats-activity')?.textContent).toBe('正在张望')
   })
 
   it('状态栏没有返回按钮：收起靠再点一次状态键', () => {
@@ -494,7 +546,7 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
   const openView = (v: 'foods' | 'stats' | 'settings') => {
     const m = mount()
     m.panel.show({ x: 0, y: 0 })
-    if (v === 'stats') m.panel.setStats({ stats: { hunger: 82, mood: 45, weight: 20, bond: 97 }, identity: { name: '小鲸', gender: 'female' }, exp: 0 })
+    if (v === 'stats') m.panel.setStats({ stats: { hunger: 82, mood: 45, weight: 20, bond: 97 }, identity: { name: '小鲸', gender: 'female' }, exp: 0, startedAt: 1_000 })
     m.panel.setView(v)
     return m
   }

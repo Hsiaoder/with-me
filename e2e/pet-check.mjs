@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_ICON, PANEL_BUTTONS, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_ICON, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
 import { FOODS } from '../src/shared/food.ts'
 import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.ts'
 
@@ -1316,11 +1316,14 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   await page.waitForSelector('.pet-panel .pet-stat')
   const g = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
+    const ink = window.__petDebug.inkBox
     const p = document.querySelector('.pet-plate').getBoundingClientRect()
     const level = document.querySelector('.pet-stat-line[data-key="level"]')
     return {
       bodyRight: b.x + b.w, panelLeft: p.x, panelRight: p.right, inner: window.innerWidth,
+      inkRight: ink.x + ink.w,
       name: document.querySelector('.pet-stats-name')?.textContent,
+      lines: [...document.querySelectorAll('.pet-stat-line .pet-stat-label')].map((n) => n.textContent),
       keys: [...document.querySelectorAll('.pet-stat')].map((r) => r.dataset.key),
       rows: [...document.querySelectorAll('.pet-stat')].map((r) => ({
         value: Number(r.querySelector('.pet-stat-value')?.textContent),
@@ -1342,7 +1345,19 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   })
   assert.equal(g.name, '小鲸', `状态栏没显示存档里的名字：${g.name}`)
   assert.deepEqual(g.keys, ['hunger', 'mood', 'weight', 'bond'], `四条读数不该含等级：${JSON.stringify(g.keys)}`)
-  assert.ok(g.panelLeft >= g.bodyRight - 1, `状态栏没在宠物右侧：panelLeft=${g.panelLeft} 身体右沿=${g.bodyRight}`)
+  // 五行「标签 + 值」：身份三行在前，四条读数夹在中间（它不是 .pet-stat-line），「此刻」两行在最后。
+  // 顺序也钉住：用户要的是「最下面加两行」，跑到昵称上面就不是那个意思了。
+  assert.deepEqual(g.lines, ['昵称', '性别', '等级', '状态', '在线时间'], `状态栏的行不对：${JSON.stringify(g.lines)}`)
+  // 卡片贴的是**看得见的身子**，不是命中框（用户 2026-11-06：「状态栏里角色太远了」）。
+  // 命中框比墨迹宽（色块左右各 10.5px，dshtry 那套鲸鱼各 37~40px），按命中框摆的话
+  // PANEL_GAP 在屏幕上会多出那圈透明区域——所以量到墨迹右沿才是要的距离。
+  const toInk = g.panelLeft - g.inkRight
+  assert.ok(Math.abs(toInk - PANEL_GAP) < 1.5,
+    `状态栏到看得见的身子 ${toInk.toFixed(1)}px，应该是 PANEL_GAP(${PANEL_GAP})` +
+      `｜panelLeft=${g.panelLeft} inkRight=${g.inkRight} bodyRight=${g.bodyRight}`)
+  // 反向对照：贴回命中框会是 PANEL_GAP + 内缩，这里必须明显小于它
+  assert.ok(toInk < PANEL_GAP + (g.bodyRight - g.inkRight) - 1,
+    `卡片还贴在命中框上（到墨迹 ${toInk.toFixed(1)}px）：内缩没生效`)
   assert.ok(g.panelRight <= g.inner, `状态栏溢出屏幕右边：${g.panelRight} > ${g.inner}`)
   assert.ok(g.level !== null, '等级行没画出来')
   assert.equal(g.level.bar, null, '等级行还带着进度条（用户说不要）')
@@ -1361,6 +1376,58 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
     assert.equal(r.fill, `${Math.round(r.value)}%`, `条宽和读数不一致：${r.fill} vs ${r.value}`)
   }
   await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
+check('状态栏的「此刻」两行：状态跟着画面换，在线时间一秒一跳', async () => {
+  /**
+   * 用户 2026-11-06 参考 qqpet 的宠物档案，要「最下面加两行：状态、在线时间」。
+   * 那张卡的第三行是「成长进度」——我们没有自动成长那套系统，照抄就是假数据，
+   * 所以这两行读的是两件**真的现在**：当前动画池的人话，和本次进程跑了多久。
+   * 这两条只有真浏览器能验：jsdom 里没有 setInterval，也没有真的换片。
+   */
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: Math.round(inner.w / 2) - 90, y: inner.h - 260 })
+  await notEating()
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  // 切视图用程序化点击：这一条要验的是「此刻」两行的数据通道，不是按钮的可达性。
+  // 真实鼠标点击会等元素稳定，而宠物正在 move 池里散步时按钮条每帧都在跟着走，
+  // 那个等待和这次改动没关系，只会把检查变成随机数（第一跑就是这么红的）。
+  const tap = (sel) => page.evaluate((s) => document.querySelector(s)?.click(), sel)
+  await tap('.pet-panel button[data-id="status"]')
+  await page.waitForSelector('.pet-panel .pet-stat')
+
+  const read = () => page.evaluate(() => ({
+    pool: window.__petDebug.current.pool,
+    activity: document.querySelector('.pet-stats-activity')?.textContent ?? '',
+    online: document.querySelector('.pet-stats-online')?.textContent ?? '',
+  }))
+  const labelOf = (pool) => ACTIVITY_LABELS[pool] ?? ACTIVITY_FALLBACK
+
+  const idle = await read()
+  assert.notEqual(idle.activity, '…', '快照都到了状态行还是省略号：setRuntime 那条通道没接上')
+  assert.equal(idle.activity, labelOf(idle.pool), `状态说的和画面不是一回事：「${idle.activity}」vs 池「${idle.pool}」`)
+
+  // 喂一口再把视图切回状态栏：正在嚼饭时那一行必须写「正在吃饭」，而且不等节拍——
+  // 换片那一拍就推（renderer/index.ts 的 syncRuntime 和 syncEating 并排）。
+  await tap('.pet-panel button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  await tap('.pet-panel .pet-food[data-food="rice"]')
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
+  await tap('.pet-panel button[data-id="status"]')
+  await page.waitForSelector('.pet-panel .pet-stat')
+  const eating = await read()
+  assert.equal(eating.activity, ACTIVITY_LABELS.eat, `吃饭时状态写的是「${eating.activity}」`)
+
+  // 在线时间最多两档；还在「分秒」这一档时，等过一个节拍必须看见它跳
+  assert.match(eating.online, /^\d+天\d+小时$|^\d+小时\d+分$|^\d+分\d+秒$|^\d+秒$/, `这不像在线时间：${eating.online}`)
+  if (/秒$/.test(eating.online)) {
+    await page.waitForTimeout(ONLINE_TICK_MS + 400)
+    const later = await read()
+    assert.notEqual(later.online, eating.online, `等了一个节拍「在线时间」没动：${eating.online} → ${later.online}`)
+  }
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await notEating()
 })
 
 check('状态栏贴右边缘时翻到宠物左侧，而不是夹过来压住宠物', async () => {
@@ -1437,17 +1504,31 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   const glyph = () => page.evaluate(() => {
     const b = document.querySelector('.pet-panel .pet-gender')
     if (!b) return null
+    const cs = getComputedStyle(b)
+    const r = b.getBoundingClientRect()
     return {
       gender: b.dataset.gender,
       text: b.textContent,
-      color: getComputedStyle(b).color,
+      color: cs.color,
+      // 「只要符号，不要背景」——底色/描边/外阴影都得是「没有」，命中区另按盒子量
+      bg: cs.backgroundColor,
+      border: cs.borderTopWidth,
+      shadow: cs.boxShadow,
+      hit: { w: Math.round(r.width), h: Math.round(r.height) },
       label: b.getAttribute('aria-label'),
     }
   })
   const beforeGender = await glyph()
   assert.equal(beforeGender?.gender, 'female', `开局该是雌：${JSON.stringify(beforeGender)}`)
   assert.equal(beforeGender?.text, '♀', `雌的符号不是 ♀：${JSON.stringify(beforeGender)}`)
-  assert.equal(beforeGender?.color, 'rgb(224, 85, 154)', `雌的符号该是粉色：${beforeGender?.color}`)
+  // 卡片那层底色一去，符号直接站在副板的 #ddeef8 上；#e0559a 在那上面只有 2.98:1，
+  // 所以两支都压深过 4.5:1（算法与 test/config.test.ts 那条一致，色值由那边钉死）。
+  assert.equal(beforeGender?.color, 'rgb(176, 42, 107)', `雌的符号该是深粉：${beforeGender?.color}`)
+  assert.equal(beforeGender?.bg, 'rgba(0, 0, 0, 0)', `符号背后还有底色，卡片没拆干净：${beforeGender?.bg}`)
+  assert.equal(beforeGender?.border, '0px', `符号还留着描边：${beforeGender?.border}`)
+  assert.equal(beforeGender?.shadow, 'none', `静止状态还带着投影——那是悬停才浮出来的线索：${beforeGender?.shadow}`)
+  assert.ok(beforeGender?.hit.w >= 24 && beforeGender?.hit.h >= 24,
+    `底色拆了命中区也跟着没了：${JSON.stringify(beforeGender?.hit)}`)
   await page.click('.pet-panel .pet-gender')
   let picked = await glyph()
   for (let i = 0; i < 30 && picked?.gender !== 'male'; i++) {
@@ -1455,9 +1536,12 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
     await page.waitForTimeout(100)
     picked = await glyph()
   }
-  assert.deepEqual(picked, {
-    gender: 'male', text: '♂', color: 'rgb(74, 134, 216)', label: '雄（点一下换成雌）',
-  }, `点完性别没换档：${JSON.stringify(picked)}`)
+  assert.equal(picked?.gender, 'male', `点完性别没换档：${JSON.stringify(picked)}`)
+  assert.equal(picked?.text, '♂', `雄的符号不是 ♂：${picked?.text}`)
+  assert.equal(picked?.color, 'rgb(42, 95, 168)', `雄的符号该是深蓝：${picked?.color}`)
+  assert.equal(picked?.label, '雄（点一下换成雌）', `换了档 aria-label 没跟着换：${picked?.label}`)
+  assert.equal(picked?.bg, 'rgba(0, 0, 0, 0)', `换档之后底色又回来了：${picked?.bg}`)
+  assert.ok(picked?.hit.w >= 24 && picked?.hit.h >= 24, `换档之后命中区缩了：${JSON.stringify(picked?.hit)}`)
   let identity = null
   for (let i = 0; i < 30; i++) {
     try {
