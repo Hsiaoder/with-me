@@ -354,9 +354,9 @@ export function createPanel(
    * 它是 qqpet 那种「一眼看到当前值」的面板，不是设置页——唯一还能就地改的是性别。
    */
   function renderStats(host: HTMLElement): void {
-    host.append(plainLine('昵称', snap === null ? '…' : snap.identity.name, 'pet-stats-name'))
+    host.append(tight(plainLine('昵称', snap === null ? '…' : snap.identity.name, 'pet-stats-name')))
     // 性别要读得出是哪一档才画：没快照时给个空符号比猜一个诚实。
-    if (snap !== null) host.append(genderLine(snap.identity.gender))
+    if (snap !== null) host.append(tight(genderLine(snap.identity.gender)))
 
     // 快照还没到就到此为止：画四条 0 会让用户以为宠物饿坏了，那是编出来的恐慌。
     if (snap === null) return
@@ -368,7 +368,7 @@ export function createPanel(
     const level = plainLine('等级', `Lv.${levelOf(snap.exp)}`, 'pet-stats-level')
     level.dataset.key = 'level'
     level.title = `累计经验 ${snap.exp.toFixed(1)}，攒满 ${EXP_PER_LEVEL} 升一级（只增不减）`
-    host.append(level)
+    host.append(tight(level))
 
     for (const key of STAT_KEYS) {
       const v = snap.stats[key]
@@ -383,6 +383,20 @@ export function createPanel(
     const on = plainLine('在线时间', runtime === null ? '…' : runtime.online, 'pet-stats-online')
     host.append(act, on)
     runtimeRefs = { activity: valueNode(act), online: valueNode(on) }
+  }
+
+  /**
+   * 把「标签 + 值」那一行改成**值紧跟冒号**（用户 2026-11-06 对昵称/性别/等级三行的要求）。
+   *
+   * 为什么只这三行：它们是「它是谁」——名字、性别、级别读起来是一句话，
+   * 值贴到右沿就把这句话拆成两头，中间那段空白谁也没在读。
+   * 而四条读数与「此刻」两行仍然右对齐：那一列的**数值是要横向比大小的**
+   * （饥饿 16 对体重 68），右沿对齐才比得出来。
+   * 所以这不是「统一一下」的事，是两种行各自的对齐法，别顺手把九行一起改。
+   */
+  function tight(line: HTMLElement): HTMLElement {
+    line.classList.add('is-tight')
+    return line
   }
 
   /** 取「标签 + 值」那一行的值节点（`plainLine` 固定把它放最后，这里只有一个用处，不值得为它改签名）。 */

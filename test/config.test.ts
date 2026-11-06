@@ -317,6 +317,24 @@ describe('状态栏的「此刻」两行与性别符号', () => {
     }
   })
 
+  it('三行「它是谁」值紧跟冒号，其余行仍右对齐到数值那一栏', () => {
+    // 两种对齐各有理由（见 style.css 那两条注释），所以这里钉的是「只有 is-tight 那档紧」：
+    // 有人把 justify-content 统一回 space-between 或全改成 flex-start，这条都会红。
+    /**
+     * 选择器组里最后一个选择器**自己占一行**（`.pet-stat,` 换行 `.pet-stat-line {`），
+     * 所以 `^\.pet-stat-line \{` 会同时命中那条共用块和这条单独块——第一次就误读了共用块，
+     * 报「读不到 justify-content」。改成在所有同名块里找**声明了 justify-content 的那一条**：
+     * 真被删了它就是空串，断言照样红，不会退化成「读不到也算过」。
+     */
+    const blocks = [...css.matchAll(/^\.pet-stat-line \{([^}]*)\}/gm)].map((m) => m[1] ?? '')
+    const base = blocks.find((b) => b.includes('justify-content')) ?? ''
+    const tight = css.match(/^\.pet-stat-line\.is-tight \{([^}]*)\}/m)?.[1]
+    expect(blocks.length, '一条 .pet-stat-line 规则都读不到').toBeGreaterThan(0)
+    expect(base, '没有哪条 .pet-stat-line 声明了 justify-content').toContain('justify-content: space-between')
+    expect(tight, '少了 .pet-stat-line.is-tight 那条').toBeDefined()
+    expect(tight).toContain('justify-content: flex-start')
+  })
+
   it('底色去掉了，命中区还得撑到 24×24：那是卡上唯一能改存档的东西', () => {
     const num = (prop: string): number => Number(genderBlock().match(new RegExp(`${prop}: (\\d+)px`))?.[1] ?? 0)
     expect(num('min-width')).toBeGreaterThanOrEqual(24)

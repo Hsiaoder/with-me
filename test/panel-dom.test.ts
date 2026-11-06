@@ -540,6 +540,22 @@ describe('状态视图', () => {
     for (const key of STAT_KEYS) expect(STAT_LABELS[key].endsWith('：'), `STAT_LABELS 被冒号污染了`).toBe(false)
   })
 
+  it('昵称 / 性别 / 等级三行的值紧跟冒号；读数与「此刻」那几行仍右对齐', () => {
+    /**
+     * 用户 2026-11-06 点名这三行。分开是因为两种行的读法不同：
+     * 那三行读起来是一句话（「昵称：小鲸」），值贴到右沿就把句子拆成两头；
+     * 四条数值要**横向比大小**，右沿才比得出来。
+     * 所以这条钉的是「只有这三行紧」——哪天有人统一对齐，这里会红。
+     */
+    const { panel } = open()
+    const lines = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-line')]
+    const tight = lines.filter((l) => l.classList.contains('is-tight'))
+    expect(tight.map((l) => l.querySelector('.pet-stat-label')?.textContent))
+      .toEqual(['昵称：', '性别：', '等级：'])
+    expect(lines.filter((l) => !l.classList.contains('is-tight')).map((l) => l.querySelector('.pet-stat-label')?.textContent))
+      .toEqual(['状态：', '在线时间：'])
+  })
+
   /**
    * 「状态」「在线时间」两行。
    * 用户 2026-11-06 参考的是 qqpet 的宠物档案；那张卡第三行是「成长进度」，
