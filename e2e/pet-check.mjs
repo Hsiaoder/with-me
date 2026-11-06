@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CLIP_FADE_MS, FLOAT_HEAD_OFFSET, FOOD_ICON, PANEL_BUTTONS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_ICON, PANEL_BUTTONS, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
 import { FOODS } from '../src/shared/food.ts'
 import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.ts'
 
@@ -1504,19 +1504,20 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
    * （真跑出来过）。那套夹持几何有自己的检查，这条要验的是飘字，不陪它。
    */
   const parkMid = async () => {
+    // 用装配层给的钩子直接摆舞台位置，**别用合成拖拽**：拖拽要按在身体上才生效，
+    // 而宠物被前一条检查留在屏幕角上时那一按常常落在副板身上（§5.13 那一类残局），
+    // 于是「先挪到中间」这一步自己就时灵时不灵——飘字的间距断言跟着变成随机数。
     const { w, h } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }))
-    const b = await page.evaluate(() => window.__petDebug.hitBox)
-    const from = { x: Math.round(b.x + b.w / 2), y: Math.round(b.y + b.h / 2) }
-    const to = { x: Math.round(w / 2), y: Math.round(h * 0.42) }
-    await page.evaluate(async ({ from, to }) => {
-      const fire = (type, p) =>
-        window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
-      fire('pointerdown', from)
-      fire('pointermove', { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 })
-      fire('pointermove', to)
-      fire('pointerup', to)
-    }, { from, to })
-    await page.waitForTimeout(300)
+    await page.evaluate(
+      ({ w, h, stageW }) => window.__petDebug.moveTo({ x: Math.round((w - stageW) / 2), y: Math.round(h * 0.35) }),
+      { w, h, stageW: STAGE_W_CSS },
+    )
+    await page.waitForTimeout(150)
+    const b = await page.evaluate(() => ({ hit: window.__petDebug.hitBox, dragging: window.__petDebug.dragging }))
+    if (b.dragging) throw new Error('前置：上一条检查漏了 pointerup，宠物还处在「被按住」状态——任何鼠标移动都会把它拖走')
+    if (b.hit.x < FLOAT_CHIP.w + FLOAT_GAP + 2 || b.hit.x + b.hit.w > w - FLOAT_CHIP.w - FLOAT_GAP - 2) {
+      throw new Error(`前置：没能把宠物挪到屏幕中间（hit.x=${Math.round(b.hit.x)}，屏宽 ${w}）`)
+    }
   }
   await page.evaluate(() => {
     window.__petDebug.hidePanel()
@@ -1617,12 +1618,24 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
 
   const rose = STAT_KEYS.filter((k) => after[k] - before[k] > 0.05)
   assert.ok(rose.length > 0, '前置：喂了一口却没有任何数值上涨（早喂饱了？）')
-  // 飘出来的正好是账上涨的那几条：多了就是衰减也在飘，少了就是漏了某条路
-  assert.deepEqual(
-    [...new Set(shot.texts.map((t) => t.split(' ')[0]))].sort(),
-    rose.map((k) => STAT_LABELS[k]).sort(),
-    `飘的和账上对不上：账上涨的是 ${JSON.stringify(rose.map((k) => STAT_LABELS[k]))}，屏上飘的是 ${JSON.stringify(shot.texts)}`,
-  )
+  /**
+   * 比的是**方向**，不是集合相等。
+   * 存档那一头和渲染层快照之间隔着一台每 60 秒结算一次的钟：涨到 100 封顶时，
+   * 存档里的差值可能是 0.04 而渲染层看到的是 0.8（真跑出来过一次），
+   * 那种边界上要求「屏上飘的正好等于账上涨的」就是在赌时序。
+   * 真正不能出错的两侧都钉住：涨了大半格的必须飘（漏一条就是少了一个调用点），
+   * 没涨的绝对不许飘（飘了就是衰减也在刷屏），经验永远不许飘。
+   */
+  const labels = shot.texts.map((t) => t.split(' ')[0])
+  assert.deepEqual([...new Set(labels)].sort(), labels.sort(), `同一条数值飘了两遍：${JSON.stringify(shot.texts)}`)
+  for (const k of rose) {
+    assert.ok(labels.includes(STAT_LABELS[k]), `账上${STAT_LABELS[k]}涨了 ${(after[k] - before[k]).toFixed(2)} 却没飘：${JSON.stringify(shot.texts)}`)
+  }
+  for (const k of STAT_KEYS) {
+    if (after[k] - before[k] <= 0) {
+      assert.ok(!labels.includes(STAT_LABELS[k]), `${STAT_LABELS[k]}没涨（${(after[k] - before[k]).toFixed(2)}）却飘了：${JSON.stringify(shot.texts)}`)
+    }
+  }
   for (const t of shot.texts) {
     assert.match(t, /^(饥饿|心情|体重|亲密度) \+\d+(\.\d)?$/, `这条不像人话：${t}`)
     assert.ok(!/经验|等级/.test(t), `经验那本账飘出来了（0.2 的小碎步不该打扰人）：${t}`)
@@ -1630,6 +1643,20 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
   assert.ok(shot.rect !== null, '有字却量不到矩形：floatRect 的 null 分支写错了')
   assert.ok(Math.abs(shot.rect.y - (shot.hit.y + FLOAT_HEAD_OFFSET)) < 1,
     `顶端不在量好的那一行：飘字 ${shot.rect.y} 身体 ${shot.hit.y}`)
+  /**
+   * 「离宠物近一点」的合同。命中框是拿来点的，比看得见的身子宽（色块左右各 10px，
+   * dshtry 那套鲸鱼各 37px），所以正确的量法是**胶囊右沿到墨迹左沿 = FLOAT_GAP**。
+   * 换算到命中框上，胶囊会探进命中框那圈透明区域几个像素——这不是越界：
+   * 那圈里一个像素都没有，而这一层本来就不吃鼠标（上面 pe / layerHits / eaten 三条钉的就是这件事）。
+   */
+  const inkLeft = Math.max(0, (manifest.inkBox.x - manifest.bodyBox.x) * (STAGE_W_CSS / manifest.canvas.w))
+  const toInk = shot.hit.x + inkLeft - (shot.rect.x + shot.rect.w)
+  assert.ok(Math.abs(toInk - FLOAT_GAP) < 1.5,
+    `胶囊到看得见的身子 ${toInk.toFixed(1)}px，应该是 FLOAT_GAP(${FLOAT_GAP})` +
+      `｜hit=${JSON.stringify(shot.hit)} rect=${JSON.stringify(shot.rect)} 墨迹内缩=${inkLeft.toFixed(1)}`)
+  // 反向对照：按老写法（贴命中框）距离会是 FLOAT_GAP + 内缩，这里必须明显小于它
+  assert.ok(toInk < FLOAT_GAP + inkLeft - 1,
+    `胶囊还是贴在命中框上（到墨迹 ${toInk.toFixed(1)}px ≥ ${(FLOAT_GAP + inkLeft).toFixed(1)}px）：内缩没生效`)
   for (const f of shot.fit) {
     assert.ok(f.need <= f.room, `「${f.t}」被芯片裁掉了：要 ${f.need}px，只有 ${f.room}px`)
   }

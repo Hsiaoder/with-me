@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import {
   clipUrl,
+  inkInsetsOf,
   isLooping,
   isMirrorable,
   missingRequiredPools,
@@ -128,6 +130,39 @@ describe('缺省规则（皮肤契约 3.1 / 3.2）', () => {
   it('mirrorable 缺省 false，不许擅自镜像角色的左右', () => {
     expect(isMirrorable(m(), 'patrol')).toBe(false)
     expect(isMirrorable(m({ patrol: { mirrorable: true } }), 'patrol')).toBe(true)
+  })
+})
+
+describe('墨迹框 inkBox（可选字段）', () => {
+  const ok = (over: Record<string, unknown>) => {
+    const r = validateManifest({ ...good, ...over })
+    if (!r.ok) throw new Error(r.errors.join())
+    return r.manifest
+  }
+
+  it('没写就是零内缩：摆东西仍按命中框走，与加这个字段之前一模一样', () => {
+    expect(inkInsetsOf(ok({}))).toEqual({ left: 0, right: 0 })
+  })
+
+  it('写了就换算成 CSS 像素（画布 640 → 舞台 320，正好一半）', () => {
+    // 色块实测：命中框 x 200..440，墨迹 x 220..419
+    const m = ok({ inkBox: { x: 220, y: 58, w: 199, h: 269 } })
+    expect(inkInsetsOf(m).left).toBeCloseTo(10, 6)
+    expect(inkInsetsOf(m).right).toBeCloseTo(10.5, 6)
+  })
+
+  it('墨迹比命中框还宽（作者把 bodyBox 写小了）夹成 0：不许把东西摆进身子内部', () => {
+    expect(inkInsetsOf(ok({ inkBox: { x: 100, y: 50, w: 400, h: 285 } }))).toEqual({ left: 0, right: 0 })
+  })
+
+  it('越出画布或形状不完整的 inkBox 直接拒绝', () => {
+    expect(errorsOf({ ...good, inkBox: { x: 600, y: 50, w: 100, h: 100 } }).join()).toContain('inkBox')
+    expect(errorsOf({ ...good, inkBox: { x: 200, y: 50, w: 240 } }).join()).toContain('inkBox')
+  })
+
+  it('随仓库那份 block 皮肤自己带着 inkBox——不然后面那条 e2e 的距离断言等于没测到非零内缩', () => {
+    const m = JSON.parse(readFileSync('skins/block/manifest.json', 'utf8')) as { inkBox?: unknown }
+    expect(m.inkBox).toEqual({ x: 220, y: 58, w: 199, h: 269 })
   })
 })
 

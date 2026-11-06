@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, bubbleAnchor, floatAnchor, panelAnchor, stageRect, stackAnchor, statsAnchor, unionRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, stageRect, stackAnchor, statsAnchor, unionRect } from '../src/shared/geometry.js'
 import { BUBBLE_H, BUBBLE_W, CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -224,6 +224,23 @@ describe('statsAnchor', () => {
   it('贴左边缘时右侧仍是首选（左边才是没地方去的那一侧）', () => {
     const left = { x: 10, y: 700, w: 140, h: 180 }
     expect(statsAnchor(left, size, screen, 12).x).toBe(10 + 140 + 12)
+  })
+})
+
+describe('inkRect', () => {
+  const body = { x: 700, y: 400, w: 180, h: 142 }
+
+  it('只把左右收成看得见的身子，上下一个像素都不动', () => {
+    // 纵向不能跟着动：FLOAT_HEAD_OFFSET 是按命中框顶沿量的，改了会把气泡那条账一起挪
+    expect(inkRect(body, { left: 37, right: 38 })).toEqual({ x: 737, y: 400, w: 105, h: 142 })
+  })
+
+  it('皮肤没写 inkBox（内缩全 0）时原样返回，老皮肤行为不变', () => {
+    expect(inkRect(body, { left: 0, right: 0 })).toEqual(body)
+  })
+
+  it('内缩加起来超过框宽时宽度夹 0，不许出负数', () => {
+    expect(inkRect(body, { left: 100, right: 100 })).toEqual({ x: 800, y: 400, w: 0, h: 142 })
   })
 })
 

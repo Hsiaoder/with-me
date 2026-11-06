@@ -164,6 +164,19 @@ export function statsAnchor(body: Rect, size: { w: number; h: number }, screen: 
 }
 
 /**
+ * 把命中框按墨迹内缩收成「看得见的身子」那一条：**只动左右，上下不碰**。
+ *
+ * 为什么不连 y 一起动：`FLOAT_HEAD_OFFSET` 当初是按命中框顶沿量出来的（气泡底沿在身体顶
+ * 再往上 12，飘字从那里上升 20px 一路待在气泡之外）。换成墨迹顶沿去读那个数，
+ * 等于把气泡那条账一起挪了——而这次要修的只是横向的距离。
+ */
+export function inkRect(body: Rect, inset: { left: number; right: number }): Rect {
+  const left = body.x + inset.left
+  const right = body.x + body.w - inset.right
+  return { x: left, y: body.y, w: Math.max(0, right - left), h: body.h }
+}
+
+/**
  * 飘字（「饥饿 +12」）该摆在宠物哪一边。
  *
  * **左边优先**：状态栏天然挂右边，飘字再去右边就会跟它挤同一列；

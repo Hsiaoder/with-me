@@ -1,4 +1,4 @@
-import { ANIMATION_EXT, CANVAS_H, CANVAS_W, LOOPING_POOLS, REQUIRED_POOLS, SKIN_ORIGIN } from './config.js'
+import { ANIMATION_EXT, CANVAS_H, CANVAS_W, LOOPING_POOLS, REQUIRED_POOLS, SKIN_ORIGIN, STAGE_SCALE } from './config.js'
 import type { Box } from './types.js'
 
 /**
@@ -17,6 +17,13 @@ export type SkinManifest = {
   author?: string
   canvas: { w: number; h: number; feetY: number }
   bodyBox: Box
+  /**
+   * **看得见的身子**（画布坐标，可省略）。`bodyBox` 是命中框，作者会刻意留宽一点
+   * ——手指点在鲸鱼旁边的透明像素上也该抓到它。但拿命中框去摆东西就会吃亏：
+   * dshtry 实测墨迹左右各比 bodyBox 窄 37~40 CSS px，于是「离宠物 8px」在屏幕上是 45px。
+   * 省略时按 0 处理（墨迹就等于命中框），行为与加这个字段之前完全一致。
+   */
+  inkBox?: Box
   pools: Record<string, string[]>
   weights?: Record<string, number>
   animationMeta?: Record<string, AnimationMeta>
@@ -178,6 +185,9 @@ export function validateManifest(raw: unknown): ValidationResult {
     else for (const [key, box] of Object.entries(raw.hotspots)) checkBox(box, `hotspots.${key}`, errors)
   }
 
+  // 墨迹框是可选的，但写了就得是个合法矩形——它一旦被拿去摆东西，越界就是摆到屏幕外
+  const inkBox = raw.inkBox === undefined ? null : checkBox(raw.inkBox, 'inkBox', errors)
+
   if (errors.length || !feetY || !bodyBox) return { ok: false, errors }
 
   const manifest: SkinManifest = {
@@ -187,6 +197,7 @@ export function validateManifest(raw: unknown): ValidationResult {
     bodyBox,
     pools,
   }
+  if (inkBox !== null) manifest.inkBox = inkBox
   if (typeof raw.author === 'string' && raw.author.trim()) manifest.author = raw.author.trim()
   if (isObj(raw.weights)) {
     manifest.weights = Object.fromEntries(Object.entries(raw.weights).map(([k, v]) => [k, v as number]))
@@ -199,6 +210,21 @@ export function validateManifest(raw: unknown): ValidationResult {
 /** 拒绝装载用：返回缺失的必需池名。空池等同于缺。 */
 export function missingRequiredPools(manifest: SkinManifest): string[] {
   return REQUIRED_POOLS.filter((pool) => (manifest.pools[pool]?.length ?? 0) === 0)
+}
+
+/**
+ * 墨迹相对命中框的左右内缩（CSS 像素）。皮肤没写 `inkBox` 就返回 0——
+ * 那时摆东西仍按命中框走，与加这个字段之前的行为一模一样。
+ * 负数一律夹成 0：作者把 bodyBox 写得比画得下的还窄时，不该把东西摆进身子里去。
+ */
+export function inkInsetsOf(manifest: SkinManifest): { left: number; right: number } {
+  const ink = manifest.inkBox
+  const body = manifest.bodyBox
+  if (ink === undefined) return { left: 0, right: 0 }
+  return {
+    left: Math.max(0, (ink.x - body.x) * STAGE_SCALE),
+    right: Math.max(0, (body.x + body.w - (ink.x + ink.w)) * STAGE_SCALE),
+  }
 }
 
 /** 循环性属于单条动画，缺省按所在池名给：状态性池挂着，反应性池播完就回待机。 */

@@ -17,10 +17,10 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, bubbleAnchor, floatAnchor, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
-import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
+import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
 import { clamp, nextTalkIndex, pickTalk, TALK_FLOW, type TalkReason } from '../shared/talk.js'
 import { gainsToFloat, isBlue, isHungry, type FloatGain } from '../shared/stats.js'
@@ -329,8 +329,17 @@ function bootstrap(skin: SkinPayload): void {
    */
   const floats = createFloatLayer(root)
 
+  /**
+   * 墨迹内缩在装载时算一次就够（它是皮肤属性，不随帧变）。
+   * dshtry 实测命中框比看得见的身子左右各宽 37~40 CSS px，
+   * 所以按命中框摆的话「8px 间隙」在屏幕上是 45px——用户说的「离得远」就是这个。
+   */
+  const inkInsets = inkInsetsOf(manifest)
+
   const placeFloats = (): void =>
-    floats.place(floatAnchor(hitBox(), panel.plateRect(), FLOAT_CHIP, screenRect(), FLOAT_GAP, FLOAT_HEAD_OFFSET))
+    floats.place(floatAnchor(
+      inkRect(hitBox(), inkInsets), panel.plateRect(), FLOAT_CHIP, screenRect(), FLOAT_GAP, FLOAT_HEAD_OFFSET,
+    ))
 
   /** 攒着等动画播完的那些字。 */
   let heldGains: FloatGain[] = []
@@ -842,6 +851,13 @@ function bootstrap(skin: SkinPayload): void {
     },
     get hitBox(): Rect {
       return hitBox()
+    },
+    /**
+     * 真的按在身体上没松手吗。e2e 用它自证前置：任何一条检查漏了 `pointerup`，
+     * 下一次真实鼠标移动就会把宠物拖走，于是后面每条量到位置的都是随机数。
+     */
+    get dragging(): boolean {
+      return dragging
     },
     get current(): ClipRef {
       return current
