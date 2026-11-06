@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 416 376">
   <!-- 生成物：别手改。改形状去改 src/shared/bubble-shape.ts 那份图元清单，再跑 node tools/make-bubble-svg.mjs -->
-  <g fill="#5492b2">
+  <g fill="#4a5d97">
     <rect x="0" y="96" width="416" height="234" rx="74" />
     <circle cx="108" cy="108" r="80" />
     <circle cx="208" cy="98" r="98" />

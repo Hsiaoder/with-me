@@ -335,6 +335,13 @@ describe('状态栏的「此刻」两行与性别符号', () => {
     expect(tight).toContain('justify-content: flex-start')
   })
 
+  it('符号靠左起笔：和「小鲸」「Lv.2」同一列，而不是缩在 24px 命中区的右端', () => {
+    // 用户 2026-11-07：「性别的符号往左边一点，和名字和等级的值居中对齐」。
+    // 三行都是 is-tight（值紧跟冒号），所以值的起笔就是标签后面那一格；
+    // flex-end 会让 ♀ 再多挪半格，同一列就断了。命中区仍是 24×24，只有符号在格子里靠左。
+    expect(genderBlock()).toContain('justify-content: flex-start')
+  })
+
   it('底色去掉了，命中区还得撑到 24×24：那是卡上唯一能改存档的东西', () => {
     const num = (prop: string): number => Number(genderBlock().match(new RegExp(`${prop}: (\\d+)px`))?.[1] ?? 0)
     expect(num('min-width')).toBeGreaterThanOrEqual(24)
@@ -426,7 +433,7 @@ describe('气泡尺寸', () => {
   })
 })
 
-describe('气泡的两支颜色：环是容器、回应按钮是动作，各自过自己的门槛', () => {
+describe('气泡的两支颜色：取自宠物本身（头发 = 环，发箍 = 按钮），门槛由描边扛', () => {
   const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8')
   const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
   /** 素材里两层同形状：先画的带色那层 = 环，后画的白层 = 内腔。 */
@@ -434,22 +441,42 @@ describe('气泡的两支颜色：环是容器、回应按钮是动作，各自�
   const ring = fills[0] ?? ''
   const cavity = fills[1] ?? ''
   const reply = css.match(/--reply-fill: (#[0-9a-f]{6})/)?.[1] ?? ''
+  const pick = (re: RegExp, what: string): string => {
+    const found = css.match(re)?.[1]
+    if (found === undefined) throw new Error(`style.css 里读不到${what}`)
+    return found.toLowerCase()
+  }
+  const pill = pick(/\.pet-bubble-reply \{[^}]*border: 1px solid (#[0-9a-f]{6})/, '那颗按钮的描边色')
+  const ink = pick(/\.pet-bubble-reply \{[^}]*color: (#[0-9a-f]{6})/, '那颗按钮的文字色')
 
-  it('环对白内腔、对浅桌面都过 UI 组件的 3:1（旧那支 #92c7e3 只有 1.83 / 1.61）', () => {
-    expect(ring, 'bubble.svg 第一层不是环色').toBe('#5492b2')
+  it('环就是头发那一支：对白内腔、对浅桌面都过 3:1', () => {
+    // #4A5D97 是从真机那一帧逐簇量出来的（spike/pet-palette.mjs 带位置打印），不是照名字猜的
+    expect(ring, 'bubble.svg 第一层不是头发色').toBe('#4a5d97')
     expect(cavity, '内腔不是纯白就没法当对比度的底').toBe('#ffffff')
     expect(contrast(ring, cavity), `环对白色内腔只有 ${contrast(ring, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
-    // 浅壁纸是三面邻色里最暗的那个，所以拿它反解；深壁纸由整块白色身子去压，不在这条账里
     expect(contrast(ring, '#eef1f5'), `环对浅桌面只有 ${contrast(ring, '#eef1f5').toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
-    expect(fills, '旧那支压不住浅色桌面的环又回来了').not.toContain('#92c7e3')
+    // 深色桌面那面**故意不列进来**：压它的是整块白色身子（同圆底那套两层逻辑）。
+    // 要求环单独赢过深桌面会把它解成近黑，气泡就成了「黑圈包一张白纸」。
   })
 
-  it('回应按钮：白字过 4.5:1，而且和环不是同一档', () => {
-    expect(reply, '--reply-fill 不是解出来的那支实心蓝').toBe('#007eb6')
-    expect(contrast('#ffffff', reply), `白字对按钮只有 ${contrast('#ffffff', reply).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(reply, cavity), `按钮对白内腔只有 ${contrast(reply, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
-    // 上一版的毛病就是这两个同格（都取 #a9d4ef 那一档），层级塌了才要改的
-    expect(reply, '按钮又和环同色了').not.toBe(ring)
-    expect(contrast(reply, ring), '按钮和环差得太少，一眼分不出谁是动作').toBeGreaterThanOrEqual(1.25)
+  it('按钮面是发箍那块白，所以「看得见」交给描边；文字回到墨色', () => {
+    expect(reply, '--reply-fill 不是发箍那一支').toBe('#eae2e5')
+    // 这块白对白内腔只有 1.27:1 —— 它本来就不该被当成组件边界，边界是那条边。
+    // 写成 toBeLessThan 是故意的：哪天有人把面调深到能自己扛 3:1，这条会问「那描边还要不要」。
+    expect(contrast(reply, cavity), '发箍的白自己就压得住白内腔？判据要重看').toBeLessThan(3)
+    expect(contrast(pill, reply), `描边对按钮面只有 ${contrast(pill, reply).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
+    expect(contrast(pill, cavity), `描边对白内腔只有 ${contrast(pill, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
+    expect(contrast(ink, reply), `墨字对按钮面只有 ${contrast(ink, reply).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('环和描边同一条色相：引入第二个蓝就变成「配色」而不是「取色」了', () => {
+    const hue = (h: string): number => {
+      const m = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+      const A = 1.9779984951 * m[0]! - 2.428592205 * m[1]! + 0.4505937099 * m[2]!
+      const B = 0.0259040371 * m[0]! + 0.7827717662 * m[1]! - 0.808675766 * m[2]!
+      return (Math.atan2(B, A) * 180) / Math.PI
+    }
+    // 只比这两支：按钮面那块白发箍的彩度实测只有 0.010，色相本来就随噪点飘，比它没意义
+    expect(Math.abs(hue(pill) - hue(ring)), `描边 ${pill} 不在头发 ${ring} 那条色相上`).toBeLessThan(14)
   })
 })
