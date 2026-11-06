@@ -1,15 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import {
   ACTIVITY_FALLBACK, ACTIVITY_LABELS, AMBIENT_POOLS,
   CANVAS_W, CANVAS_H, FEET_Y, STAGE_W_CSS, STAGE_H_CSS,
   DEFAULT_BODY_BOX, REQUIRED_POOLS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_INNER_BOTTOM,
-  BUBBLE_CAVITY, BUBBLE_RING_W,
+  BUBBLE_RING_W,
   FOOD_CELL, FOOD_ICON, FOOD_GAP, FOOD_VISIBLE, ONLINE_TICK_MS, VIEW_HIDE_MS,
   FLOAT_CHIP, FLOAT_MS, FLOAT_HEAD_OFFSET,
 } from '../src/shared/config.js'
+import { CLOUD, cloudScale, fitsInsideCloud } from '../src/shared/bubble-shape.js'
 import { STAT_KEYS, STAT_TICK_MS } from '../src/shared/stats.js'
 import { fitsLabel } from '../src/shared/text.js'
 import { mimeOf } from '../src/main/protocol.js'
@@ -355,57 +357,43 @@ describe('气泡尺寸', () => {
     expect(code.match(/\.pet-bubble-bg \{([^}]*)\}/)?.[1]).not.toMatch(/image-rendering:\s*pixelated/)
   })
 
-  it('文字与按钮都留在纯白内腔里（底边压在 BUBBLE_INNER_BOTTOM，四角不碰描边也不进圆角）', () => {
+  it('bubble.svg 是清单的生成物：改了清单没重新生成，这条就红', () => {
+    // 上一版最难查的错就是这个：素材手写一份、config 的注释里再算一份、测试只读得到其中两个数。
+    // 形状与几何现在只有 `bubble-shape.ts` 一处，跑 --check 比对，不写文件。
+    expect(() => execFileSync('node', ['tools/make-bubble-svg.mjs', '--check'], { stdio: 'pipe' })).not.toThrow()
+  })
+
+  it('文字与回应按钮都落在云朵的白色内腔里（四角 + 四边中点，再缩进 12 单位）', () => {
     const css = readFileSync('src/renderer/style.css', 'utf8')
     const block = (sel: string): string => css.match(new RegExp(`[.]${sel} [{]([^}]*)[}]`))?.[1] ?? ''
     const px = (sel: string, prop: string): number =>
       Number(new RegExp(`${prop}: (\\d+)px`).exec(block(sel))?.[1] ?? -1)
 
+    /**
+     * 判据是 `fitsInsideCloud`（把每个图元收进 pad 单位，再问八个点还在不在并集里），
+     * 不再是「一个内腔矩形 + 四角躲圆角」——云朵上下不对称，顶上三朵包之间的凹缝
+     * 正好能从内容块**边的中段**咬进来一口，只看四角会漏判。
+     * pad = 12 单位（6 CSS px）是「字别压在描边上」那条观感要求的量化。
+     */
+    const k = cloudScale(CLOUD, BUBBLE_W)
     for (const sel of ['pet-bubble-text', 'pet-bubble-reply']) {
       expect(px(sel, 'top'), `${sel} 的 top 没读到`).toBeGreaterThanOrEqual(0)
       expect(px(sel, 'height'), `${sel} 的 height 没读到`).toBeGreaterThan(0)
+      const box = { x: px(sel, 'left') / k, y: px(sel, 'top') / k, w: px(sel, 'width') / k, h: px(sel, 'height') / k }
+      expect(fitsInsideCloud(CLOUD, box, 12), `${sel} 越出云朵的白色内腔了`).toBe(true)
     }
-    expect(px('pet-bubble-text', 'top') + px('pet-bubble-text', 'height')).toBeLessThanOrEqual(BUBBLE_INNER_BOTTOM)
-    expect(px('pet-bubble-reply', 'top') + px('pet-bubble-reply', 'height')).toBeLessThanOrEqual(BUBBLE_INNER_BOTTOM)
-    // 反证：数没读到就是 -1，上面两条会直接红，不会出现"读不到也算通过"
+    // 回应按钮的底边就是 BUBBLE_INNER_BOTTOM（注释与装配读的是同一个数，不许两份账）
+    expect(px('pet-bubble-reply', 'top') + px('pet-bubble-reply', 'height')).toBe(BUBBLE_INNER_BOTTOM)
+    // 反证：数没读到就是 -1，上面几条会直接红，不会出现"读不到也算通过"
     expect(px('pet-bubble-nosuch', 'top')).toBe(-1)
+  })
 
-    /**
-     * 内腔是**圆角矩形**（上一版是圆，再上一版是椭圆），所以分两步：
-     * ① 从素材读 viewBox 与 stroke-width，钉住「显示比例 = 素材比例」和「环厚 = BUBBLE_RING_W」——
-     *    这是素材与 config 之间唯一能机器核对的两条关系；素材换了形状而 config 没重算，这里就红。
-     * ② 用 config 的 BUBBLE_CAVITY（内腔界，算法写在那条注释里）验内容块：
-     *    先在矩形界内，再看有没有哪个角落进「两个方向都进了角区」的那块——那里要躲开圆弧。
-     */
-    const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8').replace(/<!--[\s\S]*?-->/g, '')
-    const vb = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg)
-    expect(vb, 'bubble.svg 读不到 viewBox').not.toBeNull()
-    const [vbW, vbH] = [Number(vb![1]), Number(vb![2])]
-    const stroke = Number(svg.match(/stroke-width="([\d.]+)"/)?.[1] ?? -1)
-    expect(stroke, 'bubble.svg 读不到 stroke-width').toBeGreaterThan(0)
-    const k = BUBBLE_W / vbW
-    expect(vbH * k, `素材 ${vbW}×${vbH} 换算过来高 ${vbH * k}，和 BUBBLE_H=${BUBBLE_H} 不是同一个比例`).toBeCloseTo(BUBBLE_H, 1)
-    // 用户两次点名「边框要细」：18.3 → 9.2 → 6。粗回去或细到发虚都会红。
-    expect(stroke * k, `环厚 ${(stroke * k).toFixed(1)}px，和 BUBBLE_RING_W=${BUBBLE_RING_W} 对不上`).toBeCloseTo(BUBBLE_RING_W, 1)
-    expect(BUBBLE_RING_W, '环厚低于 4px 在 2× 远程桌面上会开始发虚').toBeGreaterThanOrEqual(4)
-
-    const cav = BUBBLE_CAVITY
-    // 内容下界不许低过内腔底边（低过了就是字压到描边上），而且要有余量：留 14px 是这版的解。
-    expect(BUBBLE_INNER_BOTTOM, `内容下界 ${BUBBLE_INNER_BOTTOM} 低过内腔底边 ${cav.y + cav.h}`).toBeLessThanOrEqual(cav.y + cav.h)
-    expect(cav.y + cav.h - BUBBLE_INNER_BOTTOM, '下界离内腔底边太近，字会看着像要掉出去').toBeGreaterThanOrEqual(8)
-    for (const sel of ['pet-bubble-text', 'pet-bubble-reply']) {
-      const box = { x: px(sel, 'left'), y: px(sel, 'top'), w: px(sel, 'width'), h: px(sel, 'height') }
-      expect(box.x, `${sel} 越过内腔左沿`).toBeGreaterThanOrEqual(cav.x)
-      expect(box.y, `${sel} 越过内腔上沿`).toBeGreaterThanOrEqual(cav.y)
-      expect(box.x + box.w, `${sel} 越过内腔右沿`).toBeLessThanOrEqual(cav.x + cav.w)
-      expect(box.y + box.h, `${sel} 越过内腔下沿`).toBeLessThanOrEqual(cav.y + cav.h)
-      const corners: [number, number][] = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]]
-      for (const [x, y] of corners) {
-        const fx = x < cav.x + cav.r ? cav.x + cav.r : x > cav.x + cav.w - cav.r ? cav.x + cav.w - cav.r : null
-        const fy = y < cav.y + cav.r ? cav.y + cav.r : y > cav.y + cav.h - cav.r ? cav.y + cav.h - cav.r : null
-        if (fx === null || fy === null) continue
-        expect(Math.hypot(x - fx, y - fy), `(${x},${y}) 扎进圆角里了`).toBeLessThanOrEqual(cav.r)
-      }
-    }
+  it('显示高与环厚都从清单推出来，不是第二个写死的数', () => {
+    const k = cloudScale(CLOUD, BUBBLE_W)
+    expect(BUBBLE_H, '高度不是按清单比例推的').toBeCloseTo(CLOUD.vb.h * k, 6)
+    expect(BUBBLE_RING_W, '环厚和清单的 ring 对不上').toBeCloseTo(CLOUD.ring * k, 6)
+    // 用户两次点名「边框要细」：18.3 → 9.2 → 6。粗回去、或细到 2× 远程桌面上发虚，都会红。
+    expect(BUBBLE_RING_W).toBeGreaterThanOrEqual(4)
+    expect(BUBBLE_RING_W, '环又画回粗的了').toBeLessThanOrEqual(7)
   })
 })

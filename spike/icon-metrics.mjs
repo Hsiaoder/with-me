@@ -12,7 +12,7 @@ import { resolve } from 'node:path'
 
 const ICONS = [
   'icons/rice.svg', 'icons/game.svg', 'icons/heart.svg', 'icons/settings.svg', 'emotes/dots3.png',
-  'icons/button_round_depth_line.svg',
+  'icons/whale_round.svg',
 ]
 const S = 512
 

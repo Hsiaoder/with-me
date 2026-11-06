@@ -102,7 +102,7 @@ console.log(`dots3 重染 ${tint.touched} 个像素（${tint.W}×${tint.H}）`)
 
 const src = (file) => pathToFileURL(resolve(ROOT, file)).href
 const dst = (set, file) => pathToFileURL(cand[set][file]).href
-const disc = pathToFileURL(resolve(ROOT, 'icons/button_round_depth_line.svg')).href
+const disc = pathToFileURL(resolve(ROOT, 'icons/whale_round.svg')).href
 
 const cell = (u, label, bg) => `
   <div class="slot" style="background:${bg}">

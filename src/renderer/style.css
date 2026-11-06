@@ -257,12 +257,11 @@ body.pet-over {
   left: 0;
   top: 0;
   display: block;
-  /* 矢量气泡：viewBox 440×320 画到 220×160（环厚 stroke-width 12 单位 = 6 CSS px），
-     值要和 config.ts 的 BUBBLE_W/BUBBLE_H 一致（有测试钉住）。矢量没有「整数倍才不糊」
-     这条约束；宽高比是**矩形**自己定的——正文 24 字 + 那颗回应按钮排得开，
-     又不用像正方形那样在四角空出一圈没人用的白（解法见 config.ts）。 */
-  width: 220px;
-  height: 160px;
+  /* 云朵气泡：画布 416×376 单位（= 含环的墨迹包围盒，不留空白）画到 **208×188**。
+     值要和 config.ts 的 BUBBLE_W/BUBBLE_H 一致（有测试钉住），而那两个数是从
+     `src/shared/bubble-shape.ts` 那份图元清单推出来的——形状只有清单一处。 */
+  width: 208px;
+  height: 188px;
   pointer-events: auto;
   cursor: var(--pet-cursor);
   will-change: transform;
@@ -285,12 +284,16 @@ body.pet-over {
 }
 
 /* 底图铺满整块，文字层单独定位在白色区内。两层分开才不会被彼此的尺寸绑死：
-   以后换成切片拉伸或换图片，只有 bg 这一层要动。 */
+   以后换成切片拉伸或换图片，只有 bg 这一层要动。
+   **投影挂在这一层，不挂在 .pet-bubble 上**：挂在容器上会连文字和回应按钮一起投影，
+   字会糊；挂在底图上就只跟着云形的 alpha 走，画布外那圈空白不参与。
+   素材里也不画影——画进去就换不了、也关不掉（减少动效/低配机器要能整条撤）。 */
 .pet-bubble-bg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.24));
   /* 底图是 SVG（`emotes/bubble.svg`），**不能**开邻取放大（pixelated）：
      那是给格子画的位图用的渲染方式，套到矢量上只会把圆角拉成阶梯。
      （上一版是 Kenney Vector PNG 放大 5 倍，那版才谈得上采样方式；换回位图时要一起重看这条。）
@@ -298,14 +301,14 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 内腔是**正圆**（半径 82.5、圆心就在框正中 110,110），不是矩形：能用的矩形比内接方框小得多，
-   内腔是**圆角矩形**（x 6..214、y 6..120），内容块取「宽 150、高 86」居中 → 顶 20、底 106，
-   上下各留 14 CSS px，四角离圆角那段（内圆角半径 15，角区只到 x=21 / y=105 那一格）也够。
-   底边 106 就是 BUBBLE_INNER_BOTTOM。压到描边上就像字要掉出气泡。 */
+/* 内腔是**云朵**：身子那块圆角矩形（CSS x 6..202、y 54..159）是主要可用区，顶上三朵云包再往上鼓。
+   内容块取「宽 150、高 86」（文字 60 + 缝 4 + 按钮 22）→ 顶 57、底 **143**（= BUBBLE_INNER_BOTTOM）。
+   位置不是居中算出来的：云朵上下不对称（上面三朵包、下面一条尾巴），居中会把按钮压到尾巴根上，
+   所以按「四角 + 四边中点都在白色内腔里、再缩 12 单位」解出来的（`fitsInsideCloud`，测试走同一条）。 */
 .pet-bubble-text {
   position: absolute;
-  left: 35px;
-  top: 20px;
+  left: 29px;
+  top: 57px;
   width: 150px;
   height: 60px;
   display: flex;
@@ -318,18 +321,20 @@ body.pet-over {
   pointer-events: none;
 }
 
-/* 回应按钮：文字区下面那一行，底边 106 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
-   宽度跟着文字区取 150——矩形腔上下一般宽，不必像圆腔那样为下半截收着。 */
+/* 回应按钮：文字区下面那一行，底边 143 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
+   宽度跟着文字区取 150——身子那块矩形上下一般宽，不必为下半截收着。
+   它自己也要「浮起来」一点：这颗是矩形，用 box-shadow 就够，不必动用 filter。 */
 .pet-bubble-reply {
   position: absolute;
-  left: 35px;
-  top: 84px;
+  left: 29px;
+  top: 121px;
   width: 150px;
   height: 22px;
   padding: 0;
   border: 1px solid rgba(0, 0, 0, 0.14);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   color: #2b2f36;
   font: 12px/1 "Microsoft YaHei UI", sans-serif;
   pointer-events: auto;
@@ -440,14 +445,18 @@ body.pet-over {
   cursor: var(--pet-cursor);
 }
 
-/* 动作视图的五颗：图标底下垫一枚 Kenney `button_round_depth_line`（CC0，**已按 A 套重染**：
-   面 eb f5 fb + 环 6990a7 + 一点蓝内圈 36bdf7，外环的下半圈是更深的 3e718c，所以看着像有厚度；
-   上一版用的是没有这道暗边的 button_round_line，素材原色是偏紫的灰，见 problem/03 §3.10）。
+/* 动作视图的五颗：图标底下垫一只**小鲸鱼**（`icons/whale_round.svg`，2026-11-06 用户要的形；
+   再往前是 Kenney `button_round_depth_line` 那枚圆底）。边框画在素材里（同一形状两层，
+   下层描边胀出 6 单位 = 显示 3 CSS px），投影在这里用 CSS `filter: drop-shadow` 加——
+   **投影不画进素材**：画进去就成了一张甩不掉的灰雾，换尺寸还会跟着缩放；
+   drop-shadow 跟着 alpha 轮廓走，鲸鱼尾巴那一翘也带得出影。
+   配色沿用 A 套：面 #ebf5fb、环 #6990a7。
    以前这里刻意什么都不画，结果白色系的图标（米饭碗）压在浅色壁纸上会糊成一片，
    也看不出哪里能点。40px 的方块仍然是命中区——图标只有 20~24px，按图标本身点太费眼睛。
    选择器用 `button[data-id]`：只有动作按钮带 data-id，设置/列表/状态视图的按钮各有自己的底板。 */
 .pet-panel button[data-id] {
-  background: url("icons/button_round_depth_line.svg") center / 100% 100% no-repeat;
+  background: url("icons/whale_round.svg") center / 100% 100% no-repeat;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.32));
 }
 
 /* 图标尺寸逐枚定，不用一个 26 卡死。iconfont 那几张内部留白差得远
