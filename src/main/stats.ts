@@ -4,6 +4,7 @@ import {
   eventDeltas,
   expGain,
   FOOD_EFFECT,
+  IDLE_EXP_PER_MIN,
   STAT_TICK_MS,
   tickStats,
   type StatEvent,
@@ -95,6 +96,10 @@ export function startStats(o: {
     lastTick = t
     if (!(minutes > 0)) return          // 时钟回拨（NTP 校正）不许倒着喂宠物
     save.stats = tickStats(save.stats, { minutes, idleMs: t - lastInteractionAt })
+    // 在线挂机的经验走同一个时钟：**进程在跑就算**（用户 2026-11-07 拍的板，关掉应用不涨，
+    // 所以上面那段离线补算里**故意不给经验**——只补饱食/心情那些会掉的）。
+    // 必须走 addExp：0.2 这类增量直接相加会攒出 9.999…，`levelOf` 查表就差那一格不升级。
+    save.exp = addExp(save.exp ?? 0, minutes * IDLE_EXP_PER_MIN)
     commit()
   }, STAT_TICK_MS)
   timer.unref()

@@ -235,7 +235,7 @@ export const FOOD_VISIBLE = 4
  * （{hunger,mind,clean,mood} 全 80，且没有任何生产调用方改过它），迁移时 hunger/mood 沿用、
  * mind/clean 丢弃，见 shared/save.ts 的 migrate。
  */
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 export const SAVE_FILE = 'save.json'
 
 // ---- 窗口 ----
@@ -260,9 +260,11 @@ export const SKIN_ORIGIN = `${APP_SCHEME}://${SKIN_HOST}/`
 export const PANEL_GAP = 10
 /**
  * 状态栏从「和身体中线对齐」再往上抬这么多（用户「状态栏盖住下面的按钮了」）。
- * 居中不够：这张卡 182 高、身体 165 高，居中就从身体底沿再挂 8px 多，正好压在按钮条上。
- * 抬 12 后底沿离按钮条 13px、顶沿离气泡底边 14px——后一半是气泡底边拉直才让出来的。
+ * 居中不够：这张卡比身体高（加了经验条之后 186 vs 165），居中就从身体底沿再挂 10px 多，
+ * 正好压在按钮条上。抬 14 之后实测（真机 dshtry）底沿离按钮条 15px、顶沿离气泡直边 8px——
+ * 后一半是气泡底边拉直（不再鼓云包）才让出来的，两件事是一起算的。
+ * 卡片每加一行都要回来看这两个数：e2e 那两条净空断言会替你记着。
  */
-export const STATS_LIFT = 12
+export const STATS_LIFT = 14
 /** 按钮条与副板（食物列表）之间的间距。比 PANEL_GAP 小：这两块是一组，不该看着像两个东西。 */
 export const PLATE_GAP = 6

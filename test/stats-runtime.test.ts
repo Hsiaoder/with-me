@@ -1,7 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { startStats } from '../src/main/stats.js'
-import { defaultSave, migrate } from '../src/shared/save.js'
-import { DAILY_OPEN_GAP_MS, DECAY_PER_MIN, INITIAL_STATS, OFFLINE_MAX_LOSS, OFFLINE_RATE, PLAY_BOND, REPLY_BOND, STAT_TICK_MS } from '../src/shared/stats.js'
+import { defaultSave, migrate, migrateExp } from '../src/shared/save.js'
+import {
+  DAILY_OPEN_GAP_MS,
+  DECAY_PER_MIN,
+  DIMINISH_MULT,
+  EXP_GAIN,
+  IDLE_EXP_PER_MIN,
+  INITIAL_STATS,
+  LEVEL_CUM,
+  LEVEL_STEPS,
+  MAX_LEVEL,
+  OFFLINE_MAX_LOSS,
+  OFFLINE_RATE,
+  STAT_TICK_MS,
+} from '../src/shared/stats.js'
 import type { SaveData } from '../src/shared/save.js'
 import type { StatsSnapshot } from '../src/main/stats.js'
 
@@ -188,7 +201,7 @@ describe('经验与等级', () => {
   it('喂食给经验，但不碰亲密度条：两条账各走各的', () => {
     const h = harness()
     h.rt.event({ kind: 'feed', food: 'rice' })
-    expect(h.rt.snapshot().exp).toBeCloseTo(0.2, 6)
+    expect(h.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.feed, 6)
     expect(h.rt.snapshot().stats.bond).toBe(INITIAL_STATS.bond)
     expect(h.rt.snapshot().stats.hunger).toBeGreaterThan(70)
   })
@@ -200,23 +213,71 @@ describe('经验与等级', () => {
   it('第一次喂食拿全额、10 分钟内第二次减半', () => {
     const h = harness()
     h.rt.event({ kind: 'feed', food: 'rice' })
-    expect(h.rt.snapshot().exp).toBeCloseTo(0.2, 6)
+    expect(h.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.feed, 6)
     h.setNow(T0 + 5 * MIN)
     h.rt.event({ kind: 'feed', food: 'rice' })
-    expect(h.rt.snapshot().exp).toBeCloseTo(0.3, 6)
+    expect(h.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.feed * (1 + DIMINISH_MULT), 6)
     // 距离**上一次**过了窗口才是全额：闸量的是连点间隔，不是每天限量
     h.setNow(T0 + 16 * MIN)
     h.rt.event({ kind: 'feed', food: 'rice' })
-    expect(h.rt.snapshot().exp).toBeCloseTo(0.5, 6)
+    expect(h.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.feed * (2 + DIMINISH_MULT), 6)
   })
 
-  it('逗玩与回复的经验等于它们那份亲密（引用同一批常量，不会漂）', () => {
+  it('逗玩与回复各按自己那档给经验（和亲密的数值已经分家，不再绑常量）', () => {
     const h = harness()
     h.rt.event({ kind: 'play' })
-    expect(h.rt.snapshot().exp).toBeCloseTo(PLAY_BOND, 6)
+    expect(h.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.play, 6)
     h.setNow(T0 + 11 * MIN)
     h.rt.event({ kind: 'reply' })
-    expect(h.rt.snapshot().exp).toBeCloseTo(PLAY_BOND + REPLY_BOND, 6)
+    expect(h.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.play + EXP_GAIN.reply, 6)
+  })
+
+  /**
+   * 在线挂机的经验（用户 2026-11-07：「挂机的时候也会增加等级」，并确认「进程在跑就算」）。
+   * 这条同时钉住另一半：**离线那段一格都不给**——开局补算只补会掉的饱食/心情，
+   * 否则「关掉应用三天回来直接 Lv.20」，陪伴这件事就变成放置游戏了。
+   */
+  it('进程在跑就按分钟给经验；关掉应用那段不算', () => {
+    /**
+     * 推进时要**同时**动两只钟：`vi.advanceTimersByTime` 让 setInterval 的回调真的跑一次，
+     * 而回调里算的 `minutes` 读的是 harness 自己那个假 `now()`。只推前者，回调会算出
+     * 「这次隔了 0 分钟」直接 return——上一版就是这么绿着骗过自己的。
+     */
+    const h = harness()
+    let elapsed = 0
+    const runMin = (n: number): void => {
+      for (let i = 0; i < n; i++) {
+        elapsed += 1
+        // 先动逻辑时钟再放定时器：回调读的是 `now()`，反过来的话第一次 fire 看到的还是
+        // 起点，算出「隔了 0 分钟」直接 return，十分钟只结九次——上一版就是这么少 0.2。
+        h.setNow(T0 + elapsed * MIN)
+        vi.advanceTimersByTime(STAT_TICK_MS)
+      }
+    }
+    runMin(10)
+    expect(h.rt.snapshot().exp).toBeCloseTo(IDLE_EXP_PER_MIN * 10, 6)
+    // 攒满一级就真升级（这条同时是 addExp 收口的现场验证：0.2 × 100 分钟 = 20，不多不少）
+    runMin(90)
+    expect(h.rt.snapshot().exp, '挂机 100 分钟该正好攒满第一级').toBe(LEVEL_STEPS[0])
+    // 离线补算那条路：lastSeenAt 是三小时前，重开只补数值、不补经验
+    const away = { ...defaultSave(T0 - 180 * MIN) }
+    const b = harness(away)
+    expect(b.rt.snapshot().exp ?? 0, '关机期间不该涨经验').toBe(0)
+    expect(b.rt.snapshot().stats.hunger).toBeLessThan(INITIAL_STATS.hunger)  // 那边照旧会饿
+  })
+
+  it('v2 的档迁移到 v3：等级一格不动，经验条正好空着', () => {
+    /**
+     * 旧规则是 `floor(exp/10)+1`。16.9 在旧表是 Lv.2；直接拿原值查新表就变 Lv.1——
+     * 那是我们把公式改了却把他的成长一起改了。所以迁移保等级：给他新表里 Lv.2 的门槛 20。
+     */
+    expect(migrateExp(16.9, 2)).toBe(LEVEL_CUM[1])
+    expect(migrateExp(16.9, 2)).toBe(20)
+    expect(migrate({ version: 2, exp: 16.9 }, T0).exp).toBe(20)
+    // 已经是 v3 的原样通过，别再乘一遍
+    expect(migrateExp(123.4, 3)).toBe(123.4)
+    // 旧档高经验也不能迁出满级之外
+    expect(migrateExp(9999, 2)).toBe(LEVEL_CUM[MAX_LEVEL - 1])
   })
 
   it('经验落盘并跨重启累计；日开仍受 20 小时门槛管，不会重启再领一次', () => {
@@ -224,12 +285,12 @@ describe('经验与等级', () => {
     a.rt.event({ kind: 'feed', food: 'rice' })
     a.rt.event({ kind: 'daily-open' })
     const written = a.persisted.at(-1)!
-    expect(written.exp).toBeCloseTo(0.4, 6)
+    expect(written.exp).toBeCloseTo(EXP_GAIN.feed + EXP_GAIN['daily-open'], 6)
 
     const b = harness({ ...defaultSave(T0), ...written })
-    expect(b.rt.snapshot().exp).toBeCloseTo(0.4, 6)
+    expect(b.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.feed + EXP_GAIN['daily-open'], 6)
     b.rt.event({ kind: 'daily-open' })
-    expect(b.rt.snapshot().exp).toBeCloseTo(0.4, 6)
+    expect(b.rt.snapshot().exp).toBeCloseTo(EXP_GAIN.feed + EXP_GAIN['daily-open'], 6)
     expect(b.persisted).toHaveLength(0)
   })
 

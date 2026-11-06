@@ -18,7 +18,7 @@ import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBB
 import { CLOUD, cloudScale } from '../src/shared/bubble-shape.ts'
 import { FOODS } from '../src/shared/food.ts'
 import { pageStep } from '../src/shared/scroll.ts'
-import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.ts'
+import { EXP_GAIN, LEVEL_CUM, STAT_KEYS, STAT_LABELS, expToNext, levelOf } from '../src/shared/stats.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -1030,30 +1030,32 @@ check('吃饭期间拖拽：吃相一路不被打断，格子也一路灰着', a
   await notEating()
   const done = await mealState()
   assert.notEqual(done.pool, 'eat', `演完了池子还停在 eat：${done.pool}`)
-  // 「饭后解开」要问得准：12 格里有 8 格**本来就该灰着**（等级不够），
+  // 「饭后解开」要问得准：12 格里有一大半**本来就该灰着**（等级不够），
   // 用「整列不再全灰」当判据会在这一轮之后永远为真——它不再说明吃饭那层灰解开了。
-  // 所以问的是 Lv.1 那几格：它们既不该因吃饭灰，也不该因等级灰。
+  // 所以问的是 Lv.1 就解锁的那几格：它们既不该因吃饭灰，也不该因等级灰。
+  // 清单从 FOODS 推（2026-11-07 解锁改成「前三格 Lv.1 就有，往后每两级一格」，抄死四样就红在期望值上）。
+  const lv1Ids = FOODS.filter((f) => f.level === 1).map((f) => f.id)
   const freeAfter = await page.evaluate(() =>
     [...document.querySelectorAll('.pet-panel .pet-food')]
       .filter((c) => !c.classList.contains('is-locked'))
       .map((c) => c.dataset.food + (c.disabled ? '=灰' : '=亮')))
-  assert.deepEqual(freeAfter, ['token=亮', 'rice=亮', 'noodle=亮', 'youtiao=亮'],
-    `演完这一口之后 Lv.1 那四格没全亮：${JSON.stringify(freeAfter)}`)
+  assert.deepEqual(freeAfter, lv1Ids.map((id) => `${id}=亮`),
+    `演完这一口之后 Lv.1 那 ${lv1Ids.length} 格没全亮：${JSON.stringify(freeAfter)}`)
   assert.equal(done.count, FOODS.length)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
 check('皮肤里没做的那一口：回落到 click，而不是随机播一口别的', async () => {
-  // block 皮肤的 eat 池只有 rice / hotpot。点油条（没做）该播 click——
+  // block 皮肤的 eat 池只有 rice / hotpot。点面条（素材里叫「吃午餐」，这套皮肤没做）该播 click——
   // 播「池里随便一条」就是「点火锅播白饭的吃相」那个 bug 的样子，比不播更误导。
-  // 挑油条而不是饺子：饺子现在是 Lv.2 的，那一格是 disabled 的，点下去根本不会报（那是另一条检查）。
+  // 挑面条而不是油条/糖葫芦：它们现在是 Lv.3+ 的，那一格 disabled，点下去根本不会报（那是另一条检查）。
   await page.evaluate(() => window.__petDebug.hidePanel())
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
   await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
 
   await page.waitForSelector('.pet-panel .pet-food')
-  await page.click('.pet-panel .pet-food[data-food="youtiao"]')
+  await page.click('.pet-panel .pet-food[data-food="noodle"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'click', null, { timeout: 5000 })
   assert.equal((await dbg()).pool, 'click')
   await page.evaluate(() => window.__petDebug.hidePanel())
@@ -1435,6 +1437,18 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
         order: [...document.querySelectorAll('.pet-plate.is-stats > *')].findIndex((n) => n === level) <
           [...document.querySelectorAll('.pet-plate.is-stats > *')].findIndex((n) => n.classList.contains('pet-stat')),
       },
+      // 经验条那一行：类名、位置、标签、写的数——四样都要量，它是最容易「画了但画错地方」的那种行
+      expRow: (() => {
+        const kids = [...document.querySelectorAll('.pet-plate.is-stats > *')]
+        const n = document.querySelector('.pet-exp')
+        if (n === null) return { last: false, cls: '(没画出来)', text: '', label: '' }
+        return {
+          last: kids[kids.length - 1] === n,
+          cls: n.className,
+          text: n.querySelector('.pet-exp-value')?.textContent ?? '',
+          label: n.querySelector('.pet-stat-label')?.textContent ?? '',
+        }
+      })(),
     }
   })
   assert.equal(g.name, '小鲸', `状态栏没显示存档里的名字：${g.name}`)
@@ -1457,11 +1471,17 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   assert.equal(g.level.bar, null, '等级行还带着进度条（用户说不要）')
   assert.equal(g.level.isStat, false, '等级行错挂了 .pet-stat：那是「一条数值读数」的类')
   assert.equal(g.level.order, true, '等级行没排在四条读数上面')
-  // 等级自己得自洽：Lv = floor(经验/10)+1。这里不另抄一份公式，
-  // 而是把 title 里那个「真实累计值」解出来反查渲染——两边不一致就是渲染算错了。
+  // 等级自己得自洽：等级是从累计经验**查表**算出来的。这里不另抄一份表，
+  // 而是把 title 里那个「真实累计值」解出来，再交给同一个 `levelOf` 反查渲染——两边不一致就是渲染算错了。
   const exp = Number(/累计经验 ([\d.]+)/.exec(g.level.hint ?? '')?.[1] ?? Number.NaN)
   assert.ok(Number.isFinite(exp) && exp >= 0, `等级行的经验读数取不出来：${g.level.hint}`)
-  assert.equal(g.level.text, `Lv.${Math.floor(exp / 10) + 1}`, `等级和它对不上：${g.level.text} vs 经验 ${exp}`)
+  assert.equal(g.level.text, `Lv.${levelOf(exp)}`, `等级和它对不上：${g.level.text} vs 经验 ${exp}`)
+  // 经验条（2026-11-07 用户要）：排在卡片最后一行，写的「还差」必须等于门槛减已攒。
+  // 不抄表里的数：那条差值用 expToNext 现算，和渲染走同一份表。
+  assert.equal(g.expRow.last, true, '经验条没排在状态栏最下面')
+  assert.equal(g.expRow.cls, 'pet-exp', '经验条错挂了 .pet-stat：那是四条数值读数的类')
+  assert.equal(g.expRow.text, String(Math.ceil(expToNext(exp))), `经验条写的数和表对不上：${g.expRow.text}`)
+  assert.equal(g.expRow.label, '还差：', `经验条的标签不对：${g.expRow.label}`)
   // 颜色必须跟着数字：分档写死在渲染里就会出「数值红了、条还是蓝的」那种假读数
   const bandOf = (v) => (v > 60 ? 'high' : v > 20 ? 'mid' : 'low')
   for (const r of g.rows) {
@@ -2050,7 +2070,8 @@ check('吃饭期间整列食物点不动（置灰是真 disabled），饭后自�
   // 分开看的是 is-locked 这个**原因标记**（面板把两件事的判据合成一个 disabled，
   // 但只有它能告诉用户「为什么点不动」）。
   const unlocked = free.filter((c) => !c.locked)
-  assert.deepEqual(unlocked.map((c) => c.id), ['token', 'rice', 'noodle', 'youtiao'], 'Lv.1 该放开那四样')
+  assert.deepEqual(unlocked.map((c) => c.id), FOODS.filter((f) => f.level === 1).map((f) => f.id),
+    'Lv.1 该放开的那几样和表对不上')
   assert.ok(unlocked.every((c) => !c.disabled), `没在吃饭也把能吃的格子灰了：${JSON.stringify(unlocked)}`)
   assert.ok(free.filter((c) => c.locked).every((c) => c.disabled), '没解锁的格子没灰')
 
@@ -2085,28 +2106,30 @@ check('吃饭期间整列食物点不动（置灰是真 disabled），饭后自�
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
-check('等级解锁：Lv.1 只放开四格，跨过级那一口同时解开 Lv.2 并说一句', async () => {
+check('等级解锁：Lv.2 只放开前三格，跨过 Lv.3 那一口当场解开第四格并说一句', async () => {
   /**
    * 这条要另开一只宠物：判据是**存档里的 exp**，而主套那只是空档（exp 0 = Lv.1），
-   * 喂一口才 0.2 经验，跑到 Lv.2 要 50 口、Lv.4 要 150 口——那不该是 e2e 等的事。
+   * 喂一口才 2 经验，跑到后面的级要几十口——那不该是 e2e 等的事。
    * 所以这里带一份写好的 save.json 起第二只（单实例锁按 userData 分目录，和主套不冲突）。
    *
    * 一次验三件只有真跑得起来才验得出的事：
    * ① 存档带着 exp 时列表按**那只宠物的等级**摆，不是永远 Lv.1；
-   * ② 跨级那一刻 Lv.2 那四格当场解开（不用重开列表）；
+   * ② 跨级那一刻新解锁的那一格当场解开（不用重开列表）；
    * ③ 跨级要说一句 levelup 台词，而且气泡里就是那句。
+   *
+   * 种子和期望值**全部从表里推**（LEVEL_CUM / EXP_GAIN / FOODS.level）：
+   * 上一版抄的是 9.6 和「那四样」，曲线一改就红在期望值上，而不是红在行为上。
    */
   const dir = mkdtempSync(join(tmpdir(), 'pet-e2e-lv-'))
+  // 目标：跨过 Lv.3 的门槛。留两口的量——daily-open 那一份是**开面板**那一刻发的，
+  // 不把它算进来，种子会在「叫出面板」那一瞬就悄悄跨级，后面「喂一口才升级」验的就是空气。
+  const SEED = LEVEL_CUM[2] - (EXP_GAIN['daily-open'] + EXP_GAIN.feed)
   writeFileSync(join(dir, 'save.json'), JSON.stringify({
-    version: 2,
+    version: 3,
     skin: 'block',
     identity: { name: '小鲸', gender: 'female' },
     stats: { hunger: 40, mood: 40, weight: 40, bond: 40 },
-    // 差 0.4 就跨级：打开面板那一刻「每天第一次」给 0.2（→ 9.8，还是 Lv.1），
-    // 再喂一口白饭给 0.2 → 正好 10.0 = Lv.2。
-    // 为什么留两口的量：daily-open 那 0.2 是**开面板**发的，不把它算进来，
-    // 种子写 9.8 会在「叫出面板」那一瞬就悄悄跨级，于是后面「喂一口才升级」那条断言验的是空气。
-    exp: 9.6,
+    exp: SEED,
     lastSeenAt: Date.now(),
   }), 'utf8')
   const app2 = await electron.launch({
@@ -2141,20 +2164,21 @@ check('等级解锁：Lv.1 只放开四格，跨过级那一口同时解开 Lv.2
       locked: c.classList.contains('is-locked'),
       badge: c.querySelector('.pet-food-lock')?.textContent ?? '',
     })))
-    // 先看 Lv.1 的列表摆得对不对
+    // 先看跨级前列表摆得对不对：种子是 Lv.2，前三格（Lv.1）该亮，第 4 格（Lv.3）还锁着
     const before = await read2()
-    assert.deepEqual(before.filter((c) => !c.locked).map((c) => c.id), ['token', 'rice', 'noodle', 'youtiao'],
-      'Lv.1 只该放开那四样')
-    assert.equal(before.filter((c) => c.locked).length, 8, '该有八格带角标')
+    const openAt = (lv) => FOODS.filter((f) => f.level <= lv).map((f) => f.id)
+    assert.deepEqual(before.filter((c) => !c.locked).map((c) => c.id), openAt(2),
+      `Lv.2 只该放开那 ${openAt(2).length} 样，实际是 ${JSON.stringify(before.filter((c) => !c.locked).map((c) => c.id))}`)
+    assert.equal(before.filter((c) => c.locked).length, FOODS.length - openAt(2).length, '带角标的格数不对')
     assert.ok(before.every((c) => c.locked === (c.badge !== '')), '角标与 is-locked 不是一件事：有一个是空话')
     // 等级行也得自洽：状态栏那个 Lv. 与格子的锁是同一份 exp 算出来的，两边不一致就是有两本账。
     // （只能在状态视图开着时读——那一行不在别的视图里，写在这儿顺序才不是「等一个不存在的节点」。）
     await tap2('.pet-panel button[data-id="status"]')
     await p2.waitForSelector('.pet-stats-level')
-    assert.equal(await p2.evaluate(() => document.querySelector('.pet-stats-level')?.textContent), 'Lv.1',
-      'exp 9.6 + 日开 0.2 该还停在 Lv.1')
+    assert.equal(await p2.evaluate(() => document.querySelector('.pet-stats-level')?.textContent), 'Lv.2',
+      `种子 exp ${SEED} + 日开 ${EXP_GAIN['daily-open']} 该停在 Lv.2`)
 
-    // 喂这一口：feed 再给 0.2 → 经验跨过 10 → Lv.2
+    // 喂这一口：feed 再给 EXP_GAIN.feed → 经验正好跨过 Lv.3 的门槛
     await p2.evaluate(() => window.__petDebug.setLastTalk(0))
     await tap2('.pet-panel button[data-id="feed"]')
     await p2.waitForSelector('.pet-panel .pet-food')
@@ -2172,10 +2196,10 @@ check('等级解锁：Lv.1 只放开四格，跨过级那一口同时解开 Lv.2
     const said = await p2.evaluate(() => window.__petDebug.bubbleText)
     assert.ok(levelupLines.includes(said), `跨级说的是「${said}」，不在 levelup 那一档里`)
 
-    // 等级真的落进快照了：状态栏那一行自己变 Lv.2（切回状态视图才读得到）
+    // 等级真的落进快照了：状态栏那一行自己变 Lv.3（切回状态视图才读得到）
     await tap2('.pet-panel button[data-id="status"]')
     await p2.waitForFunction(
-      () => document.querySelector('.pet-stats-level')?.textContent === 'Lv.2', null, { timeout: 15000 })
+      () => document.querySelector('.pet-stats-level')?.textContent === 'Lv.3', null, { timeout: 15000 })
     // 这一口演完再看格子：吃饭那层灰和等级那层灰都表现为 disabled，
     // 嘴里还含着饭的时候「该放开的还灰着」是**对的**，验不出解锁。
     await p2.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
@@ -2183,21 +2207,21 @@ check('等级解锁：Lv.1 只放开四格，跨过级那一口同时解开 Lv.2
     await p2.waitForSelector('.pet-panel .pet-food')
     const after = await read2()
     assert.deepEqual(after.filter((c) => c.locked).map((c) => c.id).sort(),
-      ['crab', 'hotpot', 'icecream', 'niangao'].sort(), 'Lv.2 该把 Lv.4 那四样继续锁着')
-    assert.ok(after.filter((c) => !c.locked).every((c) => !c.disabled), 'Lv.2 了还有该放开的格子灰着')
+      FOODS.filter((f) => f.level > 3).map((f) => f.id).sort(), '跨过 Lv.3 之后还锁着的不是表里那几格')
+    assert.ok(after.filter((c) => !c.locked).every((c) => !c.disabled), 'Lv.3 了还有该放开的格子灰着')
     // 刚解锁的那一格要真能喂出去，不是只把灰擦掉。
-    // dumpling 在 block 皮肤里没有对应吃相（会回落到 click 池），所以这里**不问动画，问账**：
-    // 喂饺子该让饥饿动起来。
+    // 油条在 block 皮肤里没有对应吃相（会回落到 click 池），所以这里**不问动画，问账**：
+    // 喂油条该让饥饿动起来。
     const hungerBefore = JSON.parse(readFileSync(join(dir, 'save.json'), 'utf8')).stats.hunger
     await p2.evaluate(() => window.__petDebug.setLastTalk(0))
-    await tap2('.pet-panel .pet-food[data-food="dumpling"]')
+    await tap2('.pet-panel .pet-food[data-food="youtiao"]')
     let hungerAfter = hungerBefore
     for (let i = 0; i < 40 && !(hungerAfter > hungerBefore); i++) {
       await p2.waitForTimeout(100)
       hungerAfter = JSON.parse(readFileSync(join(dir, 'save.json'), 'utf8')).stats.hunger
     }
     assert.ok(hungerAfter > hungerBefore,
-      `Lv.2 刚解开的饺子格点下去没喂进去（饥饿 ${hungerBefore} → ${hungerAfter}）`)
+      `Lv.3 刚解开的油条格点下去没喂进去（饥饿 ${hungerBefore} → ${hungerAfter}）`)
   } finally {
     await app2.close()
     try { rmSync(dir, { recursive: true, force: true }) } catch { /* 句柄没放干净就算了 */ }

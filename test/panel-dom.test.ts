@@ -4,8 +4,8 @@ import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
 import { PANEL_BUTTONS, REQUIRED_POOLS, FOOD_CELL, FOOD_GAP, FOOD_VISIBLE } from '../src/shared/config.js'
 import { pageStep } from '../src/shared/scroll.js'
-import { FOODS } from '../src/shared/food.js'
-import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.js'
+import { FOODS, FOOD_TIERS } from '../src/shared/food.js'
+import { LEVEL_CUM, LEVEL_STEPS, MAX_LEVEL, STAT_KEYS, STAT_LABELS } from '../src/shared/stats.js'
 import type { StatsSnapshot } from '../src/shared/save.js'
 
 /**
@@ -226,8 +226,8 @@ describe('食物视图', () => {
     panel.setView('foods')
     return { panel, pick }
   }
-  /** Lv.4 全开（经验 30 = 第四级）。 */
-  const mountAll = () => mountFoods(30)
+  /** 全解锁：经验正好攒到最后一格的门槛（从 FOOD_TIERS 推，不抄数字——加一行菜它自己跟着走）。 */
+  const mountAll = () => mountFoods(LEVEL_CUM[Math.max(...FOOD_TIERS) - 1]!)
 
   it('切到 foods 后副板是那块可见底板：格子数等于 FOODS 长度', () => {
     const { panel } = mountFoods()
@@ -252,14 +252,18 @@ describe('食物视图', () => {
       expect(img, `${f.id} 格子里没有图`).not.toBeNull()
       expect(img!.getAttribute('src')).toBe(f.icon)
     })
-    // Lv.1 时 Lv.2/Lv.4 那八格：title 要说「为什么点不动」，角标要把等级写在格子上
+    // Lv.1 时那些还没解锁的格子：title 要说「为什么点不动」，角标要把等级写在格子上。
+    // 条数与第一把锁都从表里推（前 3 格 Lv.1 就有，第 4 格是油条 Lv.3）——抄死数字的话，
+    // 改解锁节奏时这条会红在**期望值**上，而不是红在行为上。
     const low = mountFoods().panel
     const lockedCells = [...low.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     const locked = lockedCells.filter((c) => c.classList.contains('is-locked'))
-    expect(locked).toHaveLength(8)
-    expect(locked[0]!.title).toBe('糖葫芦（Lv.2 解锁）')
-    expect(locked[0]!.getAttribute('aria-label')).toBe('糖葫芦（Lv.2 解锁）')
-    expect(locked[0]!.textContent).toBe('Lv.2')
+    const expectLocked = FOODS.filter((f) => f.level > 1)
+    expect(locked).toHaveLength(expectLocked.length)
+    const first = expectLocked[0]!
+    expect(locked[0]!.title).toBe(`${first.name}（Lv.${first.level} 解锁）`)
+    expect(locked[0]!.getAttribute('aria-label')).toBe(`${first.name}（Lv.${first.level} 解锁）`)
+    expect(locked[0]!.textContent).toBe(`Lv.${first.level}`)
     expect(locked[0]!.disabled).toBe(true)
   })
 
@@ -272,29 +276,30 @@ describe('食物视图', () => {
   })
 
   /**
-   * 按等级解锁（用户 2026-11-06 要「等级低只能吃简单的」）。
+   * 按等级解锁（2026-11-07 用户的节奏：「一开始只能选前 3 个，后面每升两级解锁一个」）。
    * 面板这半边钉三件事：灰态与角标跟着等级翻、**不重建列表**、以及升级那一刻当场生效。
    * 「灰格子真不吃点击」是浏览器行为，由 e2e 在真 Chromium 里验。
    */
-  it('Lv.1 只放开 Lv.1 那四格；升到 Lv.4 八格当场解锁', () => {
+  it('Lv.1 只放开前三格；攒到 Lv.3 当场多出一格（油条）', () => {
     const { panel } = mountFoods()
     const cells = () => [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     expect(cells().filter((c) => !c.disabled).map((c) => c.dataset.food))
-      .toEqual(['token', 'rice', 'noodle', 'youtiao'])
+      .toEqual(FOODS.filter((f) => f.level === 1).map((f) => f.id))
     const first = cells()[0]
     // 升级：主进程推一份 exp 更高的快照过来，面板只翻属性，不重建（滚动位置是用户的）
     panel.setStats({
       stats: { hunger: 50, mood: 50, weight: 50, bond: 50 },
       identity: { name: '小鲸', gender: 'female' },
-      exp: 30,
+      exp: LEVEL_CUM[2]!,   // Lv.3 的门槛
       startedAt: 1_000,
     })
-    expect(cells().every((c) => !c.disabled), 'Lv.4 了还有格子灰着').toBe(true)
-    expect(cells().every((c) => c.querySelector('.pet-food-lock')?.textContent === '')).toBe(true)
+    const open = cells().filter((c) => !c.disabled).map((c) => c.dataset.food)
+    expect(open).toEqual(FOODS.filter((f) => f.level <= 3).map((f) => f.id))
+    expect(open, 'Lv.3 该比 Lv.1 多一格').toHaveLength(4)
     expect(panel.el.querySelector('.pet-food')).toBe(first)
   })
 
-  it('没推快照时按 Lv.1 处理：Lv.1 那四格能点，其余灰着——不是整列都能点', () => {
+  it('没推快照时按 Lv.1 处理：前三格能点，其余灰着——不是整列都能点', () => {
     // 这一条管的是「数据还没到」的默认方向。猜成「全开」会让用户点到一格喂出个不该有的东西，
     // 猜成「全关」会让刚开列表的人以为功能坏了；取 Lv.1 是因为它等于「按最保守的已知档位摆」。
     const pick = vi.fn()
@@ -305,7 +310,7 @@ describe('食物视图', () => {
     panel.show({ x: 0, y: 0 })
     panel.setView('foods')
     const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
-    expect(cells.filter((c) => !c.disabled)).toHaveLength(4)
+    expect(cells.filter((c) => !c.disabled)).toHaveLength(FOODS.filter((f) => f.level === 1).length)
   })
 
   /**
@@ -323,14 +328,15 @@ describe('食物视图', () => {
   })
 
   it('吃饭与没解锁两件事取「或」：饭后只回到「按等级该灰的还灰着」', () => {
-    const { panel } = mountFoods()    // Lv.1：八格本来就锁着
+    const { panel } = mountFoods()    // Lv.1：除前三格外都锁着
     panel.setEating(true)
     const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     expect(cells.every((c) => c.disabled)).toBe(true)
     panel.setEating(false)
-    // 灰态**不该整列解开**：锁着的八格还得锁着
+    // 灰态**不该整列解开**：按等级该锁的那些还得锁着（清单从表里推，不抄 id——
+    // 抄 id 的那版在解锁节奏改成「每两级一格」之后，红在了期望值上而不是行为上）
     expect(cells.filter((c) => !c.disabled).map((c) => c.dataset.food))
-      .toEqual(['token', 'rice', 'noodle', 'youtiao'])
+      .toEqual(FOODS.filter((f) => f.level === 1).map((f) => f.id))
   })
 
   it('翻灰态不重建节点：滚动位置与用户手里的旧节点都得留着', () => {
@@ -493,15 +499,45 @@ describe('状态视图', () => {
     expect(kids.indexOf(level!)).toBeLessThan(kids.findIndex((n) => n.classList.contains('pet-stat')))
   })
 
-  it('等级是算出来的：Lv 看整级、满 10 进一级；条不要了，经验只在 title 里', () => {
+  it('等级是算出来的：查表取整级，进度条挂在卡片最下面那一行', () => {
     const row = (exp: number) =>
       open(snap(82, exp)).panel.el.querySelector<HTMLElement>('.pet-stat-line[data-key="level"]')!
     expect(row(3.4).querySelector('.pet-stat-value')?.textContent).toBe('Lv.1')
-    expect(row(3.4).querySelector('.pet-stat-bar'), '等级还带着进度条').toBeNull()
+    expect(row(3.4).querySelector('.pet-stat-bar'), '等级行自己不该带条（2026-11-05 的拍板）').toBeNull()
     // 经验是「怎么涨的」的唯一解释，悬停要读得出来
     expect(row(3.4).getAttribute('title')).toContain('累计经验 3.4')
-    expect(row(10).querySelector('.pet-stat-value')?.textContent).toBe('Lv.2')
-    expect(row(25).querySelector('.pet-stat-value')?.textContent).toBe('Lv.3')
+    // 门槛从表里取，不抄数：Lv.2 是 LEVEL_CUM[1]，Lv.11 是 LEVEL_CUM[10]
+    expect(row(LEVEL_CUM[1]! - 0.1).querySelector('.pet-stat-value')?.textContent).toBe('Lv.1')
+    expect(row(LEVEL_CUM[1]!).querySelector('.pet-stat-value')?.textContent).toBe('Lv.2')
+    expect(row(LEVEL_CUM[10]!).querySelector('.pet-stat-value')?.textContent).toBe('Lv.11')
+    // 满级封顶：经验再涨等级也不动
+    expect(row(LEVEL_CUM.at(-1)! + 500).querySelector('.pet-stat-value')?.textContent).toBe(`Lv.${MAX_LEVEL}`)
+  })
+
+  it('经验条在卡片最下面：写「还差多少」，本级比例跟着走', () => {
+    /**
+     * 用户 2026-11-07 要「状态栏下面增加一个经验值条，显示当前升级还需要多少经验值」。
+     * 三件事要钉住：它**排在最后一行**（不是夹在读数中间）、它**不挂 .pet-stat**
+     * （那个类专指四条会报警的读数，经验只涨不跌，混进去就多出第五条报警）、以及数字对得上表。
+     */
+    const panel1 = open(snap(82, 0)).panel
+    const kids = () => [...panel1.el.querySelectorAll('.pet-plate.is-stats > *')]
+    const exp = () => panel1.el.querySelector<HTMLElement>('.pet-exp')!
+    expect(kids().at(-1), '经验条没排在最下面').toBe(exp())
+    expect(exp().classList.contains('pet-stat'), '经验条不该冒充一条数值读数').toBe(false)
+    expect(exp().querySelector('.pet-stat-label')?.textContent).toBe('还差：')
+    expect(exp().querySelector('.pet-exp-value')?.textContent).toBe(String(LEVEL_STEPS[0]))
+    expect(exp().querySelector('.pet-exp-bar > i')?.getAttribute('style')).toContain('width: 0%')
+    // 攒到本级一半：条跟着走一半，还差的那个数是门槛减已攒
+    const half = LEVEL_CUM[1]! + LEVEL_STEPS[1]! / 2
+    const panel2 = open(snap(82, half)).panel
+    const bar2 = panel2.el.querySelector<HTMLElement>('.pet-exp-bar > i')!
+    expect(bar2.getAttribute('style')).toContain('width: 50%')
+    expect(panel2.el.querySelector('.pet-exp-value')?.textContent).toBe(String(Math.round(LEVEL_STEPS[1]! / 2)))
+    // 满级：不写「还差 0」那种假读数
+    const panel3 = open(snap(82, LEVEL_CUM.at(-1)!)).panel
+    expect(panel3.el.querySelector('.pet-exp-value')?.textContent).toBe('满级')
+    expect(panel3.el.querySelector('.pet-exp-bar > i')?.getAttribute('style')).toContain('width: 100%')
   })
 
   it('颜色分档 >60 蓝、>20 黄、否则红：读数一眼能分好坏（等级不参与报警）', () => {
@@ -530,12 +566,16 @@ describe('状态视图', () => {
   it('冒号只在状态栏的标签上：加第十行不会漏，飘字芯片也不跟着变脏', () => {
     /**
      * 用户 2026-11-06 要「每个状态的名字后面加个中文冒号」。冒号是在 `makeLabel` 里统一加的，
-     * 所以这里验的是**九行全带上**（漏一行就是那行读起来像标题而不是像一行读数），
+     * 所以这里验的是**每一行都带上**（漏一行就是那行读起来像标题而不是像一行读数），
      * 以及 `STAT_LABELS` 那份清单**没被改**——飘字芯片共用它，「饥饿：+12」不是人话。
+     * 条数不写死：从卡片实际有几行推（身份三行 + 四条读数 + 此刻两行 + 经验一行 = 十行），
+     * 加行的人只会看到这一条跟着变，不会先红在期望值上。
      */
     const { panel } = open()
     const labels = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-label')].map((n) => n.textContent ?? '')
-    expect(labels).toHaveLength(9)
+    const rows = [...panel.el.querySelectorAll('.pet-plate.is-stats > *')]
+    expect(labels).toHaveLength(rows.length)
+    expect(rows.length, '状态栏该有十行（身份 3 + 读数 4 + 此刻 2 + 经验 1）').toBe(10)
     for (const t of labels) expect(t.endsWith('：'), `「${t}」没带中文冒号`).toBe(true)
     for (const key of STAT_KEYS) expect(STAT_LABELS[key].endsWith('：'), `STAT_LABELS 被冒号污染了`).toBe(false)
   })

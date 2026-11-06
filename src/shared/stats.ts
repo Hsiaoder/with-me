@@ -71,21 +71,31 @@ export type FoodEffect = { hunger: number; weight: number }
  *    不然玩家只会挑数值最高那条，选择就变成了比大小。
  * ③ 单条不超过火锅的 22/1.5（那是这一版的上界），要加更大的先回来看这条。
  */
+/**
+ * 每种食物给多少。**键是食物 id，不是动画 slug**。
+ *
+ * 上一版按 slug 建键（lunch / breakfast / watermelon / ricecake），而面板报给主进程的是 id
+ * （noodle / youtiao / melon / niangao）——`toStatEvent` 查不到就整条丢掉，于是
+ * **这四样点下去什么账都不走**：吃相播了、气泡也说了，饥饿和体重却一动不动。
+ * 六样同名的时候没人发现，e2e 一直喂的是 rice 与 dumpling（都同名）。
+ * 现在按 id 建键，并由 `test/food.test.ts` 那条「每个 id 都在表里」钉住——
+ * `anim.name` 只管播哪条吃相，它和数值是两件事，不该共用一张表的键。
+ */
 export const FOOD_EFFECT: Record<string, FoodEffect> = {
-  // Lv.1 家常
+  // 家常
   token: { hunger: 6, weight: 0.6 },
   rice: { hunger: 14, weight: 0.4 },
-  lunch: { hunger: 16, weight: 0.8 },        // 面条（一碗汤面扎实，但不厚）
-  breakfast: { hunger: 12, weight: 1.6 },    // 油条（顶饱一般、热量最高的一档之一）
-  // Lv.2 有滋味
+  noodle: { hunger: 16, weight: 0.8 },       // 面条（一碗汤面扎实，但不厚）
+  youtiao: { hunger: 12, weight: 1.6 },      // 油条（顶饱一般、热量最高的一档之一）
+  // 街边零嘴与要动手的主食
   tanghulu: { hunger: 8, weight: 0.9 },
   dumpling: { hunger: 16, weight: 1.2 },
-  watermelon: { hunger: 10, weight: 0.3 },   // 西瓜：水分大，几乎不长肉
+  melon: { hunger: 10, weight: 0.3 },        // 西瓜：水分大，几乎不长肉
   snack: { hunger: 7, weight: 1.4 },         // 零食：不顶饱，专管长肉
-  // Lv.4 讲究
+  // 硬菜与稀罕口
   crab: { hunger: 18, weight: 1.0 },
   hotpot: { hunger: 22, weight: 1.5 },
-  ricecake: { hunger: 18, weight: 1.8 },     // 年糕：糯米扎实，热量这版最高
+  niangao: { hunger: 18, weight: 1.8 },      // 年糕：糯米扎实，热量这版最高
   icecream: { hunger: 8, weight: 1.3 },      // 冰淇淋：凉甜，不太顶饱
 }
 
@@ -157,16 +167,40 @@ export function bondGain(e: StatEvent | 'daily-open', ctx: EventCtx): number {
 
 // ---- 等级 ----
 /**
- * 一级要多少经验。按现速率，「一天认真陪」（5 次逗玩 + 5 次回复 + 1 次日开 ≈ 3.7）约三天一级，
- * 一个月 Lv.11 —— 桌面陪伴不是游戏，升级就该是慢的。
+ * 满级。用户 2026-11-07 要「一级级往上升，最高 60 级」，节奏拍的是**一个月到满级**。
  */
-export const EXP_PER_LEVEL = 10
+export const MAX_LEVEL = 60
+
+/**
+ * 从第 n 级升到 n+1 还要攒多少：**越到后面越多**（`20 + 2×(n−1)`）。
+ * 落成一张表而不是各处现算——`levelOf`、经验条、存档迁移、测试读的都是同一份，改曲线只改这一行。
+ * Lv.1→2 要 20，Lv.10→11 要 38，Lv.30→31 要 78，Lv.59→60 要 136，全程累计 **4602**（59 段，不是 60 段）。
+ *
+ * 为什么开头给得这么松：用户要的是「一级级升」的看得见的成长，第一级就要几十次互动的话
+ * 第一天根本不动。陡的部分留给后面——全程 4602 按下面的速率约合一个月（见 IDLE_EXP_PER_MIN 那条账）。
+ */
+export const LEVEL_STEPS: readonly number[] = Array.from({ length: MAX_LEVEL - 1 }, (_, i) => 20 + 2 * i)
+
+/** 攒到第 n 级所需的**累计**经验：`LEVEL_CUM[0]` = Lv.1 = 0。 */
+export const LEVEL_CUM: readonly number[] = LEVEL_STEPS.reduce<number[]>(
+  (acc, step) => [...acc, acc[acc.length - 1]! + step],
+  [0],
+)
+
+/**
+ * 在线挂机每分钟给多少经验。**只算进程在跑的那段**（用户拍的板：关掉应用不涨）——
+ * 所以它挂在主进程那条一分钟 tick 上，和饱食/心情的自然衰减同一个时钟，不另开计时器。
+ *
+ * 这笔账是整条曲线的分母：在线 10 小时 = 600 分钟 = 120 经验/天，
+ * 加上互动那几十（喂食 2 / 游戏 3 / 回应 1，一天约 50）≈ 170/天 → 4602 约 27 天走完。
+ */
+export const IDLE_EXP_PER_MIN = 0.2
 
 /**
  * 加经验，**并按一位小数收口**。
  *
  * 为什么不是 `prev + gain` 直接加：所有增量都是 0.1 的倍数，但二进制浮点存不下 0.1，
- * 于是 9.6 + 0.2 + 0.2 = **9.999999999999998**，`levelOf` 那一档 floor(0.9999…)=0 → 永远差一口气到 Lv.2。
+ * 于是 9.6 + 0.2 + 0.2 = **9.999999999999998**，`levelOf` 那一档 floor(0.9999…)=0 → 永远差一口气到下一级。
  * 实测撞上过（e2e 里喂到第 10.0 那一口就是不升级）。收口到一位小数是这台的读数精度，
  * 也是 `toFixed(1)` 显示出来的精度——攒的人看到的和升级判据用的是同一个数。
  */
@@ -175,13 +209,14 @@ export const addExp = (prev: number, gain: number): number => Math.round((prev +
 /**
  * 每条动作给多少经验。**和亲密度的账分开记**：喂食也涨等级，但不该顺带动那条已经调好平衡的亲密条
  * （它现在只由陪伴类动作涨，见 eventDeltas 的 feed 分支）。
- * 其余三档写成对亲密常量的引用而不是抄数——这两份账在陪伴类动作上本来就该同涨，抄数会漂。
+ * 2026-11-07 起这两本账的**量级也分开了**：等级一个月要走 60 级，亲密条仍是 0~100 的读数，
+ * 所以这里不再引用 PLAY_BOND 那几个常量，改成各写各的数——绑在一起反而会让调亲密顺手把曲线压平。
  */
 export const EXP_GAIN: Record<StatEvent['kind'], number> = {
-  feed: 0.2,
-  play: PLAY_BOND,
-  reply: REPLY_BOND,
-  'daily-open': DAILY_OPEN_BOND,
+  feed: 2,
+  play: 3,
+  reply: 1,
+  'daily-open': 2,
 }
 
 /** 这一刻这条动作给多少经验：过同一道 10 分钟递减闸，今天开过面板的日开给 0。 */
@@ -192,8 +227,31 @@ export function expGain(e: StatEvent, ctx: EventCtx): number {
   return EXP_GAIN[e.kind] * diminish(eventKey(e), ctx)
 }
 
-/** 等级由经验算出来，不入库：入库就有两份真相，还会漂。 */
-export const levelOf = (exp: number): number => Math.floor(Math.max(0, exp) / EXP_PER_LEVEL) + 1
+/**
+ * 等级由经验查表算出来，不入库：入库就有两份真相，还会漂。
+ * 到顶就封顶（`MAX_LEVEL`），经验可以继续涨——语义是「你陪过它多少次」，不该因为满级就停账。
+ */
+export function levelOf(exp: number): number {
+  const e = Math.max(0, Number.isFinite(exp) ? exp : 0)
+  let level = 1
+  while (level < MAX_LEVEL && e >= LEVEL_CUM[level]!) level++
+  return level
+}
+
+/** 本级攒到哪一格了（0..1，经验条的宽度）。满级就是 1。 */
+export function levelFraction(exp: number): number {
+  const level = levelOf(exp)
+  if (level >= MAX_LEVEL) return 1
+  const base = LEVEL_CUM[level - 1]!
+  const step = LEVEL_CUM[level]! - base
+  return Math.max(0, Math.min(1, (Math.max(0, exp) - base) / step))
+}
+
+/** 升到下一级还差多少（经验条那一行写的数）。满级给 0。 */
+export const expToNext = (exp: number): number => {
+  const level = levelOf(exp)
+  return level >= MAX_LEVEL ? 0 : Math.max(0, LEVEL_CUM[level]! - Math.max(0, exp))
+}
 
 /** 涨了多少写成人话：整数值不带小数点，其余一位；四舍五入成 0 的干脆不写。 */
 export function gainText(label: string, delta: number): string | null {

@@ -1,6 +1,6 @@
 import { SAVE_VERSION } from './config.js'
 import { DEFAULT_SETTINGS, isVisibility, type Settings } from './visibility.js'
-import { INITIAL_STATS, STAT_KEYS, type Stats } from './stats.js'
+import { INITIAL_STATS, LEVEL_CUM, MAX_LEVEL, STAT_KEYS, type Stats } from './stats.js'
 
 /**
  * 存档的迁移与默认值。规则：**永远不抛异常**——坏档就回退默认值，并把原因记进
@@ -174,6 +174,22 @@ function migrateIdentity(r: Record<string, unknown>, warnings: string[]): Identi
  * 把任意来源（磁盘 JSON、旧版本、垃圾数据）收敛成可用的 SaveData。
  * 版本高于本程序时不猜字段含义，按默认值继续跑并记一条 warning。
  */
+/**
+ * 经验账的版本迁移。v3 把「攒满 10 升一级」换成了一张递增的表（`shared/stats.ts` 的 LEVEL_STEPS），
+ * 同一份 exp 在新表下会算出**低得多**的等级——16.9 旧档是 Lv.2，直接查新表就变 Lv.1，
+ * 那是「你陪过它多少次」被我们改了公式给抹掉了一截。
+ *
+ * 所以迁移保的是**等级**，不是原值：拿旧公式算出他现在是几级，再发给他新表里那一级的门槛。
+ * 效果是等级一格不动、经验条正好空着（本级 0%），下一次升上去要从头攒——
+ * 比「按比例放大」诚实：放大等于凭空送人几级，而送出去的等级没人能在画面上看到它是怎么来的。
+ */
+export function migrateExp(exp: number, fromVersion: number): number {
+  if (fromVersion >= 3) return exp
+  const OLD_PER_LEVEL = 10 // v2 及以前：floor(exp / 10) + 1。这条只活在这里，别再引回现算的公式
+  const old = Math.min(MAX_LEVEL, Math.floor(Math.max(0, exp) / OLD_PER_LEVEL) + 1)
+  return LEVEL_CUM[old - 1]!
+}
+
 export function migrate(raw: unknown, now: number): SaveData {
   const base = defaultSave(now)
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -198,7 +214,8 @@ export function migrate(raw: unknown, now: number): SaveData {
   // dailyOpenAt / exp 同理：垃圾值就当没有（宁可不发今天的奖励、宁可从 Lv.1 重攒，
   // 也不能因为一个 NaN 把门槛或经验清零——清零还会一路传染回写盘）。
   const dailyOpenAt = typeof r.dailyOpenAt === 'number' && Number.isFinite(r.dailyOpenAt) ? r.dailyOpenAt : undefined
-  const exp = typeof r.exp === 'number' && Number.isFinite(r.exp) && r.exp >= 0 ? r.exp : undefined
+  const rawExp = typeof r.exp === 'number' && Number.isFinite(r.exp) && r.exp >= 0 ? r.exp : undefined
+  const exp = rawExp === undefined ? undefined : migrateExp(rawExp, typeof r.version === 'number' ? r.version : 1)
   return {
     version: SAVE_VERSION,
     skin: typeof r.skin === 'string' && r.skin ? r.skin : base.skin,

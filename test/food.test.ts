@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { FOODS, FOOD_LABEL_WIDTH, FOOD_TIERS } from '../src/shared/food.js'
+import { FOODS, FOOD_LABEL_WIDTH, FOOD_TIERS, unlockLevelAt } from '../src/shared/food.js'
 import { labelWidth } from '../src/shared/text.js'
 import { CLIP_NAME, POOL_NAME } from '../src/shared/skin.js'
-import { EXP_PER_LEVEL, FOOD_EFFECT, levelOf, type FoodEffect } from '../src/shared/stats.js'
+import { FOOD_EFFECT, LEVEL_CUM, levelOf, type FoodEffect } from '../src/shared/stats.js'
 
 /**
  * 喂食列表的契约。
@@ -24,20 +24,25 @@ const CLIP_OF: Record<string, string> = {
 }
 
 describe('食物表', () => {
-  it('十二条，id 唯一，按解锁档位排好（Lv.1 四样 → Lv.2 四样 → Lv.4 四样）', () => {
+  it('十二条，id 唯一，解锁级由序号推（前 3 格 Lv.1，往后每两级放一格）', () => {
     expect(FOODS.map((f) => f.id)).toEqual([
       'token', 'rice', 'noodle', 'youtiao',
       'tanghulu', 'dumpling', 'melon', 'snack',
       'crab', 'hotpot', 'niangao', 'icecream',
     ])
     expect(new Set(FOODS.map((f) => f.id)).size).toBe(FOODS.length)
-    expect(FOOD_TIERS).toEqual([1, 2, 4])
-    for (const tier of FOOD_TIERS) {
-      expect(FOODS.filter((f) => f.level === tier), `Lv.${tier} 那档不是四样`).toHaveLength(4)
-    }
-    // 表必须**按档位有序**：面板一屏只放四格，顺序乱了用户就会看到「Lv.4 排在 Lv.1 前面」
+    // 这条是 2026-11-07 用户改的规则：「一开始只能选前 3 个，后面每升两级解锁一个，直到全部解锁」。
+    // 期望值不抄数字，直接从 unlockLevelAt 推——插一行菜时这里会跟着动，而不是变成一份过期的清单。
+    expect(FOODS.map((f) => f.level)).toEqual(FOODS.map((_, i) => unlockLevelAt(i)))
+    expect(FOODS.slice(0, 3).every((f) => f.level === 1), '前三个开局就该能点').toBe(true)
+    expect(FOOD_TIERS).toEqual([1, 3, 5, 7, 9, 11, 13, 15, 17, 19])
+    // 表必须**按解锁级有序**：面板一屏只放四格，顺序乱了用户就会看到「Lv.17 排在 Lv.1 前面」
     const levels = FOODS.map((f) => f.level)
     expect(levels.slice().sort((a, b) => a - b)).toEqual(levels)
+    // 每两级一格，所以相邻两档之间不许跳级
+    for (let i = 4; i < levels.length; i++) {
+      expect(levels[i]! - levels[i - 1]!, `第 ${i + 1} 格跳了 ${levels[i]! - levels[i - 1]!} 级`).toBe(2)
+    }
   })
 
   it('每条都有图，且文件名就是 id——tools/make-food-icons.mjs 的映射表认这个形状', () => {
@@ -72,47 +77,60 @@ describe('食物表', () => {
     for (const f of FOODS) expect(f.anim!.name, `${f.id} 的 clip 名不对`).toBe(CLIP_OF[f.id])
   })
 
-  it('每条都有数值效果，键就是 clip slug（主进程按 slug 查表，查不到就是「喂了不动」）', () => {
+  it('每条都有数值效果，键就是**食物 id**（面板报的是 id，查不到就是「喂了不动」）', () => {
+    /**
+     * 这张表以前按 clip slug 建键，而 `anim.name` 和 id 有四样不同名
+     * （面条 lunch、油条 breakfast、西瓜 watermelon、年糕 ricecake）——
+     * 那四格点下去吃相照播、账一步不走，而且没有任何地方报错。
+     * 所以这里刻意读 `f.id` 而不是 `f.anim.name`：**两条通道各自的名字不能混用**。
+     */
     for (const f of FOODS) {
-      const e = FOOD_EFFECT[f.anim!.name]
-      expect(e, `FOOD_EFFECT 里没有 ${f.anim!.name}（${f.name}）`).toBeDefined()
+      const e = FOOD_EFFECT[f.id]
+      expect(e, `FOOD_EFFECT 里没有 ${f.id}（${f.name}）——这点下去饥饿体重都不会动`).toBeDefined()
       expect(e!.hunger, `${f.name} 的顶饱值是负的`).toBeGreaterThan(0)
       expect(e!.weight, `${f.name} 的热量是负的`).toBeGreaterThan(0)
     }
+    // 反向对照：不同名的那四样，slug 键**不该**在表里（在的话说明两份真相又回来了）
+    const renamed = FOODS.filter((f) => f.anim!.name !== f.id)
+    expect(renamed.map((f) => f.id).sort(), '不该只有四样 id/slug 不同名').toEqual(['melon', 'niangao', 'noodle', 'youtiao'])
+    for (const f of renamed) expect(FOOD_EFFECT[f.anim!.name], `${f.id} 的 slug ${f.anim!.name} 还在表里`).toBeUndefined()
   })
 
-  it('档位越高越厚味（热量阶梯上升），但「顶饱」故意不单调——每档内部两个方向都要有', () => {
+  it('越往后越厚味（热量阶梯上升），但「顶饱」故意不单调——每段内部两个方向都要有', () => {
     /**
      * 这条钉的是设计意图，不是某个数。
-     * 一开始我想钉「越高档越顶饱」，写完发现它是假的：Lv.1 的面条 16 就比 Lv.2 的西瓜 10 顶饱。
-     * 真实的关系是**升级解锁的是「好吃但更容易长胖」的那一头**——零嘴档（糖葫芦、零食、冰淇淋）
-     * 本来就不顶饱，这才是「喂零食要当心体重」这件事在游戏里有意义的理由。
-     * 所以：热量按档位单调上升，顶饱不单调，但每一档内部都要同时有
-     * 「顶饱但清淡」和「不顶饱但厚味」各一，否则选择退化成比大小，玩家只会点最高的那格。
+     * 一开始我想钉「越后面越顶饱」，写完发现它是假的：第 3 格的面条 16 就比第 7 格的西瓜 10 顶饱。
+     * 真实的关系是**往后解锁的是「好吃但更容易长胖」的那一头**——零嘴那几格本来就不顶饱，
+     * 这才是「喂零食要当心体重」这件事在游戏里有意义的理由。
+     * 2026-11-07 解锁改成「每两级放一格」之后，档位不再是分组依据，所以这里按**序号三等分**：
+     * 家常（0-3）/ 零嘴与主食（4-7）/ 硬菜稀罕口（8-11），正是表里那三段注释。
+     * 每段内部都要同时有「顶饱但清淡」和「不顶饱但厚味」各一，否则选择退化成比大小，玩家只会点最高的那格。
      */
-    const of = (tier: number): FoodEffect[] =>
-      FOODS.filter((f) => f.level === tier).map((f) => FOOD_EFFECT[f.anim!.name]!)
-    const avgW = (tier: number): number => of(tier).reduce((a, e) => a + e.weight, 0) / of(tier).length
-    expect(avgW(2), `Lv.2 的平均热量没超过 Lv.1（${avgW(1)}）`).toBeGreaterThan(avgW(1))
-    expect(avgW(4), `Lv.4 的平均热量没超过 Lv.2（${avgW(2)}）`).toBeGreaterThan(avgW(2))
-    for (const tier of FOOD_TIERS) {
-      const list = of(tier)
-      expect(list.filter((e) => e.hunger >= 14).length, `Lv.${tier} 没有「顶饱但清淡」的代表`).toBeGreaterThan(0)
-      expect(list.filter((e) => e.weight >= 1.2).length, `Lv.${tier} 没有「不顶饱但厚味」的代表`).toBeGreaterThan(0)
+    const of = (from: number, to: number): FoodEffect[] =>
+      FOODS.slice(from, to).map((f) => FOOD_EFFECT[f.id]!)
+    const avgW = (from: number, to: number): number => {
+      const list = of(from, to)
+      return list.reduce((a, e) => a + e.weight, 0) / list.length
     }
-    // 全场最顶饱的那一口，得在最高档里（解锁要有盼头）
+    expect(avgW(4, 8), `中段平均热量没超过家常（${avgW(0, 4)}）`).toBeGreaterThan(avgW(0, 4))
+    expect(avgW(8, 12), `硬菜段平均热量没超过中段（${avgW(4, 8)}）`).toBeGreaterThan(avgW(4, 8))
+    for (const [from, to] of [[0, 4], [4, 8], [8, 12]] as const) {
+      const list = of(from, to)
+      expect(list.filter((e) => e.hunger >= 14).length, `第 ${from + 1}~${to} 格没有「顶饱但清淡」的代表`).toBeGreaterThan(0)
+      expect(list.filter((e) => e.weight >= 1.2).length, `第 ${from + 1}~${to} 格没有「不顶饱但厚味」的代表`).toBeGreaterThan(0)
+    }
+    // 全场最顶饱的那一口，得在最后一组里（解锁要有盼头）
     const best = FOODS.slice().sort((a, b) =>
-      FOOD_EFFECT[b.anim!.name]!.hunger - FOOD_EFFECT[a.anim!.name]!.hunger)[0]!
-    expect(best.level, `最顶饱的是 Lv.${best.level} 的${best.name}，不在最高档`).toBe(Math.max(...FOOD_TIERS))
+      FOOD_EFFECT[b.id]!.hunger - FOOD_EFFECT[a.id]!.hunger)[0]!
+    expect(best.level, `最顶饱的是 Lv.${best.level} 的${best.name}，不在最后四格`).toBeGreaterThanOrEqual(FOODS[8]!.level)
   })
 
-  it('最高档不是开局就能点：Lv.1 时它要够得着但够不到', () => {
-    // 三档的门槛用经验说一遍，README 里那句「一天认真陪约三天一级」要对得上。
-    expect(levelOf(0)).toBe(1)
-    expect(levelOf(EXP_PER_LEVEL)).toBe(2)
-    expect(levelOf(EXP_PER_LEVEL * 3)).toBe(4)
+  it('最后一格不是开局就能点：Lv.1 时它要够得着但够不到', () => {
+    // 门槛用经验说一遍，README 里那句「约第 8~9 天全解锁」要对得上这张表。
     const top = Math.max(...FOOD_TIERS)
-    expect(levelOf(0), 'Lv.1 就能吃到最高档，解锁这条等于没有').toBeLessThan(top)
+    expect(FOODS[0]!.level, '第一格不该锁着').toBe(1)
+    expect(levelOf(0), 'Lv.1 就能吃到最高那格，解锁这条等于没有').toBeLessThan(top)
+    expect(levelOf(LEVEL_CUM[top - 1]!), `攒到 Lv.${top} 的经验查出来不是 ${top}`).toBe(top)
   })
 
   it('显示名放得进一格（现在用在 title/读屏，仍然别写成一句菜名）', () => {

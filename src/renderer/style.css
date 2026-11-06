@@ -543,12 +543,14 @@ body.pet-over {
    再宽就会在宠物贴右边缘时顶出屏幕，那时它只能翻到左边，反而压住宠物。
    行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）→ 9 → 6（同一天，为了让卡塞进气泡和按钮条之间）。
    9px 那档确实比 5px 好读，但整张卡因此高到 206，比身体还高 41——居中就压按钮条、抬高就撞气泡。
-   6px 是两头都要的折中：分组感还在（约行高一半），卡高 182，配上 `STATS_LIFT=12` 上下各留 13~14px。
+   6px 是两头都要的折中（卡高 182）。2026-11-07 卡片又多了**经验条那一行**（+20px），
+   只能再收到 4px 换回 16 的高度，剩下的靠 `STATS_LIFT=14` 让位（实测底沿离按钮条 15px）。
+   这条不是纯样式：**卡片高度就是那两条净空的总账**，改回 6 会让 e2e 的「状态栏底沿不许压按钮条」变红。
    纵向变高由 statsAnchor 自己夹回屏幕内，不需要在这里防。 */
 .pet-plate.is-stats {
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 4px;
   width: 150px;
 }
 
@@ -682,6 +684,31 @@ body.pet-over {
 
 .pet-stat-bar.is-low > i {
   background: #e6572c;
+}
+
+/* 经验条：状态栏最下面那一行（用户 2026-11-07 要「增加一个经验值条，显示当前升级还需要多少」）。
+   和四条读数**同构但不同类**：不挂 `.pet-stat`，所以数条数的测试、报警配色都不会把它算进去。
+   标签「还差：」和数字列都跟读数对齐，读起来是「Lv.2 —— 还差 42」一句话。
+   填充用品牌青 #36bdf7 而不是读数那三档：经验只涨不跌，给它「黄/红」那套语义是假警报。 */
+.pet-exp {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pet-exp-bar {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.pet-exp-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: #36bdf7;
 }
 
 .pet-stat-value {

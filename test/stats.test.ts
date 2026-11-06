@@ -2,30 +2,32 @@ import { describe, it, expect } from 'vitest'
 import {
   applyEvent,
   bondGain,
-  DAILY_OPEN_BOND,
   DECAY_PER_MIN,
   DIMINISH_MULT,
   eventDeltas,
   EXP_GAIN,
-  EXP_PER_LEVEL,
   expGain,
+  expToNext,
   FOOD_EFFECT,
   gainText,
   gainsToFloat,
+  IDLE_EXP_PER_MIN,
   INITIAL_STATS,
   addExp,
   isBlue,
   isCheerful,
   isChubby,
+  levelFraction,
   levelOf,
+  LEVEL_CUM,
+  LEVEL_STEPS,
+  MAX_LEVEL,
   isHungry,
   isStarving,
   LONELY_AFTER_MS,
   MOOD_LONELY_PER_MIN,
   OFFLINE_MAX_LOSS,
   OFFLINE_RATE,
-  PLAY_BOND,
-  REPLY_BOND,
   STAT_KEYS,
   STAT_LABELS,
   tickStats,
@@ -118,10 +120,10 @@ describe('离线补算（温和档）', () => {
 })
 
 describe('喂食效果', () => {
-  it('十二种食物各有饥饿与热量（键是 clip slug，与 FOODS 的 anim.name 对齐）', () => {
+  it('十二种食物各有饥饿与热量（键是食物 id，和面板报上来的那个名字一致）', () => {
     expect(Object.keys(FOOD_EFFECT).sort()).toEqual(
-      ['token', 'rice', 'lunch', 'breakfast', 'tanghulu', 'dumpling', 'watermelon', 'snack',
-        'crab', 'hotpot', 'ricecake', 'icecream'].sort(),
+      ['token', 'rice', 'noodle', 'youtiao', 'tanghulu', 'dumpling', 'melon', 'snack',
+        'crab', 'hotpot', 'niangao', 'icecream'].sort(),
     )
     for (const f of Object.values(FOOD_EFFECT)) {
       expect(f.hunger).toBeGreaterThan(0)
@@ -209,39 +211,75 @@ describe('状态阈值', () => {
 })
 
 /**
- * 等级。它是从「累计经验」算出来的读数，所以这里分两块：经验怎么攒（有闸），
- * 等级怎么读（纯除法）。经验只增不减——冷落会掉亲密条，但抹不掉「你陪过它多少次」。
+ * 等级。它是从「累计经验」查表算出来的读数，所以这里分三块：表本身长什么样、
+ * 经验怎么攒（有闸）、读数怎么算（查表 + 封顶）。经验只增不减——冷落会掉亲密条，
+ * 但抹不掉「你陪过它多少次」。
  */
 describe('经验与等级', () => {
-  it('等级与到下一级的进度都从经验算，跨级那一格归零', () => {
-    expect([levelOf(0), levelOf(3.4), levelOf(EXP_PER_LEVEL), levelOf(25)]).toEqual([1, 1, 2, 3])
-    // 负数与 NaN 不能把等级算崩（存档被手改过时要兜住）
-    expect(levelOf(-5)).toBe(1)
-    // 垃圾值不许把等级读成 Lv.0 或负数
-    expect(levelOf(-50)).toBe(1)
+  it('曲线递增、首末有界、全程累计正好是设计值', () => {
+    // 用户 2026-11-07 的两条要求：「越到后面升一级需要的经验越多」+「最高 60 级」，节奏一个月到满。
+    expect(LEVEL_STEPS.length, '级的段数应该是 MAX_LEVEL − 1').toBe(MAX_LEVEL - 1)
+    for (let i = 1; i < LEVEL_STEPS.length; i++) {
+      expect(LEVEL_STEPS[i]!, `第 ${i + 1} 段不比第 ${i} 段难，曲线没递增`).toBeGreaterThan(LEVEL_STEPS[i - 1]!)
+    }
+    expect(LEVEL_STEPS[0]).toBe(20)
+    expect(LEVEL_STEPS.at(-1)).toBe(136)
+    // 累计这条是「一个月到满级」的分母：改了曲线就要重算速率，别让它悄悄漂。
+    // 4602 = 59 段 × 20 + 2×(0+1+…+58) = 1180 + 3422（**是 59 段不是 60 段**——
+    // 设计时我按 60 段口算成 4740，跑出来才对上：Lv.60 是第 60 级，段数只有 MAX_LEVEL − 1）。
+    expect(LEVEL_CUM.length).toBe(MAX_LEVEL)
+    expect(LEVEL_CUM[0]).toBe(0)
+    expect(LEVEL_CUM.at(-1)).toBe(4602)
   })
 
-  it('加经验按一位小数收口：浮点误差不能把「攒满 10 级」变成永远差一口气', () => {
+  it('等级查表：门槛上算下一级，负数与 NaN 不许把等级算崩', () => {
+    expect([levelOf(0), levelOf(19.9), levelOf(20), levelOf(21)]).toEqual([1, 1, 2, 2])
+    expect(levelOf(LEVEL_CUM[10]!)).toBe(11)
+    // 封顶：经验可以继续涨（语义是「陪过多少次」），但等级不再往上走
+    expect(levelOf(LEVEL_CUM.at(-1)!)).toBe(MAX_LEVEL)
+    expect(levelOf(999999), '满级之后经验该停账吗？现在是不停').toBe(MAX_LEVEL)
+    expect(levelOf(-5)).toBe(1)
+    expect(levelOf(-50)).toBe(1)
+    expect(levelOf(Number.NaN), '垃圾值读成 Lv.NaN 会一路传染到界面').toBe(1)
+  })
+
+  it('经验条那两个数：还差多少、本级攒了几格', () => {
+    // 曲线是 `20 + 2×(n−1)`，n 是**你当前这一级**：Lv.1→2 要 20，Lv.2→3 要 22，Lv.10→11 才要 38。
+    expect(expToNext(0)).toBe(20)
+    expect(expToNext(19)).toBe(1)
+    expect(expToNext(20), '刚升级就该是下一级的整段（22，不是 38）').toBe(22)
+    expect(expToNext(LEVEL_CUM[10]! - 1)).toBe(1)
+    expect(levelFraction(0)).toBe(0)
+    expect(levelFraction(30)).toBeCloseTo(10 / 22, 6)
+    expect(levelFraction(19)).toBeCloseTo(19 / 20, 6)
+    // 满级：条走满、差值归零，界面据此写「满级」
+    expect(levelFraction(LEVEL_CUM.at(-1)!)).toBe(1)
+    expect(expToNext(LEVEL_CUM.at(-1)!)).toBe(0)
+  })
+
+  it('加经验按一位小数收口：浮点误差不能把「攒满一级」变成永远差一口气', () => {
     /**
      * 这条是 e2e 逼出来的真 bug：所有增量都是 0.1 的倍数，但二进制存不下 0.1，
-     * 于是 9.6 + 0.2 + 0.2 = 9.999999999999998，`levelOf` floor 出来还是 Lv.1——
+     * 于是 9.6 + 0.2 + 0.2 = 9.999999999999998，`levelOf` 出来还是 Lv.1——
      * 用户喂到第 50 口就是不升级，而且**没有任何地方报错**。
+     * 现在门槛是 20，挂机每分钟 0.2，同一个坑会卡在 Lv.2 与 Lv.3 之间，照旧要收口。
      */
-    expect(9.6 + 0.2 + 0.2).toBeLessThan(EXP_PER_LEVEL)   // 裸加法的现状，钉住「为什么需要收口」
-    expect(addExp(addExp(9.6, 0.2), 0.2)).toBe(EXP_PER_LEVEL)
-    expect(levelOf(addExp(addExp(9.6, 0.2), 0.2))).toBe(2)
-    // 连喂 50 口也不漂：每一步都收口，不是只在最后修一次
+    expect(9.6 + 0.2 + 0.2 + 9.6 + 0.2 + 0.2).toBeLessThan(20)   // 裸加法的现状，钉住「为什么需要收口」
     let exp = 0
-    for (let i = 0; i < 50; i++) exp = addExp(exp, 0.2)
-    expect(exp).toBe(EXP_PER_LEVEL)
-    // 0.1 的倍数之外也别丢精度：0.4 那档（逗玩）加三次
+    for (let i = 0; i < 100; i++) exp = addExp(exp, IDLE_EXP_PER_MIN)
+    expect(exp, '挂机 100 分钟该正好攒满第一级').toBe(LEVEL_STEPS[0])
+    expect(levelOf(exp)).toBe(2)
+    // 0.1 的倍数之外也别丢精度：0.4 那档加三次
     expect(addExp(addExp(addExp(0, 0.4), 0.4), 0.4)).toBe(1.2)
   })
 
-  it('逗玩与回复的经验就是它们那份亲密（写成引用，两处不会漂）', () => {
-    expect(EXP_GAIN.play).toBe(PLAY_BOND)
-    expect(EXP_GAIN.reply).toBe(REPLY_BOND)
-    expect(EXP_GAIN['daily-open']).toBe(DAILY_OPEN_BOND)
+  it('动作给的经验是各写各的数，不再绑亲密常量', () => {
+    // 2026-11-07 起两本账连**量级**都分开了：等级一个月要走 60 级，亲密条仍是 0~100 的读数。
+    // 以前 play/reply/日开写成对亲密常量的引用（防漂），现在引用反而会把两条绑死——
+    // 调亲密就顺手把曲线压平了。所以这里钉数值，并钉住「喂食仍是最大头」。
+    expect(EXP_GAIN).toEqual({ feed: 2, play: 3, reply: 1, 'daily-open': 2 })
+    expect(EXP_GAIN.feed, '喂食不给经验的话，「喂着喂着长大了」这条就没了').toBeGreaterThan(0)
+    expect(IDLE_EXP_PER_MIN * 60, '在线一小时给多少，是整条曲线的分母').toBe(12)
   })
 
   it('喂食给经验但不给亲密：等级认「照顾」，亲密条仍只认陪伴', () => {
