@@ -4,6 +4,7 @@ import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
 import { PANEL_BUTTONS, REQUIRED_POOLS } from '../src/shared/config.js'
 import { FOODS } from '../src/shared/food.js'
+import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.js'
 import type { StatsSnapshot } from '../src/shared/save.js'
 
 /**
@@ -397,13 +398,13 @@ describe('状态视图', () => {
     const { panel } = open()
     const rows = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat')]
     expect(rows.map((r) => r.dataset.key)).toEqual(['hunger', 'mood', 'weight', 'bond'])
-    expect(rows.map((r) => r.querySelector('.pet-stat-label')?.textContent)).toEqual(['饥饿', '心情', '体重', '亲密度'])
+    expect(rows.map((r) => r.querySelector('.pet-stat-label')?.textContent)).toEqual(['饥饿：', '心情：', '体重：', '亲密度：'])
     expect(rows.map((r) => r.querySelector('.pet-stat-value')?.textContent)).toEqual(['82', '45', '20', '97'])
     expect(rows[1]?.querySelector('.pet-stat-bar > i')?.getAttribute('style')).toContain('width: 45%')
     // 等级不挂 .pet-stat：那个类专指「一条数值读数」，报警配色与上面这些数条数的地方都靠它
     const level = panel.el.querySelector<HTMLElement>('.pet-stat-line[data-key="level"]')
     expect(level, '等级行没画成一行读数').not.toBeNull()
-    expect(level!.querySelector('.pet-stat-label')?.textContent).toBe('等级')
+    expect(level!.querySelector('.pet-stat-label')?.textContent).toBe('等级：')
     const kids = [...panel.el.querySelectorAll('.pet-plate.is-stats > *')]
     expect(kids.indexOf(level!)).toBeLessThan(kids.findIndex((n) => n.classList.contains('pet-stat')))
   })
@@ -430,7 +431,7 @@ describe('状态视图', () => {
     const lines = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-line')]
     // 前几行是「身份」，最后两行是「此刻」，中间夹着等级——顺序也是这个次序
     expect(lines.map((l) => l.querySelector('.pet-stat-label')?.textContent))
-      .toEqual(['昵称', '性别', '等级', '状态', '在线时间'])
+      .toEqual(['昵称：', '性别：', '等级：', '状态：', '在线时间：'])
     expect(lines[0]?.querySelector('.pet-stats-name')?.textContent).toBe('小鲸')
     const g = panel.el.querySelector<HTMLButtonElement>('.pet-gender')!
     expect(g.textContent).toBe('♀')
@@ -440,6 +441,19 @@ describe('状态视图', () => {
     expect(g.getAttribute('aria-label')).toContain('雌')
     expect(g.getAttribute('aria-label')).toContain('换成雄')
     expect(g.getAttribute('title')).toBe(g.getAttribute('aria-label'))
+  })
+
+  it('冒号只在状态栏的标签上：加第十行不会漏，飘字芯片也不跟着变脏', () => {
+    /**
+     * 用户 2026-11-06 要「每个状态的名字后面加个中文冒号」。冒号是在 `makeLabel` 里统一加的，
+     * 所以这里验的是**九行全带上**（漏一行就是那行读起来像标题而不是像一行读数），
+     * 以及 `STAT_LABELS` 那份清单**没被改**——飘字芯片共用它，「饥饿：+12」不是人话。
+     */
+    const { panel } = open()
+    const labels = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-label')].map((n) => n.textContent ?? '')
+    expect(labels).toHaveLength(9)
+    for (const t of labels) expect(t.endsWith('：'), `「${t}」没带中文冒号`).toBe(true)
+    for (const key of STAT_KEYS) expect(STAT_LABELS[key].endsWith('：'), `STAT_LABELS 被冒号污染了`).toBe(false)
   })
 
   /**

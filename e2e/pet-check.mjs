@@ -1347,7 +1347,7 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   assert.deepEqual(g.keys, ['hunger', 'mood', 'weight', 'bond'], `四条读数不该含等级：${JSON.stringify(g.keys)}`)
   // 五行「标签 + 值」：身份三行在前，四条读数夹在中间（它不是 .pet-stat-line），「此刻」两行在最后。
   // 顺序也钉住：用户要的是「最下面加两行」，跑到昵称上面就不是那个意思了。
-  assert.deepEqual(g.lines, ['昵称', '性别', '等级', '状态', '在线时间'], `状态栏的行不对：${JSON.stringify(g.lines)}`)
+  assert.deepEqual(g.lines, ['昵称：', '性别：', '等级：', '状态：', '在线时间：'], `状态栏的行不对：${JSON.stringify(g.lines)}`)
   // 卡片贴的是**看得见的身子**，不是命中框（用户 2026-11-06：「状态栏里角色太远了」）。
   // 命中框比墨迹宽（色块左右各 10.5px，dshtry 那套鲸鱼各 37~40px），按命中框摆的话
   // PANEL_GAP 在屏幕上会多出那圈透明区域——所以量到墨迹右沿才是要的距离。

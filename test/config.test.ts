@@ -291,7 +291,9 @@ describe('状态栏的「此刻」两行与性别符号', () => {
   })
 
   it('每一句都放得下值栏：状态栏那一列是所有行对齐的，顶宽了整栏歪', () => {
-    const VALUE_MAX = (150 - 6 * 2 - 1 * 2 - 48 - 4) / 12
+    // 值栏可用宽度 = 卡宽 150 − 内边距 6×2 − 描边 1×2 − 标签「状态：」36 − 间距 4 = 96px → 8 个汉字宽
+    // （标签宽度按 12px 字号一个汉字一档，全角冒号和汉字同宽，见 text.ts 的 WIDE）
+    const VALUE_MAX = (150 - 6 * 2 - 1 * 2 - 36 - 4) / 12
     for (const [pool, label] of Object.entries(ACTIVITY_LABELS)) {
       expect(fitsLabel(label, VALUE_MAX), `${pool} →「${label}」顶爆值栏`).toBe(true)
     }

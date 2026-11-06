@@ -109,6 +109,13 @@ const ROWS: { key: keyof Settings; label: string }[] = [
   { key: 'onPresentation', label: '放映时' },
 ]
 
+/**
+ * 状态栏每个标签后面跟一个中文冒号（用户 2026-11-06 要）。
+ * 只有状态栏加：设置视图那两行是「全屏时 [陪我][隐藏]」，是选项组不是「标签：值」的读法；
+ * 飘字芯片也不加（「饥饿 +12」里冒号是多余的），所以冒号不进 `STAT_LABELS`。
+ */
+const LABEL_COLON = '：'
+
 function btn(label: string, attrs: Record<string, string>, on: boolean): HTMLButtonElement {
   const b = document.createElement('button')
   b.type = 'button'
@@ -362,9 +369,6 @@ export function createPanel(
     const line = document.createElement('div')
     line.className = 'pet-stat'
     line.dataset.key = key
-    const label = document.createElement('span')
-    label.className = 'pet-stat-label'
-    label.textContent = labelText
     const bar = document.createElement('span')
     bar.className = `pet-stat-bar ${bandCls}`
     const fill = document.createElement('i')
@@ -373,7 +377,7 @@ export function createPanel(
     const out = document.createElement('span')
     out.className = 'pet-stat-value'
     out.textContent = valueText
-    line.append(label, bar, out)
+    line.append(makeLabel(labelText), bar, out)
     return line
   }
 
@@ -381,14 +385,23 @@ export function createPanel(
   function plainLine(label: string, value: string, valueCls: string): HTMLElement {
     const line = document.createElement('div')
     line.className = 'pet-stat-line'
-    const l = document.createElement('span')
-    l.className = 'pet-stat-label'
-    l.textContent = label
     const v = document.createElement('span')
     v.className = `pet-stat-value ${valueCls}`
     v.textContent = value
-    line.append(l, v)
+    line.append(makeLabel(label), v)
     return line
+  }
+
+  /**
+   * 状态栏行首那个标签。**中文冒号在这里统一加**，九个标签就不会有九个地方漏
+   * ——也就不用把冒号写进 `STAT_LABELS`：那份清单飘字芯片也在用（「饥饿 +12」），
+   * 芯片里冒号是多余的。
+   */
+  function makeLabel(text: string): HTMLSpanElement {
+    const l = document.createElement('span')
+    l.className = 'pet-stat-label'
+    l.textContent = `${text}${LABEL_COLON}`
+    return l
   }
 
   /**
@@ -399,9 +412,6 @@ export function createPanel(
   function genderLine(g: Gender): HTMLElement {
     const line = document.createElement('div')
     line.className = 'pet-stat-line'
-    const l = document.createElement('span')
-    l.className = 'pet-stat-label'
-    l.textContent = '性别'
     const b = document.createElement('button')
     b.type = 'button'
     b.className = `pet-gender is-${g}`
@@ -412,7 +422,7 @@ export function createPanel(
     b.title = text
     b.setAttribute('aria-label', text)
     b.addEventListener('click', () => handlers.identity({ gender: otherGender(g) }))
-    line.append(l, b)
+    line.append(makeLabel('性别'), b)
     return line
   }
 
