@@ -909,6 +909,96 @@ check('吃饭期间点身体：动画不许被抢走，菜单跟着这一次点�
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
+check('吃饭期间拖拽：吃相一路不被打断，格子也一路灰着', async () => {
+  /**
+   * 用户 2026-11-06 拍的板：「播放吃东西的动画时，我拖拽，吃东西的动画应该继续播放，不中断」。
+   * 这条把以前那个例外收掉了——原先「拖拽算物理打断，可以顶掉吃相」，现在拖拽只挪位置。
+   * 要一起成立的四件事：池子与 clip 名都不换、前台画面还是那一口、人跟着手走、
+   * 而且**灰态也不提前解开**——那口饭还在嘴里，列表叫回来时格子必须还是灰的。
+   * 灰态不能在拖拽中途量：那一刻菜单刚被收掉，`.pet-food` 一个都不在，
+   * `[].every(...)` 是真空为真（第一版就是这么假过的），所以落地后把列表叫回来再测。
+   */
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await notEating()
+  /** 列表叫回来（视图已经是 foods 时不能再点喂食——那一下是收回列表）。 */
+  const openFoods = async () => {
+    assert.ok(await openOnBody(), '前置：面板叫不出来')
+    if ((await dbg()).view !== 'foods') await page.click('.pet-actions button[data-id="feed"]')
+    await page.waitForSelector('.pet-panel .pet-food', { timeout: 5000 })
+  }
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-actions button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
+  await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 5000 })
+
+  const seen = await page.evaluate(async () => {
+    const h = window.__petDebug.hitBox
+    const from = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    const to = { x: from.x + 150, y: from.y - 50 }
+    const fire = (type, p) =>
+      window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
+    const grey = () => [...document.querySelectorAll('.pet-panel .pet-food')].every((c) => c.disabled)
+    const front = () => {
+      const v = document.querySelector('.pet-video.is-front')
+      return v ? v.src.split('/').slice(-2).join('/') : ''
+    }
+    const before = { pool: window.__petDebug.current.pool, name: window.__petDebug.current.name, grey: grey() }
+    fire('pointerdown', from)
+    fire('pointermove', to)
+    // 池子与 clip 名是同步换的（requestClip 里就赋了 current）；前台画面要等 loadeddata 才换槽，
+    // 所以 front 必须等一拍再读——和「拖拽动画挂在拖起来那一刻」那条同一个时间差（§5.11）。
+    const atMove = {
+      pool: window.__petDebug.current.pool,
+      name: window.__petDebug.current.name,
+      movedX: window.__petDebug.hitBox.x,
+      panelOpen: window.__petDebug.panelOpen,
+    }
+    await new Promise((r) => setTimeout(r, 250))
+    const during = { front: front(), pool: window.__petDebug.current.pool }
+    fire('pointerup', to)
+    await new Promise((r) => setTimeout(r, 250))
+    // 松手那拍会 requestClip('idle')，吃饭期间同样被拒——落地的第一件事还是先把这口吃完
+    return { before, atMove, during, afterUp: { pool: window.__petDebug.current.pool, name: window.__petDebug.current.name }, fromX: h.x }
+  })
+
+  assert.deepEqual(seen.before, { pool: 'eat', name: 'rice', grey: true }, '前置：这一口没演起来')
+  assert.equal(seen.atMove.pool, 'eat', `拖拽把池子换成了 ${seen.atMove.pool}：吃相不许被顶掉`)
+  assert.equal(seen.atMove.name, 'rice', `池子没换但换成了 ${seen.atMove.name}：那也是打断`)
+  assert.match(seen.during.front, /eat\/rice/, `前台画面已经不是那口白饭了：${seen.during.front}`)
+  assert.ok(seen.atMove.movedX - seen.fromX > 100, `拎着没跟着手走：x ${seen.fromX} → ${seen.atMove.movedX}`)
+  assert.equal(seen.atMove.panelOpen, false, '拖起来那一刻菜单该收（这条没变）')
+  assert.equal(seen.afterUp.pool, 'eat', `松手就被 idle 接走（${seen.afterUp.pool}）：应先吃完这一口`)
+  assert.equal(seen.afterUp.name, 'rice', `松手换成了 ${seen.afterUp.name}：那也是打断`)
+
+  /**
+   * 灰态只能在列表开着的时候量——拖起来那一刻菜单收了，`.pet-panel .pet-food` 一个都不在，
+   * 而 `[].every(c => c.disabled)` 是**真**的（空集自证，这条检查第一版就栽在那儿）。
+   * 而且「还在演」和「列表叫回来」之间隔着几百毫秒，那口饭可能正好演完——
+   * 所以这里钉的是**同一时刻的对应关系**：格子灰 = 正在吃饭，一条不多一条不少。
+   * 拖拽要是提前解了灰态，就会露出「池子还是 eat 但格子能点」那种错位。
+   */
+  const mealState = async () => {
+    await openFoods()
+    return page.evaluate(() => ({
+      pool: window.__petDebug.current.pool,
+      allGrey: [...document.querySelectorAll('.pet-panel .pet-food')].every((c) => c.disabled),
+      count: document.querySelectorAll('.pet-panel .pet-food').length,
+    }))
+  }
+  const midMeal = await mealState()
+  assert.equal(midMeal.count, 6, '前置：列表没叫出来')
+  assert.equal(midMeal.allGrey, midMeal.pool === 'eat',
+    `灰态和「正在吃饭」对不上：pool=${midMeal.pool} 格子灰=${midMeal.allGrey}`)
+
+  await notEating()
+  const done = await mealState()
+  assert.notEqual(done.pool, 'eat', `演完了池子还停在 eat：${done.pool}`)
+  assert.equal(done.allGrey, false, '演完了格子还灰着：用户会以为喂食坏了')
+  assert.equal(done.count, 6)
+  await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
 check('皮肤里没做的那一口：回落到 click，而不是随机播一口别的', async () => {
   // block 皮肤的 eat 池只有 rice / hotpot。点饺子（没做）该播 click——
   // 播「池里随便一条」就是「点火锅播白饭的吃相」那个 bug 的样子，比不播更误导。
@@ -1057,6 +1147,9 @@ check('拖拽跟随光标，松手停在原地不回弹', async () => {
 })
 
 check('拖拽动画挂在「真的拖起来了」那一刻，松手就切回环境链', async () => {
+  // 前置必须是「没在吃饭」：2026-11-06 起拖拽顶不掉吃相，嘴里有饭时池子会一路停在 eat，
+  // 这条断言就会假红——红的是排期，不是行为。
+  await notEating()
   const seen = await page.evaluate(async () => {
     const h = window.__petDebug.hitBox
     const from = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
@@ -1569,46 +1662,58 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
   /**
    * 没有自己动画的那一条：**不该等**。
    * 点气泡那颗回应按钮报的是 +2 心情 / +0.3 亲密，它不启一条动画，所以压着等就等于
-   * 「理了它却没反应」。这里当场就要看到字（此刻环境链多半正在播 idle，等它演完至少要一两秒）。
+   * 「理了它却没反应」。判据是**成因**不是池子：环境链自己抽到 eat 时池子也是 eat，
+   * 但那条不是「这个动作自己的动画」，数字照样当场冒——所以这里不断言 pool。
+   * 前置要 `notEating()`：上一条那口真在演时来的数字会一起等它演完（那是设计，不是 bug）。
    */
+  await notEating()
   const bondBefore = (readSave()?.stats.bond ?? 0)
   await page.evaluate(() => window.__petDebug.say({ text: '在呢', reply: '抱抱' }, 60000))
   await page.locator('.pet-bubble-reply').click()
   await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 1200 })
-  const replied = await page.evaluate(() => ({
-    texts: window.__petDebug.floatTexts,
-    pool: window.__petDebug.current.pool,
-  }))
+  const replied = await page.evaluate(() => ({ texts: window.__petDebug.floatTexts }))
   assert.ok(replied.texts.some((t) => /^亲密度 \+/.test(t)), `点了回应没飘亲密：${JSON.stringify(replied.texts)}`)
-  assert.notEqual(replied.pool, 'eat', '前置：这条不该在吃饭时测')
   assert.ok((readSave()?.stats.bond ?? 0) > bondBefore, '前置：回应没涨亲密')
 
-  // 拖起来那一刻整串清掉（用户拍板：人被拎走了，半空的数字读起来像掉帧）
-  // 先等回应那两条掉干净，否则下面「拖之前屏上该是空的」会被上一段的残字误判。
+  /**
+   * 吃饭期间被拎起来（用户 2026-11-06 拍的板）：**吃相不许中断**。
+   * 所以这一段的期待和「顶得掉」的世界是反的：
+   * ① 越过阈值那一步池子仍是 eat（不是 drag）；② 位置照样跟着手走；
+   * ③ 数字继续攒着——拎着不冒，落地也不冒，等这一口自己演完才一起出来。
+   * 先等回应那两条掉干净，否则下面「拖之前屏上该是空的」会被上一段的残字误判。
+   */
   await page.waitForFunction(() => window.__petDebug.floatTexts.length === 0, null, { timeout: 4000 })
   await openFoods()
   await page.click('.pet-panel .pet-food[data-food="rice"]')
-  await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
+  await page.waitForFunction(() => window.__petDebug.current.name === 'rice', null, { timeout: 5000 })
   const dragged = await page.evaluate(async () => {
     const h = window.__petDebug.hitBox
     const from = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    const to = { x: from.x + 130, y: from.y - 40 }
     const fire = (type, p) =>
       window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
-    // 这一口的数字还攒着（演完了才给），先确认它确实到了账上又被压住
     const held = window.__petDebug.floatTexts.length
     fire('pointerdown', from)
-    fire('pointermove', { x: from.x + 130, y: from.y - 40 })
+    fire('pointermove', to)
+    // 池子与名字都要在越过阈值那一步同步读：松手之后环境链就接上了，读到的是下一条
     const poolAtMove = window.__petDebug.current.pool
+    const nameAtMove = window.__petDebug.current.name
     const during = window.__petDebug.floatTexts.length
-    fire('pointerup', { x: from.x + 130, y: from.y - 40 })
+    const movedX = window.__petDebug.hitBox.x
+    fire('pointerup', to)
     await new Promise((r) => setTimeout(r, 250))
-    // 落地那一拍放出来：这条吃相被物理打断了，等不到它的尾巴，但账是该还的
-    return { held, poolAtMove, during, landed: window.__petDebug.floatTexts }
+    return { held, poolAtMove, nameAtMove, during, movedX, fromX: h.x, landed: window.__petDebug.floatTexts.length }
   })
   assert.equal(dragged.held, 0, '前置：这一口的数字不该已经飘出来')
-  assert.equal(dragged.poolAtMove, 'drag', `越过阈值那一步没判成拖拽：${dragged.poolAtMove}`)
+  assert.equal(dragged.poolAtMove, 'eat',
+    `拖拽把吃相顶掉了（池子成了 ${dragged.poolAtMove}）：用户要的是拎着走也继续嚼`)
+  assert.equal(dragged.nameAtMove, 'rice', `池子没换但换成了另一口（${dragged.nameAtMove}）：那也是打断`)
+  assert.ok(dragged.movedX - dragged.fromX > 100, `拎着没跟着手走：x ${dragged.fromX} → ${dragged.movedX}`)
   assert.equal(dragged.during, 0, '拎着的过程中冒数字：它会一路跟着宠物飘')
-  assert.ok(dragged.landed.length > 0, '落地了也没把攒着的数字放出来：那口饭白吃了')
+  assert.equal(dragged.landed, 0, '落地就冒了数字：可这一口还在演，该继续攒着')
+  // 等它自己演完，那批数字才一起出来——这条是「动画播完再展示」在拖拽路径上的收尾
+  await notEating()
+  await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 15000 })
   await page.evaluate(() => window.__petDebug.clearFloats())
 })
 

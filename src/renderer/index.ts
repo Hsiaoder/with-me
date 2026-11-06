@@ -149,8 +149,9 @@ function bootstrap(skin: SkinPayload): void {
    * 把「正在吃饭」推给面板：这一口没吃完，食物列表整列点不动（用户拍的板）。
    * 判据就是 `current.pool`，和 `requestClip` 那道「不许打断」的闸同一个来源——
    * 再立一个标志位就是两份账，迟早对不上。
-   * 饭吃完那一拍由行为链自己交出决策权（`current` 换成 idle/turn）时解开，
-   * 被拎起来（drag）也算解开：那是物理打断，嘴边那口已经没了。
+   * 饭吃完那一拍由行为链自己交出决策权（`current` 换成 idle/turn）时解开。
+   * **被拎起来不再算解开**（2026-11-06 改）：拖拽只挪位置，不吃相照样演完，
+   * 所以嘴边那口还在，格子就该一直灰着。
    */
   function syncEating(): void {
     panel.setEating(current.pool === 'eat')
@@ -160,14 +161,16 @@ function bootstrap(skin: SkinPayload): void {
    * 播一条。给了名字就**必须播那条**（点哪格吃哪口），皮肤里没有这个名字返回 false，
    * 由调用方降级；没给名字就在池里随机挑一条（避开刚播过那条）。
    *
-   * 「正在吃饭时不被打断」这道闸也在这里：吃饭期间任何动作都不换动画（用户拍的板：全都不打断），
-   * 唯一的例外是**拖拽**——被拎起来必须有反应，那是物理打断，不是点一下。
-   * 以前还留了一条「名字寻址的那一次（再喂一口就改口吃新的）」，2026-11-05 起界面上走不到了：
+   * 「正在吃饭时不被打断」这道闸在这里，而且**没有例外**：吃饭期间任何动作都不换动画，
+   * 包括拖拽。以前留了一条「拖拽算物理打断，可以顶掉吃相」，用户 2026-11-06 明确不要了：
+   * 拎着走的时候它还在嚼，那才像一只被拿起来的小东西；换成「被拎起」的姿势反倒把一口饭切没了。
+   * 拖拽本身仍然有反应——位置立刻跟着手走，菜单和气泡照旧收掉，只是动画不换。
+   * 以前还留过一条「名字寻址的那一次（再喂一口就改口吃新的）」，2026-11-05 起界面上走不到了：
    * 吃饭期间整列格子是 `disabled`，点不动。留着那条例外等于留一条没人走的路径。
    * 台词、菜单、养成数值都在调用方那边照走，所以「不打断动画」不等于「没反应」。
    */
   function requestClip(pool: string, name?: string): boolean {
-    if (current.pool === 'eat' && pool !== 'drag') return false
+    if (current.pool === 'eat') return false
     const ref = name === undefined
       ? picker.pickFrom(source, pool, current)
       : picker.pickNamed(source, pool, name)
@@ -345,8 +348,15 @@ function bootstrap(skin: SkinPayload): void {
     placeFloats()
   }
 
-  /** 攒着的那批放出来：动画播完那一拍，或拖拽落地那一拍。 */
+  /**
+   * 攒着的那批放出来。两个接缝会调它：行为链交回决策权那一拍（这条动画演完了）、
+   * 以及松手落地那一拍（拖拽顶掉了**非吃饭**的动作动画，等不到它的尾巴了）。
+   *
+   * 但吃饭期间不调它：2026-11-06 起拖拽不许顶掉吃相，所以那口还在演，
+   * 数字就该继续攒着等演完——落地就冒会违反「动画播完再展示」那条主规则，宁慢不抢。
+   */
   function flushGains(): void {
+    if (current.pool === 'eat') return
     holdGainsForClip = false
     if (heldGains.length === 0) return
     const gains = heldGains
@@ -694,6 +704,9 @@ function bootstrap(skin: SkinPayload): void {
     dismissBubble()
     // 飘字也一起清：刚喂下去那串「饥饿 +12」还挂在半空就被拎走，读起来像掉帧
     floats.clear()
+    // 「被拎着」那一条**顶不掉吃相**（2026-11-06 改）：正在吃饭时 requestClip 一律拒换，
+    // 于是拎着走的时候它还在嚼——用户明确要这个观感。
+    // 拖拽本身仍然有反应：上面 motion.setPosition 已经跟着手走了，菜单和气泡也都收了。
     requestClip('drag')
     // 这里原来还有一句 sayFor('drag')——「被拎起来必回一句」和「拖拽时不弹气泡」是冲突的，
     // 用户 2026-11-05 选了后者，所以台词一起去掉，不留一条走不到的路径。
@@ -717,9 +730,10 @@ function bootstrap(skin: SkinPayload): void {
     }
     rules.feed('dragged')
     // 放下就回到环境链：grab 素材有 10 秒，不切回去它会继续演「被拎着」演到完。
+    // 正在吃饭时这条也被拒掉——那口饭优先，环境链接管要等它演完。
     requestClip('idle')
-    // 攒着的数字就在落地这一拍冒出来：拖拽把吃饭那条动画顶掉了，等不到它的尾巴，
-    // 但「拎着的时候不冒」这条还是要守（拖起来那一刻已经 floats.clear() 过）。
+    // 攒着的数字在落地这一拍放出来：这条动画被拖拽顶掉了，等不到它的尾巴。
+    // 吃饭那种「顶不掉」的情况由 flushGains 自己判回去（那时该继续攒着）。
     flushGains()
   })
 
