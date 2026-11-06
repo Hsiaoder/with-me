@@ -1291,6 +1291,47 @@ check('点一下不动是「点」：走 click 池，绝不碰 drag', async () =
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
+check('连点两下不许选中东西：那层灰底就是双击的选区高亮', async () => {
+  /**
+   * 用户 2026-11-07 报的现象：「连点两次宠物后，下方的按钮会有一个灰色的背景」，截图里灰块
+   * 正好盖在**中间那颗**按钮上。成因不是按钮的样式：面板以身体对称轴居中，第二次点击落在同一坐标
+   * 就会命中那颗按钮，浏览器把这次当成双击 → 选中它的内容 → 画选区高亮。
+   * 整份 style.css 里一条 `user-select` 都没有，所以这层灰是**默认行为**，不是谁写的背景。
+   * 前置：必须走真实鼠标（`page.mouse`）——合成 PointerEvent 不会触发浏览器的选区逻辑，
+   * 用 dispatchEvent 写这条会永远绿，那就等于没测。
+   */
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: Math.round(inner.w / 2) - 90, y: inner.h - 300 })
+  await page.waitForTimeout(200)
+  const body = await page.evaluate(() => {
+    const h = window.__petDebug.hitBox
+    return { x: Math.round(h.x + h.w / 2), y: Math.round(h.y + h.h / 2) }
+  })
+  await page.mouse.click(body.x, body.y)
+  await page.waitForSelector('.pet-actions')
+  // 中间那颗按钮的位置：就是用户第二次点到的地方
+  const mid = await page.evaluate(() => {
+    const bs = [...document.querySelectorAll('.pet-actions button')]
+    const r = bs[Math.floor(bs.length / 2)].getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })
+  await page.mouse.click(mid.x, mid.y, { clickCount: 2 })
+  const sel = await page.evaluate(() => {
+    const s = window.getSelection()
+    return {
+      ranges: s === null ? -1 : s.rangeCount,
+      text: s === null ? '' : s.toString(),
+      onButton: getComputedStyle(document.querySelector('.pet-actions button')).userSelect,
+      onBody: getComputedStyle(document.body).userSelect,
+    }
+  })
+  assert.equal(sel.ranges, 0, `双击之后还留着 ${sel.ranges} 段选区（文本「${sel.text}」）——那层灰底就是它`)
+  assert.equal(sel.onButton, 'none', `按钮还能被选中（user-select: ${sel.onButton}）`)
+  assert.equal(sel.onBody, 'none', `整层还能被选中（body 的 user-select: ${sel.onBody}）`)
+  await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
 check('Ctrl+Shift+点身体切换命中框', async () => {
   // F9 走不通：这扇窗 focusable:false，收不到键盘事件。改用带修饰键的点击。
   const toggle = () => page.evaluate(() => {

@@ -362,6 +362,18 @@ describe('状态栏的「此刻」两行与性别符号', () => {
   })
 })
 
+describe('覆盖层不许被选中', () => {
+  const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const root = css.match(/^html,\s*body \{([^}]*)\}/m)?.[1] ?? ''
+
+  it('html,body 那条里有 user-select: none（双击宠物不该画出选区灰底）', () => {
+    // 成因与现象记在 problem/05 §5.34；e2e 那条走真实鼠标双击，这条钉样式本身——
+    // 少了这条，有人「整理 CSS」时把它删了，e2e 也只会说「今天没选中」，查不到是谁动的。
+    expect(root, '读不到 html,body 那条规则').not.toBe('')
+    expect(root).toContain('user-select: none')
+  })
+})
+
 describe('气泡尺寸', () => {
   it('config 的 BUBBLE_W/H 和 style.css 里那条 width/height 是同一个数', () => {
     // 照 CLIP_FADE_MS 那条老规矩：JS 算锚点用一份、CSS 排版用一份，改一处忘另一处

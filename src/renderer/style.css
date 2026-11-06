@@ -8,6 +8,12 @@ body {
   height: 100%;
   background: transparent;
   overflow: hidden;
+  /* 整层不许选中。这扇窗没有一行需要复制的文字，而双击是常态操作（连点两下宠物就是双击）：
+     浏览器默认会把第二次点击那颗按钮的内容当成一次词选中，画出一块**灰色选区高亮**——
+     用户 2026-11-07 报的「连点两次后按钮有灰底」就是它，不是按钮自己有的背景。
+     挂 html,body 这一层而不是只挂按钮：选区能跨元素，只禁按钮的话双击到状态栏文字上还会亮。 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #root {
