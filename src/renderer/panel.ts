@@ -1,7 +1,7 @@
 import { FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, PANEL_BUTTONS, type PanelButton } from '../shared/config.js'
 import { FOODS, type Food } from '../shared/food.js'
 import { clampScroll, pageStep, thumbGeometry } from '../shared/scroll.js'
-import { EXP_PER_LEVEL, STAT_KEYS, STAT_LABELS, levelOf, levelProgress, statBand } from '../shared/stats.js'
+import { EXP_PER_LEVEL, STAT_KEYS, STAT_LABELS, levelOf, statBand } from '../shared/stats.js'
 import { GENDER_GLYPHS, GENDER_LABELS, type Gender, type StatsSnapshot, otherGender } from '../shared/save.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
 import type { Point, Rect } from '../shared/types.js'
@@ -299,10 +299,13 @@ export function createPanel(
     // 快照还没到就到此为止：画四条 0 会让用户以为宠物饿坏了，那是编出来的恐慌。
     if (snap === null) return
 
-    // 等级：条画的是「到下一级这 10 点攒了多少」，右端是等级本身。经验只增不减，所以这根条不会倒退。
-    const pct = Math.round((levelProgress(snap.exp) / EXP_PER_LEVEL) * 100)
-    const level = barLine('is-level', 'level', '等级', pct, `Lv.${levelOf(snap.exp)}`)
-    level.title = `累计经验 ${snap.exp.toFixed(1)}，攒满 ${EXP_PER_LEVEL} 升一级`
+    // 等级：**一行读数，不带进度条**（用户 2026-11-05 拍的板）。
+    // 条画的是「到下一级攒了多少」，但那件事在状态栏里没有可操作的对象——
+    // 饥饿/心情低了你能喂、能逗，等级攒到多少你什么都做不了，画条反而像「这项快满了」。
+    // 经验怎么涨的挪到 title 里，想知道就悬停。
+    const level = plainLine('等级', `Lv.${levelOf(snap.exp)}`, 'pet-stats-level')
+    level.dataset.key = 'level'
+    level.title = `累计经验 ${snap.exp.toFixed(1)}，攒满 ${EXP_PER_LEVEL} 升一级（只增不减）`
     host.append(level)
 
     for (const key of STAT_KEYS) {

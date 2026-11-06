@@ -377,36 +377,42 @@ describe('状态视图', () => {
     return m
   }
 
-  it('等级行排在四条读数上面，四条按 STAT_KEYS 顺序：标签、数值、条宽各就各位', () => {
+  it('四条读数按 STAT_KEYS 顺序：标签、数值、条宽各就各位；等级是单独一行', () => {
     const { panel } = open()
     const rows = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat')]
-    expect(rows.map((r) => r.dataset.key)).toEqual(['level', 'hunger', 'mood', 'weight', 'bond'])
-    expect(rows.slice(1).map((r) => r.querySelector('.pet-stat-label')?.textContent)).toEqual(['饥饿', '心情', '体重', '亲密度'])
-    expect(rows.slice(1).map((r) => r.querySelector('.pet-stat-value')?.textContent)).toEqual(['82', '45', '20', '97'])
-    expect(rows[2]?.querySelector('.pet-stat-bar > i')?.getAttribute('style')).toContain('width: 45%')
+    expect(rows.map((r) => r.dataset.key)).toEqual(['hunger', 'mood', 'weight', 'bond'])
+    expect(rows.map((r) => r.querySelector('.pet-stat-label')?.textContent)).toEqual(['饥饿', '心情', '体重', '亲密度'])
+    expect(rows.map((r) => r.querySelector('.pet-stat-value')?.textContent)).toEqual(['82', '45', '20', '97'])
+    expect(rows[1]?.querySelector('.pet-stat-bar > i')?.getAttribute('style')).toContain('width: 45%')
+    // 等级不挂 .pet-stat：那个类专指「一条数值读数」，报警配色与上面这些数条数的地方都靠它
+    const level = panel.el.querySelector<HTMLElement>('.pet-stat-line[data-key="level"]')
+    expect(level, '等级行没画成一行读数').not.toBeNull()
+    expect(level!.querySelector('.pet-stat-label')?.textContent).toBe('等级')
+    const kids = [...panel.el.querySelectorAll('.pet-plate.is-stats > *')]
+    expect(kids.indexOf(level!)).toBeLessThan(kids.findIndex((n) => n.classList.contains('pet-stat')))
   })
 
-  it('等级是算出来的：Lv 看整级、条看本级攒了多少，满 10 进一级并把条归零', () => {
+  it('等级是算出来的：Lv 看整级、满 10 进一级；条不要了，经验只在 title 里', () => {
     const row = (exp: number) =>
-      open(snap(82, exp)).panel.el.querySelector<HTMLElement>('.pet-stat[data-key="level"]')!
+      open(snap(82, exp)).panel.el.querySelector<HTMLElement>('.pet-stat-line[data-key="level"]')!
     expect(row(3.4).querySelector('.pet-stat-value')?.textContent).toBe('Lv.1')
-    expect(row(3.4).querySelector('.pet-stat-bar > i')?.getAttribute('style')).toContain('width: 34%')
+    expect(row(3.4).querySelector('.pet-stat-bar'), '等级还带着进度条').toBeNull()
     // 经验是「怎么涨的」的唯一解释，悬停要读得出来
     expect(row(3.4).getAttribute('title')).toContain('累计经验 3.4')
     expect(row(10).querySelector('.pet-stat-value')?.textContent).toBe('Lv.2')
-    expect(row(10).querySelector('.pet-stat-bar > i')?.getAttribute('style')).toContain('width: 0%')
+    expect(row(25).querySelector('.pet-stat-value')?.textContent).toBe('Lv.3')
   })
 
   it('颜色分档 >60 蓝、>20 黄、否则红：读数一眼能分好坏（等级不参与报警）', () => {
     const { panel } = open()
     const bands = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-bar')].map((b) => b.className.replace('pet-stat-bar is-', ''))
-    expect(bands).toEqual(['level', 'high', 'mid', 'low', 'high'])
+    expect(bands).toEqual(['high', 'mid', 'low', 'high'])
   })
 
   it('姓名一行、性别一行：性别是枚可点的粉色符号', () => {
     const { panel } = open()
     const lines = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-line')]
-    expect(lines.map((l) => l.querySelector('.pet-stat-label')?.textContent)).toEqual(['姓名', '性别'])
+    expect(lines.map((l) => l.querySelector('.pet-stat-label')?.textContent)).toEqual(['姓名', '性别', '等级'])
     expect(lines[0]?.querySelector('.pet-stats-name')?.textContent).toBe('小鲸')
     const g = panel.el.querySelector<HTMLButtonElement>('.pet-gender')!
     expect(g.textContent).toBe('♀')
@@ -501,7 +507,8 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     const { panel } = openView('stats')
     expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
     const plate = panel.el.querySelector('.pet-plate')!
-    expect(plate.querySelectorAll('.pet-stat')).toHaveLength(5)
+    // 等级不是 .pet-stat（那是「一条数值读数」），所以这里是四条
+    expect(plate.querySelectorAll('.pet-stat')).toHaveLength(4)
   })
 
   it('设置视图保持原样：整块替换，按钮条不在布局里', () => {

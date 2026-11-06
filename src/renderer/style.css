@@ -524,13 +524,6 @@ body.pet-over {
   background: #e6572c;
 }
 
-/* 等级那一档不参与「低了就变黄变红」的报警语义——经验只增不减，所以它永远在往上走，
-   用青内圈那支 #36BDF7：全场只有底板和圆底的青线是这个色，读起来是「这是一条进度」，
-   不是「这项快没了」。 */
-.pet-stat-bar.is-level > i {
-  background: #36bdf7;
-}
-
 .pet-stat-value {
   flex: 0 0 auto;
   min-width: 20px;

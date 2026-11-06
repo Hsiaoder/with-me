@@ -15,7 +15,6 @@ import {
   isCheerful,
   isChubby,
   levelOf,
-  levelProgress,
   isHungry,
   isStarving,
   LONELY_AFTER_MS,
@@ -211,10 +210,9 @@ describe('状态阈值', () => {
  */
 describe('经验与等级', () => {
   it('等级与到下一级的进度都从经验算，跨级那一格归零', () => {
-    expect([levelOf(0), levelProgress(0)]).toEqual([1, 0])
-    expect([levelOf(3.4), levelProgress(3.4)]).toEqual([1, 3.4])
-    expect([levelOf(EXP_PER_LEVEL), levelProgress(EXP_PER_LEVEL)]).toEqual([2, 0])
-    expect([levelOf(25), levelProgress(25)]).toEqual([3, 5])
+    expect([levelOf(0), levelOf(3.4), levelOf(EXP_PER_LEVEL), levelOf(25)]).toEqual([1, 1, 2, 3])
+    // 负数与 NaN 不能把等级算崩（存档被手改过时要兜住）
+    expect(levelOf(-5)).toBe(1)
     // 垃圾值不许把等级读成 Lv.0 或负数
     expect(levelOf(-50)).toBe(1)
   })

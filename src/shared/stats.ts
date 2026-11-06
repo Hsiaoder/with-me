@@ -166,8 +166,6 @@ export function expGain(e: StatEvent, ctx: EventCtx): number {
 
 /** 等级由经验算出来，不入库：入库就有两份真相，还会漂。 */
 export const levelOf = (exp: number): number => Math.floor(Math.max(0, exp) / EXP_PER_LEVEL) + 1
-/** 到下一级已经攒了多少（画那一截进度条用）。 */
-export const levelProgress = (exp: number): number => Math.max(0, exp) % EXP_PER_LEVEL
 
 export function applyEvent(
   stats: Stats,

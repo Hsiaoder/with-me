@@ -1206,34 +1206,42 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   const g = await page.evaluate(() => {
     const b = window.__petDebug.hitBox
     const p = document.querySelector('.pet-plate').getBoundingClientRect()
-    const level = document.querySelector('.pet-stat[data-key="level"]')
+    const level = document.querySelector('.pet-stat-line[data-key="level"]')
     return {
       bodyRight: b.x + b.w, panelLeft: p.x, panelRight: p.right, inner: window.innerWidth,
       name: document.querySelector('.pet-stats-name')?.textContent,
       keys: [...document.querySelectorAll('.pet-stat')].map((r) => r.dataset.key),
-      rows: [...document.querySelectorAll('.pet-stat:not([data-key="level"])')].map((r) => ({
+      rows: [...document.querySelectorAll('.pet-stat')].map((r) => ({
         value: Number(r.querySelector('.pet-stat-value')?.textContent),
         band: r.querySelector('.pet-stat-bar')?.className,
         fill: r.querySelector('.pet-stat-bar > i')?.style.width,
       })),
-      // 等级那一行：右端是 Lv.N，条是到下一级的进度，title 里带着累计经验
+      // 等级那一行：只有「等级 / Lv.N」，条已经按用户要求拿掉了；title 里带着累计经验
       level: level === null ? null : {
         text: level.querySelector('.pet-stat-value')?.textContent,
-        fill: level.querySelector('.pet-stat-bar > i')?.style.width,
+        bar: level.querySelector('.pet-stat-bar'),
         hint: level.title,
+        // 它不是 .pet-stat：那个类专指「一条数值读数」，报警配色与上面的 keys 数组都按它数条数
+        isStat: level.classList.contains('pet-stat'),
+        // 排在四条读数之前
+        order: [...document.querySelectorAll('.pet-plate.is-stats > *')].findIndex((n) => n === level) <
+          [...document.querySelectorAll('.pet-plate.is-stats > *')].findIndex((n) => n.classList.contains('pet-stat')),
       },
     }
   })
   assert.equal(g.name, '小鲸', `状态栏没显示存档里的名字：${g.name}`)
-  assert.deepEqual(g.keys, ['level', 'hunger', 'mood', 'weight', 'bond'], '等级行没排在四条读数上面，或键名不对')
+  assert.deepEqual(g.keys, ['hunger', 'mood', 'weight', 'bond'], `四条读数不该含等级：${JSON.stringify(g.keys)}`)
   assert.ok(g.panelLeft >= g.bodyRight - 1, `状态栏没在宠物右侧：panelLeft=${g.panelLeft} 身体右沿=${g.bodyRight}`)
   assert.ok(g.panelRight <= g.inner, `状态栏溢出屏幕右边：${g.panelRight} > ${g.inner}`)
-  // 等级行自己得自洽：条宽 = (经验 % 10)/10，Lv = floor(经验/10)+1。
-  // 这里不另抄一份公式，而是把 title 里那个「真实累计值」解出来反查渲染——两边不一致就是渲染算错了。
-  const exp = Number(/累计经验 ([\d.]+)/.exec(g.level?.hint ?? '')?.[1] ?? Number.NaN)
-  assert.ok(Number.isFinite(exp) && exp >= 0, `等级行的经验读数取不出来：${g.level?.hint}`)
+  assert.ok(g.level !== null, '等级行没画出来')
+  assert.equal(g.level.bar, null, '等级行还带着进度条（用户说不要）')
+  assert.equal(g.level.isStat, false, '等级行错挂了 .pet-stat：那是「一条数值读数」的类')
+  assert.equal(g.level.order, true, '等级行没排在四条读数上面')
+  // 等级自己得自洽：Lv = floor(经验/10)+1。这里不另抄一份公式，
+  // 而是把 title 里那个「真实累计值」解出来反查渲染——两边不一致就是渲染算错了。
+  const exp = Number(/累计经验 ([\d.]+)/.exec(g.level.hint ?? '')?.[1] ?? Number.NaN)
+  assert.ok(Number.isFinite(exp) && exp >= 0, `等级行的经验读数取不出来：${g.level.hint}`)
   assert.equal(g.level.text, `Lv.${Math.floor(exp / 10) + 1}`, `等级和它对不上：${g.level.text} vs 经验 ${exp}`)
-  assert.equal(g.level.fill, `${Math.round(((exp % 10) / 10) * 100)}%`, `进度条和累计经验对不上：${g.level.fill} vs ${exp}`)
   // 颜色必须跟着数字：分档写死在渲染里就会出「数值红了、条还是蓝的」那种假读数
   const bandOf = (v) => (v > 60 ? 'high' : v > 20 ? 'mid' : 'low')
   for (const r of g.rows) {
