@@ -433,7 +433,7 @@ describe('气泡尺寸', () => {
   })
 })
 
-describe('气泡的两支颜色：取自宠物本身（头发 = 环，发箍 = 按钮），门槛由描边扛', () => {
+describe('气泡的两支颜色：同一条青蓝（按钮面用青内圈原值，环压暗一档过 3:1）', () => {
   const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8')
   const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
   /** 素材里两层同形状：先画的带色那层 = 环，后画的白层 = 内腔。 */
@@ -448,35 +448,34 @@ describe('气泡的两支颜色：取自宠物本身（头发 = 环，发箍 = �
   }
   const pill = pick(/\.pet-bubble-reply \{[^}]*border: 1px solid (#[0-9a-f]{6})/, '那颗按钮的描边色')
   const ink = pick(/\.pet-bubble-reply \{[^}]*color: (#[0-9a-f]{6})/, '那颗按钮的文字色')
+  const hue = (h: string): number => {
+    const m = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    const A = 1.9779984951 * m[0]! - 2.428592205 * m[1]! + 0.4505937099 * m[2]!
+    const B = 0.0259040371 * m[0]! + 0.7827717662 * m[1]! - 0.808675766 * m[2]!
+    return (Math.atan2(B, A) * 180) / Math.PI
+  }
 
-  it('环就是头发那一支：对白内腔、对浅桌面都过 3:1', () => {
-    // #4A5D97 是从真机那一帧逐簇量出来的（spike/pet-palette.mjs 带位置打印），不是照名字猜的
-    expect(ring, 'bubble.svg 第一层不是头发色').toBe('#4a5d97')
+  it('环是青内圈压暗一档：原值过不了 3:1，同色相的最亮解才用', () => {
+    // 用户 2026-11-07 要「改成按钮内边框那种蓝」= Kenney 圆底的 #36BDF7。
+    // 那支**直接当环是不够的**：对白内腔 2.15、对浅桌面 1.90，UI 组件门槛 3:1。
+    // 所以环走同一条 H=232 压到 L=63.1 的 #0095CC——是同一色相的另一档，不是另一种蓝。
+    expect(ring, 'bubble.svg 第一层不是解出来的那支青蓝').toBe('#0095cc')
     expect(cavity, '内腔不是纯白就没法当对比度的底').toBe('#ffffff')
     expect(contrast(ring, cavity), `环对白色内腔只有 ${contrast(ring, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
     expect(contrast(ring, '#eef1f5'), `环对浅桌面只有 ${contrast(ring, '#eef1f5').toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
     // 深色桌面那面**故意不列进来**：压它的是整块白色身子（同圆底那套两层逻辑）。
-    // 要求环单独赢过深桌面会把它解成近黑，气泡就成了「黑圈包一张白纸」。
+    expect(Math.abs(hue(ring) - hue('#36bdf7')), '环偏离了青内圈那条色相').toBeLessThan(10)
   })
 
-  it('按钮面是发箍那块白，所以「看得见」交给描边；文字回到墨色', () => {
-    expect(reply, '--reply-fill 不是发箍那一支').toBe('#eae2e5')
-    // 这块白对白内腔只有 1.27:1 —— 它本来就不该被当成组件边界，边界是那条边。
-    // 写成 toBeLessThan 是故意的：哪天有人把面调深到能自己扛 3:1，这条会问「那描边还要不要」。
-    expect(contrast(reply, cavity), '发箍的白自己就压得住白内腔？判据要重看').toBeLessThan(3)
-    expect(contrast(pill, reply), `描边对按钮面只有 ${contrast(pill, reply).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
-    expect(contrast(pill, cavity), `描边对白内腔只有 ${contrast(pill, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
+  it('按钮面用青内圈原值；文字仍是墨色，边界由深一档的边承担', () => {
+    expect(reply, '--reply-fill 不是圆底那圈青内圈的原值').toBe('#36bdf7')
     expect(contrast(ink, reply), `墨字对按钮面只有 ${contrast(ink, reply).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
-  })
-
-  it('环和描边同一条色相：引入第二个蓝就变成「配色」而不是「取色」了', () => {
-    const hue = (h: string): number => {
-      const m = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
-      const A = 1.9779984951 * m[0]! - 2.428592205 * m[1]! + 0.4505937099 * m[2]!
-      const B = 0.0259040371 * m[0]! + 0.7827717662 * m[1]! - 0.808675766 * m[2]!
-      return (Math.atan2(B, A) * 180) / Math.PI
-    }
-    // 只比这两支：按钮面那块白发箍的彩度实测只有 0.010，色相本来就随噪点飘，比它没意义
-    expect(Math.abs(hue(pill) - hue(ring)), `描边 ${pill} 不在头发 ${ring} 那条色相上`).toBeLessThan(14)
+    // 面自己只有 2.15:1，压不住白色内腔——所以这条量的是**描边**（对白内腔 ≥3）。
+    // 写成 toBeLessThan 是故意的：哪天有人把面调深到能自己扛，这条会逼他重看描边还要不要。
+    expect(contrast(reply, cavity), '青面自己就压得住白内腔？判据要重看').toBeLessThan(3)
+    expect(contrast(pill, cavity), `描边对白内腔只有 ${contrast(pill, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
+    // 边和面是同一个组件的两层，不要求 3:1；但得**分得开**，否则边等于没画
+    expect(contrast(pill, reply), `描边和按钮面差 ${contrast(pill, reply).toFixed(2)}，边画了等于没画`).toBeGreaterThanOrEqual(2)
+    expect(Math.abs(hue(pill) - hue(ring)), `描边 ${pill} 偏离环 ${ring} 那条色相`).toBeLessThan(10)
   })
 })
