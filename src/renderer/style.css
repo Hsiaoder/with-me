@@ -445,17 +445,18 @@ body.pet-over {
   cursor: var(--pet-cursor);
 }
 
-/* 动作视图的五颗：图标底下垫一只**小鲸鱼**（`icons/whale_round.svg`，2026-11-06 用户要的形；
-   再往前是 Kenney `button_round_depth_line` 那枚圆底）。边框画在素材里（同一形状两层，
-   下层描边胀出 6 单位 = 显示 3 CSS px），投影在这里用 CSS `filter: drop-shadow` 加——
-   **投影不画进素材**：画进去就成了一张甩不掉的灰雾，换尺寸还会跟着缩放；
-   drop-shadow 跟着 alpha 轮廓走，鲸鱼尾巴那一翘也带得出影。
-   配色沿用 A 套：面 #ebf5fb、环 #6990a7。
+/* 动作视图的五颗：图标底下垫一枚 Kenney `button_round_depth_line`（CC0，**已按 A 套重染**：
+   面 #EBF5FB + 环 #6990A7 + 下半圈更深的底影 #3E718C + 那条青内圈 #36BDF7 原样没动）。
+   2026-11-06 曾换成手绘的小鲸鱼，用户在真机上看过说「现在的不好看」，改回来——
+   鲸鱼那张素材已删，形状要再试从提交 0d60c3e 里取回来。
    以前这里刻意什么都不画，结果白色系的图标（米饭碗）压在浅色壁纸上会糊成一片，
    也看不出哪里能点。40px 的方块仍然是命中区——图标只有 20~24px，按图标本身点太费眼睛。
-   选择器用 `button[data-id]`：只有动作按钮带 data-id，设置/列表/状态视图的按钮各有自己的底板。 */
+   选择器用 `button[data-id]`：只有动作按钮带 data-id，设置/列表/状态视图的按钮各有自己的底板。
+   **投影留着**：那是批次二另一条要求（「更立体」），和形状无关。它跟着 alpha 走，
+   圆底出来就是一圈落在桌面上的软影，比素材里那道底影更像「浮着」；
+   不画进素材是因为画进去就换不掉尺寸、也关不掉。 */
 .pet-panel button[data-id] {
-  background: url("icons/whale_round.svg") center / 100% 100% no-repeat;
+  background: url("icons/button_round_depth_line.svg") center / 100% 100% no-repeat;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.32));
 }
 

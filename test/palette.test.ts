@@ -5,62 +5,42 @@ import { resolve } from 'node:path'
 /**
  * A 套「品牌蓝白」的素材不变量。
  *
- * 为什么要钉住：按钮底这枚形状是**我们自己画的**（2026-11-06 从小鲸鱼那版起），
- * 但它用的还是 A 套那两档色；而历史上这里栽过一次——圆底从 Kenney 的一个变体换成另一个变体时
- * 整套原色被盖回来，**任何功能测试都不会红**，只是按钮又变回那枚灰紫硬币，得靠肉眼看。
- * 所以这里直接读文件本身：看 fill / stroke 列表。
+ * 为什么要钉住：这枚圆底是从 Kenney 包里抄来再重染的，**换变体或重装素材会把原色盖回来**
+ * （本仓库已经发生过一次：`button_round_line` → `button_round_depth_line` 时整套色都换了）。
+ * 盖回来不会让任何功能测试变红——只是按钮又变回那枚灰紫硬币，得靠肉眼看。
+ * 所以这里直接读文件本身：圆底看 fill 列表。
  *
- * 底板那张 PNG 已经退出产品（食物列表改用和状态读数同一张 CSS 卡片），
- * 圆底也退出了（换成鲸鱼，投影改由 CSS 的 drop-shadow 给）；
+ * 底板那张 PNG 已经退出产品（食物列表改用和状态读数同一张 CSS 卡片）；
+ * 2026-11-06 换过一版手绘小鲸鱼当按钮底，用户在真机上看过说不好看，已改回圆底——
+ * 鲸鱼那张素材随之删除，所以「不许还在」这一条换了主角（见 problem/05 §5.28）。
  * 重染的算法与门槛在 spike/palette-recolor.mjs 与 spike/color-math.mjs。
  */
 const A = {
   面: '#ebf5fb',
   环: '#6990a7',
+  底影: '#3e718c',
+  内圈: '#36bdf7',
 }
 /** 素材原色：中性偏紫的灰，重染后一个都不该留 */
 const STALE = ['#9696A3', '#747487', '#DADCE7']
 
 const read = (rel: string) => readFileSync(resolve('src/renderer', rel), 'utf8')
 
-describe('A 套配色：鲸鱼按钮底', () => {
-  const svg = read('icons/whale_round.svg')
+describe('A 套配色：圆底 SVG', () => {
+  const svg = read('icons/button_round_depth_line.svg')
   const fills = [...svg.matchAll(/fill="(#[0-9A-Fa-f]{6})"/g)].map((m) => (m[1] ?? '').toLowerCase())
-  const strokes = [...svg.matchAll(/stroke="(#[0-9A-Fa-f]{6})"/g)].map((m) => (m[1] ?? '').toLowerCase())
 
-  it('面与环两档都在，别的颜色一个不多', () => {
-    expect(fills, `面不在里面：${fills.join(',')}`).toContain(A.面)
-    expect(strokes, `环不在里面：${strokes.join(',')}`).toContain(A.环)
-    // 投影不画进素材（画了就换不了尺寸、也关不掉），所以素材里不该出现任何灰/黑
-    for (const c of [...fills, ...strokes]) {
-      expect(c, `素材里混进了一个非 A 套的色 ${c}`).toMatch(/^(#ebf5fb|#6990a7)$/)
-    }
+  it('四层目标色都在，且青内圈没被动过', () => {
+    for (const want of [A.面, A.环, A.底影, A.内圈]) expect(fills, `缺 ${want}`).toContain(want)
   })
 
   it('素材原色（灰紫那三档）一个都不剩', () => {
-    for (const stale of STALE) {
-      expect(svg.toLowerCase(), `还留着 ${stale}`).not.toContain(stale.toLowerCase())
-    }
+    for (const stale of STALE) expect(fills, `还留着 ${stale}`).not.toContain(stale.toLowerCase())
   })
 
-  it('边框是「同形两层」画的，不是单条描边：两层形状必须一模一样', () => {
-    /**
-     * 下层「填 + 描同色宽边」胀出轮廓，上层只填色盖回内腔——这样并集外沿的环厚处处一致，
-     * 交界处也不会多出横线（云朵气泡那条同一个做法，见 problem/03 §3.8）。
-     * 两层要是各画各的形状，缝就露出来了，而且这种错**只在放大看才看得出来**。
-     */
-    const paths = [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1])
-    expect(paths, '读不到路径').toHaveLength(2)
-    expect(paths![0], '两层的形状不一致').toBe(paths![1])
-    const w = Number(svg.match(/stroke-width="([\d.]+)"/)?.[1] ?? -1)
-    expect(w, '读不到描边宽度').toBeGreaterThan(0)
-    // 描边宽 = 环厚的两倍（描线压在轮廓上，一半朝内一半朝外）
-    expect(w / 2, '环厚和描边宽不成对').toBe(6)
-  })
-
-  it('旧的 Kenney 圆底已经整个退出产品：文件不许还在', () => {
+  it('按钮底只此一枚：手绘鲸鱼那张已经整个退出产品，文件不许还在', () => {
     // 留着就会被 copy-static 搬进 dist（这条规矩在食物底板上用过一次）
-    expect(existsSync(resolve('src/renderer/icons/button_round_depth_line.svg')), '圆底素材还留在仓库里').toBe(false)
+    expect(existsSync(resolve('src/renderer/icons/whale_round.svg')), '鲸鱼素材还留在仓库里').toBe(false)
   })
 })
 

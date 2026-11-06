@@ -579,7 +579,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true', 'true/true'],
     `图标没解码成功：${JSON.stringify(decoded)}`)
 
-  // 鲸鱼底（icons/whale_round.svg）：计算样式里有 url 不算数——404 也照样在样式里，
+  // 圆底（Kenney button_round_depth_line）：计算样式里有 url 不算数——404 也照样在样式里，
   // 必须真的把它 decode 出来。这条同时钉住两条白名单（protocol 的 MIME 表 + copy-static 的 STATIC_EXT）。
   const disc = await page.evaluate(async () => {
     const b = document.querySelector('.pet-panel button[data-id]')
@@ -595,22 +595,22 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
     }
     return { url: m[1], ok: img.naturalWidth > 0, w: img.naturalWidth }
   })
-  assert.ok(disc.ok, `鲸鱼底没加载出来：${JSON.stringify(disc)}`)
-  // 钉住具体那一枚：只 decode 成功的话，素材换错名（旧的圆底还在包里）也照样绿。
-  assert.match(disc.url, /icons\/whale_round\.svg$/, `按钮底不是鲸鱼那枚：${disc.url}`)
+  assert.ok(disc.ok, `圆底没加载出来：${JSON.stringify(disc)}`)
+  // 钉住具体那一枚：只 decode 成功的话，素材换错名（鲸鱼那版也在包里试过）也照样绿。
+  assert.match(disc.url, /icons\/button_round_depth_line\.svg$/, `按钮底不是 depth_line 那枚：${disc.url}`)
   // 投影是 CSS 给的，不是画在素材里的：这一层没挂上 drop-shadow 就等于「立体感」没落地
   const shadow = await page.evaluate(() =>
     getComputedStyle(document.querySelector('.pet-panel button[data-id]')).filter)
-  assert.match(shadow, /drop-shadow/, `鲸鱼底没有投影（用户要「更立体」）：${shadow}`)
-  // 鲸鱼底只给动作按钮：切进设置视图，那里的按钮有自己的方形底板，叠两层会像画歪了。
+  assert.match(shadow, /drop-shadow/, `圆底没有投影（用户要「更立体」）：${shadow}`)
+  // 圆底只给动作按钮：切进设置视图，那里的按钮有自己的方形底板，叠两层会像画歪了。
   // 要真的切过去看——动作视图里没有 .pet-setting 按钮，选择器写错就是一条永远为真的断言。
   await page.click('.pet-panel button[data-id="settings"]')
   await page.waitForSelector('.pet-panel .pet-setting')
   const plateBtn = await page.evaluate(() =>
     getComputedStyle(document.querySelector('.pet-panel .pet-setting button')).backgroundImage)
-  // 匹配整个按钮底家族（旧的 button_round_* 与现在的 whale_round）而不是具体一枚：
+  // 匹配整个按钮底家族（Kenney 的 button_round_* 与试过的手绘 whale_round）而不是具体一枚：
   // 素材换了名这条还得是真检查，不能退化成「比一个不会出现的字符串」
-  assert.ok(!/button_round|whale_round/.test(plateBtn), `设置视图的按钮也被套上鲸鱼底了：${plateBtn}`)
+  assert.ok(!/button_round|whale_round/.test(plateBtn), `设置视图的按钮也被套上按钮底了：${plateBtn}`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 
   // 点击开的东西就得能点击关：重新点一下叫出来，再点一下收掉
