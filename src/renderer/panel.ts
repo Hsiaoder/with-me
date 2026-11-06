@@ -247,7 +247,10 @@ export function createPanel(
     strip.className = 'pet-food-strip'
     const cells: HTMLButtonElement[] = []
     for (const f of FOODS) {
-      const cell = btn(f.name, { food: f.id }, false)
+      // 格子里放图，名字退成 title/aria-label——和两个翻页键同一套约定（imgBtn）。
+      // 以前这里是一格一个汉字名，六个格子看下来像一张菜单文字表；换成图之后「点哪格吃哪口」
+      // 要一眼认出来，靠的是形状而不是识字。
+      const cell = imgBtn(f.name, f.icon, { food: f.id }, 'pet-food-icon')
       cell.classList.add('pet-food')
       // 建的时候就带上灰态：正在吃饭时把列表叫出来，不该先亮一下再暗
       cell.disabled = eating

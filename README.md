@@ -23,7 +23,7 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
 | 命令 | 做什么 |
 |---|---|
 | `npm run typecheck` | TypeScript 检查，不产出文件 |
-| `npm test` | 纯逻辑单测（29 个文件 427 条，约 1.6 秒） |
+| `npm test` | 纯逻辑单测（29 个文件 431 条，约 1.6 秒） |
 | `npm run build` | `tsc` + 复制 html/css/svg/png 与 preload。没有打包器 |
 | `npm run e2e` | 真 Electron 上验播放器、面板、气泡、列表、光标、心跳、可见性子进程（48 项） |
 | `npm run e2e:skin` | 真 Electron 上验「换皮肤」这条轴（3 项） |
@@ -94,8 +94,15 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
   48×48 正方形、一屏 4 个，视口宽 = 4×48 + 3×4 = 204；这四个数只有 `FOOD_CELL` 一个来源，
   CSS 里的字面量由 `test/config.test.ts` 反查钉住），最左最右各一枚 Kenney 箭头（`arrow_basic_w_small` / `arrow_basic_e_small`）
   翻一整屏，矩形下面有一条可以拖的横条（自绘控件，不是浏览器滚动条），到边就置灰。
+  **格子里是图，不是字**（2026-11-06 换）：六张 128×128 透明 PNG 放在 `src/renderer/foods/<id>.png`，
+  显示 40px（`FOOD_ICON`），名字退成悬停 title 与读屏 label——和两个翻页键同一套约定。
+  图的来路是 **AI 生一张 3×2 总表 → `node tools/make-food-icons.mjs <总表>` 切图**，
+  仓库里只留切好的六张，总表在 `E:\ai-pet\vibe_images\`。选这条路的理由是授权：本项目要商用直播，
+  iconfont 禁商用、game-icons 要逐条署名、CC0 素材库里根本没有糖葫芦/大闸蟹这种中式吃食，
+  而自产图**没有第三方授权债**。代价是三道后处理都得自己做（抠底 / 去水印 / 归一化），
+  实测踩的三条坑记在 `problem/03` §3.14。
   **三块副板共用同一张 CSS 卡片**：`--plate-fill` 的板面 + 1px 深描边 + 10px 圆角 + 6px 留白，
-  格子是白卡 + 8px 圆角 + 12px 字。食物列表以前铺的是 Kenney `button_rectangle_depth_line`
+  格子是白卡 + 8px 圆角。食物列表以前铺的是 Kenney `button_rectangle_depth_line`
   的 border-image 九宫格（四层边、只有下边多 4px 底影，所以 slice 得写成不对称的 `8 8 12`），
   2026-11-06 用户说「不想用外边框了，做成状态那种简单的」——素材已删，那套九宫格为什么必须那么写
   留在 `problem/03` §3.9 与 §3.12，别按旧描述改回去。现在全场只剩五颗圆底那一圈青内框带装饰。

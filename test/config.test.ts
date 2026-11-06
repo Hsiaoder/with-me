@@ -6,7 +6,7 @@ import {
   DEFAULT_BODY_BOX, REQUIRED_POOLS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_INNER_BOTTOM,
   BUBBLE_CAVITY, BUBBLE_RING_W,
-  FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
+  FOOD_CELL, FOOD_ICON, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
   FLOAT_CHIP, FLOAT_MS, FLOAT_HEAD_OFFSET,
 } from '../src/shared/config.js'
 import { STAT_KEYS } from '../src/shared/stats.js'
@@ -82,6 +82,20 @@ describe('食物列表的尺寸', () => {
     expect(dim('pet-scroll', 'width'), '横条宽 ≠ 视口宽，thumbGeometry 会算错').toBe(String(VIEW_W))
     expect(dim('pet-food', 'height'), '格子高 ≠ FOOD_CELL').toBe(String(FOOD_CELL))
     expect(dim('pet-page', 'height'), '翻页键命中区该跟着格子高').toBe(String(FOOD_CELL))
+  })
+
+  /**
+   * 格子里那张图的显示尺寸。图自己已经是归一化过的方图（`tools/make-food-icons.mjs` 里
+   * FILL=0.86 留了内边距），所以 CSS 只定一个数；写歪 4px 就是六个东西看起来大小不一。
+   */
+  it('食物图标的显示尺寸 = FOOD_ICON，且格子里不再留字号（图替了字的位置）', () => {
+    const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const icon = css.match(/\.pet-panel \.pet-food \.pet-food-icon \{([^}]*)\}/)?.[1] ?? ''
+    expect(icon, '读不到 .pet-food-icon 那条').toContain(`width: ${FOOD_ICON}px`)
+    expect(icon).toContain(`height: ${FOOD_ICON}px`)
+    expect(FOOD_ICON, '图标大到顶到描边了（格子 48 减两条 1px 描边 = 46）').toBeLessThan(FOOD_CELL - 2)
+    const cell = css.match(/\.pet-panel \.pet-food \{([^}]*)\}/)?.[1] ?? ''
+    expect(cell, '格子里还留着 font-size：名字已经退成 title/aria-label 了').not.toMatch(/font-size/)
   })
 
   it('底板投影不许溢出到上沿外（负 spread 是唯一防线）', () => {

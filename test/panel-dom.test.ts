@@ -225,6 +225,21 @@ describe('食物视图', () => {
     expect(panel.el.querySelectorAll('.pet-food').length).toBe(FOODS.length)
   })
 
+  it('格子里是图，名字退到 title 与读屏 label（图挂了也不留空白，label 还在）', () => {
+    const { panel } = mountFoods()
+    const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
+    expect(cells.length).toBe(FOODS.length)
+    cells.forEach((cell, i) => {
+      const f = FOODS[i]!
+      expect(cell.getAttribute('aria-label'), `${f.id} 的读屏名丢了`).toBe(f.name)
+      expect(cell.title).toBe(f.name)
+      expect(cell.textContent, '格子里不该再有文字（图和字并排会挤）').toBe('')
+      const img = cell.querySelector('img')
+      expect(img, `${f.id} 格子里没有图`).not.toBeNull()
+      expect(img!.getAttribute('src')).toBe(f.icon)
+    })
+  })
+
   it('点一格把整个 food 报给 pick，并且不切视图', () => {
     const { panel, pick } = mountFoods()
     ;(panel.el.querySelector('.pet-food') as HTMLElement).click()

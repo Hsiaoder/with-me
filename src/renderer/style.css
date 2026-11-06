@@ -673,21 +673,33 @@ body.pet-over {
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
-  color: #2b2f36;
-  font-size: 12px;
+}
+
+/* 格子里的图。40 = 48 减左右描边后留 3px 呼吸；PNG 自己是 128×128 带内边距的方图
+   （`tools/make-food-icons.mjs` 里 FILL=0.86），所以这里按短边铺满就行，不用管各图内容大小——
+   归一化已经在脚本里做过一遍，六个东西在格子里是一样大的。
+   尺寸只有一个来源（config 的 FOOD_ICON），字面量由 test/config.test.ts 反查钉住。 */
+.pet-panel .pet-food .pet-food-icon {
+  display: block;
+  width: 40px;
+  height: 40px;
 }
 
 /* 正在吃饭时整列置灰（用户拍的板：这一口没吃完不许再喂）。
    灰态只是**把这件事说出来**——真正拦下点击的是 `disabled` 本身：Chromium 不给 disabled
    按钮派发 click，所以不存在「看着灰但其实还能喂」的假象，也不需要 JS 再判一次。
+   图换成灰的：去饱和 + 压暗，比整块变透明更像「这个现在不能吃」。
    游标换成 not-allowed：手形在这里是撒谎。那块像素仍然归宠物（照样接鼠标、照样算交互区），
    但这一点上没有能吃的东西。选择器带上 `.pet-panel` 是为了压过基类那条
    `cursor: var(--pet-cursor)`——和格子尺寸那条同一个理由。 */
 .pet-panel .pet-food:disabled {
   background: rgba(255, 255, 255, 0.5);
   border-color: rgba(0, 0, 0, 0.07);
-  color: #97a0aa;
   cursor: not-allowed;
+}
+
+.pet-panel .pet-food:disabled .pet-food-icon {
+  filter: grayscale(1) brightness(0.72);
 }
 
 /* 翻页键：以前是文字符号 `‹ ›`，在板面上对比不够、也看不出是按钮。

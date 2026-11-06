@@ -14,7 +14,8 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CLIP_FADE_MS, FLOAT_HEAD_OFFSET, PANEL_BUTTONS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { CLIP_FADE_MS, FLOAT_HEAD_OFFSET, FOOD_ICON, PANEL_BUTTONS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { FOODS } from '../src/shared/food.ts'
 import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.ts'
 
 const require = createRequire(import.meta.url)
@@ -763,26 +764,42 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   // 名字写错就是 404：格子变白片、箭头变空框，所以必须真的 decode 一次。
   // 格子退回 CSS 白卡：底板和格子以前铺同一套四层边，格子那个尺度上糊成框中框。
   // 所以这里要钉的是「格子**没有**背景图、板面是白卡」，而不是某个素材名。
-  const art = await page.evaluate(async () => {
+  // 图是 AI 生的那六张（tools/make-food-icons.mjs 切的）：**必须真 decode 出像素**——
+  // 文件躺在仓库里不等于进得了 dist，名字写错就是 404，格子上是一片空白而没人报错。
+  const art = await page.evaluate(async (icons) => {
     const cs = getComputedStyle(document.querySelector('.pet-food'))
-    const imgs = [...document.querySelectorAll('.pet-page img')]
-    await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
+    const cells = [...document.querySelectorAll('.pet-food')]
+    const imgs = cells.map((c) => c.querySelector('img'))
+    await Promise.all(imgs.map((i) => (i ? i.decode().catch(() => {}) : Promise.resolve())))
+    const box = (i) => {
+      const r = i.getBoundingClientRect()
+      return { w: Math.round(r.width), h: Math.round(r.height) }
+    }
     return {
       cellBg: cs.backgroundImage,
       cellRadius: cs.borderTopLeftRadius,
-      cellFont: cs.fontSize,
-      arrows: imgs.map((i) => ({ src: i.getAttribute('src'), ok: i.naturalWidth > 0 })),
-      labels: imgs.map((i) => i.closest('button')?.getAttribute('aria-label')),
+      cellText: cells.map((c) => c.textContent),
+      labels: cells.map((c) => c.getAttribute('aria-label')),
+      icons: imgs.map((i, k) => ({
+        src: i?.getAttribute('src'),
+        want: icons[k],
+        ok: (i?.naturalWidth ?? 0) > 0,
+        box: i ? box(i) : null,
+      })),
+      arrows: [...document.querySelectorAll('.pet-page img')].map((i) => i.getAttribute('src')),
     }
-  })
+  }, FOODS.map((f) => f.icon))
   assert.equal(art.cellBg, 'none', `格子还铺着素材底，框中框没拆掉：${art.cellBg}`)
   assert.equal(art.cellRadius, '8px', `格子该是白卡的圆角：${art.cellRadius}`)
-  assert.equal(art.cellFont, '12px', `格子字号该跟面板其余文字一致：${art.cellFont}`)
-  assert.deepEqual(art.arrows, [
-    { src: 'icons/arrow_basic_w_small.svg', ok: true },
-    { src: 'icons/arrow_basic_e_small.svg', ok: true },
-  ], `翻页键的箭头没加载出来：${JSON.stringify(art.arrows)}`)
-  assert.deepEqual(art.labels, ['上一页', '下一页'], `箭头键的 label 没说清方向：${JSON.stringify(art.labels)}`)
+  assert.deepEqual(art.cellText, ['', '', '', '', '', ''], '格子里还留着文字：图和字并排会挤')
+  assert.deepEqual(art.labels, FOODS.map((f) => f.name), `读屏名和菜名对不上：${JSON.stringify(art.labels)}`)
+  for (const i of art.icons) {
+    assert.equal(i.src, i.want, `格子指的图不对：${i.src} 应为 ${i.want}`)
+    assert.ok(i.ok, `${i.want} 没解出像素（404？抠空了？）`)
+    assert.deepEqual(i.box, { w: FOOD_ICON, h: FOOD_ICON }, `${i.want} 的显示尺寸和 config 的 FOOD_ICON 不是一个数`)
+  }
+  assert.deepEqual(art.arrows, ['icons/arrow_basic_w_small.svg', 'icons/arrow_basic_e_small.svg'],
+    `翻页键的箭头换了没同步：${JSON.stringify(art.arrows)}`)
   // 用户这次要的就是这条：列表出来时按钮不许消失，而且列表在按钮条**外侧**。
   // 只数 DOM 里有没有按钮不够——按钮得真能点（Playwright 的 click 会验可见与命中）。
   // 「外侧」不是「下面」：宠物站在屏幕最下沿时按钮条会翻到头顶，这时列表要在按钮条**上面**，

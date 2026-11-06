@@ -186,6 +186,12 @@ export const PANEL_BUTTONS: readonly PanelButton[] = [
  *  48 而不是 56：格子是比圆底（40）还大 40% 时，同一竖列里「能点的东西」出现两种量级，
  *  而且把底板撑到比按钮排宽 82px（两端各空 41px，谁也不对齐谁）。收到 48 后伸出量 25px。 */
 export const FOOD_CELL = 48
+/**
+ * 格子里那张图的边长。48 的格子减左右各 1px 描边还剩 46，给 40 是留 3px 呼吸——
+ * 顶到边会让六个东西看起来大小不一（PNG 自己已经带了一圈内边距，见 tools/make-food-icons.mjs 的 FILL）。
+ * CSS 里那个 40px 由 test/config.test.ts 反查钉住，改这里要连着改 CSS。
+ */
+export const FOOD_ICON = 40
 export const FOOD_GAP = 4
 /** 一屏可见格数。视口宽 = 4×48 + 3×4 = 204。 */
 export const FOOD_VISIBLE = 4

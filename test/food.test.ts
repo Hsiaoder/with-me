@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { FOODS, FOOD_LABEL_WIDTH } from '../src/shared/food.js'
 import { labelWidth } from '../src/shared/text.js'
 import { CLIP_NAME, POOL_NAME } from '../src/shared/skin.js'
 
 /**
- * 喂食列表的契约。格子是 48px 正方形、12px 字号，所以名字的限制本质是**宽度**，
- * 不是字符数：`大闸蟹` 三个汉字比 `Token` 五个拉丁字母还宽。
+ * 喂食列表的契约。
+ *
+ * 格子里现在放图，名字退成悬停 title 与读屏 label——名字仍要短，因为它是这两处唯一的说明。
  *
  * 动画名是**皮肤里的 clip 名（ascii slug）**，不是素材源里的中文文件名——
  * 皮肤契约的 CLIP_NAME 不接受汉字，中文原名记在切片脚本的映射表里。
@@ -14,6 +17,18 @@ describe('食物表', () => {
   it('六条，id 唯一', () => {
     expect(FOODS.map((f) => f.id)).toEqual(['token', 'rice', 'tanghulu', 'crab', 'hotpot', 'dumpling'])
     expect(new Set(FOODS.map((f) => f.id)).size).toBe(FOODS.length)
+  })
+
+  it('每条都有图，且文件名就是 id——tools/make-food-icons.mjs 的映射表认这个形状', () => {
+    for (const f of FOODS) {
+      expect(f.icon, `${f.id} 没配图标`).toBe(`foods/${f.id}.png`)
+    }
+  })
+
+  it('图标文件真的在仓库里：文件在仓库里不等于进得了 dist，但不在仓库里就一定 404', () => {
+    for (const f of FOODS) {
+      expect(existsSync(join('src/renderer', f.icon)), `${f.icon} 不在`).toBe(true)
+    }
   })
 
   it('每条都配了 eat 池的动画——这轮就是要让点食物播对应的吃', () => {
@@ -34,7 +49,7 @@ describe('食物表', () => {
     for (const f of FOODS) expect(f.anim!.name).toBe(f.id)
   })
 
-  it('显示名放得进一格', () => {
+  it('显示名放得进一格（现在用在 title/读屏，仍然别写成一句菜名）', () => {
     for (const f of FOODS) {
       expect(labelWidth(f.name), `${f.name} 太宽`).toBeLessThanOrEqual(FOOD_LABEL_WIDTH)
     }
