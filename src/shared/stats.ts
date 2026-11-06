@@ -175,6 +175,9 @@ export function gainText(label: string, delta: number): string | null {
   return `${label} +${num}`
 }
 
+/** 一条飘字：挂在哪个数值上（CSS 按它上色上色）+ 写出来的人话。 */
+export type FloatGain = { key: StatKey; text: string }
+
 /**
  * 两份快照之间该飘出来的那些字。
  *
@@ -185,12 +188,13 @@ export function gainText(label: string, delta: number): string | null {
  * ③ 四舍五入成 0 的不飘（`+0.0` 比不飘更怪）。
  *
  * 纯函数、不碰 DOM：渲染层只管把拿到的每条贴上去，「该飘什么」这件事由这里说。
+ * 带 `key` 出去是为了让样式认得出「这是哪条」——颜色按数值分，不按涨了多少分。
  */
-export function gainsToFloat(prev: Stats, next: Stats): string[] {
-  const out: string[] = []
+export function gainsToFloat(prev: Stats, next: Stats): FloatGain[] {
+  const out: FloatGain[] = []
   for (const key of STAT_KEYS) {
     const text = gainText(STAT_LABELS[key], next[key] - prev[key])
-    if (text !== null) out.push(text)
+    if (text !== null) out.push({ key, text })
   }
   return out
 }

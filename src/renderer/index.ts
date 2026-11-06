@@ -23,7 +23,7 @@ import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
 import { clamp, nextTalkIndex, pickTalk, TALK_FLOW, type TalkReason } from '../shared/talk.js'
-import { gainsToFloat, isBlue, isHungry } from '../shared/stats.js'
+import { gainsToFloat, isBlue, isHungry, type FloatGain } from '../shared/stats.js'
 import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
@@ -136,6 +136,8 @@ function bootstrap(skin: SkinPayload): void {
         } else {
           current = nxt.ref
           syncEating()
+          // 这一拍是「刚才那条动画演完了，决策权交回来」——攒着的数字就在这一刻冒出来。
+          flushGains()
         }
         // 只有交出决策权那一拍才是宠物自己闲逛，这时候才考虑开口
         if (nxt.ambient) maybeSayIdle()
@@ -177,6 +179,17 @@ function bootstrap(skin: SkinPayload): void {
   }
 
   /**
+   * **动作**发起的那一次播放。真起了动画就把飘字挂起来，等这条演完那一拍再冒
+   * （见 `holdGainsForClip`）。
+   * 只有会报养成数值的动作走这里——喂食、逗玩；点身体和拖拽不报数值，挂它没意义。
+   */
+  function requestActionClip(pool: string, name?: string): boolean {
+    const ok = requestClip(pool, name)
+    if (ok) holdGainsForClip = true
+    return ok
+  }
+
+  /**
    * 可见性设置的本地副本。开局由主进程把存档里的值推一次（onSettings），
    * 之后每次点选项先本地反馈、再上报——等主进程回灌会有肉眼可见的延迟。
    */
@@ -186,7 +199,9 @@ function bootstrap(skin: SkinPayload): void {
     action: (a) => {
       lastInteractionAt = Date.now()
       rules.feed('interacted')
-      requestClip(a.pool)
+      // 小游戏会报一次养成数值 → 走带挂起的那条；说话/其它按钮不报数值，不必挂
+      if (a.pool !== undefined && a.id === 'game') requestActionClip(a.pool)
+      else requestClip(a.pool)
       if (a.id === 'talk') sayNextDebugLine()
       else sayFor(a.id === 'game' ? 'game' : 'status')
       // 逗玩算一次养成动作。给多少由主进程算，这里只报「发生了什么」。
@@ -203,8 +218,9 @@ function bootstrap(skin: SkinPayload): void {
     pick: (f) => {
       lastInteractionAt = Date.now()
       rules.feed('interacted')
-      if (f.anim !== undefined && !requestClip(f.anim.pool, f.anim.name)) requestClip('click')
-      else if (f.anim === undefined) requestClip('click')
+      // 这一口报养成数值 → 走带挂起的 requestActionClip，数字等吃相演完再冒
+      if (f.anim !== undefined && !requestActionClip(f.anim.pool, f.anim.name)) requestActionClip('click')
+      else if (f.anim === undefined) requestActionClip('click')
       sayFor('feed')
       window.petBridge?.statEvent({ kind: 'feed', food: f.id })
       // 选完**不收**（2026-11-05 改，先前是 closePanel）：用户的手就停在这块区域上，
@@ -313,12 +329,40 @@ function bootstrap(skin: SkinPayload): void {
   const placeFloats = (): void =>
     floats.place(floatAnchor(hitBox(), panel.plateRect(), FLOAT_CHIP, screenRect(), FLOAT_GAP, FLOAT_HEAD_OFFSET))
 
+  /** 攒着等动画播完的那些字。 */
+  let heldGains: FloatGain[] = []
+  /**
+   * 真值 = 刚才那个动作**自己起了动画**，这批数字该等它演完再冒。
+   * 用户 2026-11-06 拍的板：点完喂食就冒数字，读起来像结算回执；等它把这一口咽下去
+   * 再冒，才是「它吃了，所以涨了」。
+   * 但只有真有自己的动画才等：点气泡回应、每天第一次开面板都没有动画可等，
+   * 压着不放就变成「理了它却没反应」。
+   */
+  let holdGainsForClip = false
+
+  function showGains(gains: FloatGain[]): void {
+    floats.show(gains)
+    placeFloats()
+  }
+
+  /** 攒着的那批放出来：动画播完那一拍，或拖拽落地那一拍。 */
+  function flushGains(): void {
+    holdGainsForClip = false
+    if (heldGains.length === 0) return
+    const gains = heldGains
+    heldGains = []
+    showGains(gains)
+  }
+
   /** 两份快照之间涨了的那些写成「饥饿 +12」贴到宠物旁边；一条都不涨就什么都不做。 */
   function floatGains(prev: StatsSnapshot, next: StatsSnapshot): void {
-    const items = gainsToFloat(prev.stats, next.stats)
-    if (items.length === 0) return
-    floats.show(items)
-    placeFloats()
+    const gains = gainsToFloat(prev.stats, next.stats)
+    if (gains.length === 0) return
+    if (holdGainsForClip) {
+      heldGains.push(...gains)
+      return
+    }
+    showGains(gains)
   }
 
   /** 光标压在气泡上就算「还在读」。判据用坐标，不用 CSS :hover：穿透一开就收不到 mouseleave。 */
@@ -674,6 +718,9 @@ function bootstrap(skin: SkinPayload): void {
     rules.feed('dragged')
     // 放下就回到环境链：grab 素材有 10 秒，不切回去它会继续演「被拎着」演到完。
     requestClip('idle')
+    // 攒着的数字就在落地这一拍冒出来：拖拽把吃饭那条动画顶掉了，等不到它的尾巴，
+    // 但「拎着的时候不冒」这条还是要守（拖起来那一刻已经 floats.clear() 过）。
+    flushGains()
   })
 
   /** 人工排查与 e2e 用的钩子；Task 13 把它换成 F9 全局快捷键。 */
@@ -747,6 +794,9 @@ function bootstrap(skin: SkinPayload): void {
     /** 清掉所有飘字。e2e 用它收尾，免得上一条的残字混进下一条的断言。 */
     clearFloats: (): boolean => {
       floats.clear()
+      // 攒着的那批也一起丢：只清屏上的话，下一条检查跑到一半，上一条的数字会突然冒出来
+      heldGains = []
+      holdGainsForClip = false
       return true
     },
     /**

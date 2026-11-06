@@ -1367,13 +1367,17 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
-check('飘字：喂一口把涨的那几条飘出来，到点自己掉，全程不抢鼠标', async () => {
+check('飘字：这一口演完才冒、各有各的颜色字号、不等的当场就冒，全程不抢鼠标', async () => {
   /**
-   * 观感照 qqpet：数值变了要在宠物旁边冒一下。这里只验只有真浏览器能验的三件事：
-   * ① 文字**没被芯片裁掉**（84px 装「亲密度 +0.2」这种最长的，jsdom 量不出来）；
-   * ② 这一层**不吃鼠标**（pointer-events:none 没生效就是 problem/01 §1.15 那个
-   *    「看不见却吞点击」换了个形态重来）；
-   * ③ 到点真的**移出布局**（清理归定时器，动画那一头关了也照样掉）。
+   * 观感照 qqpet：数值变了要在宠物旁边冒一下。用户 2026-11-06 又加了两条：
+   * **等动画播完再冒**（点完就冒像结算回执），以及**四条数值各有各的颜色与字号**。
+   * 这里只验只有真浏览器能验的事：
+   * ① 时序——账到了但动画没演完时一个字都不许冒；演完那一拍一起放出来；
+   *    没有自己动画的那条（点回应）当场就冒，不跟着等；
+   * ② 分色分字号真渲染出来了（同一批里两种数值不能撞成一个颜色）；
+   * ③ 文字没被芯片裁掉（按**它自己那档字号**量最长的那条，jsdom 量不出来）；
+   * ④ 这一层**不吃鼠标**（pointer-events:none 没生效就是 problem/01 §1.15 那个
+   *    「看不见却吞点击」换了个形态重来）；⑤ 到点真的移出布局。
    * 「只有涨的飘、经验不飘」是纯函数的规矩，由 test/stats.test.ts 钉，不在这儿重复。
    */
   const file = join(userData, 'save.json')
@@ -1434,48 +1438,15 @@ check('飘字：喂一口把涨的那几条飘出来，到点自己掉，全程�
   assert.ok(before, '前置：存档里读不到 stats')
 
   const cell = await page.evaluate(() => {
-    const r = document.querySelector('.pet-panel .pet-food[data-food="crab"]').getBoundingClientRect()
+    const r = document.querySelector('.pet-panel .pet-food[data-food="hotpot"]').getBoundingClientRect()
     return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
   })
   await feed(cell)
-  await page.click('.pet-panel .pet-food[data-food="crab"]')
-  await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 5000 })
+  await page.click('.pet-panel .pet-food[data-food="hotpot"]')
+  // 必须是皮肤真有其口的那一档：大闸蟹在 block 皮肤里没有对应吃相，会回落到 click 池，
+  // 那条也起动画、也会被挂起判据管到，但 `pool === 'eat'` 这个前置就不成立了。
+  await page.waitForFunction(() => window.__petDebug.current.name === 'hotpot', null, { timeout: 5000 })
 
-  const shot = await page.evaluate(() => {
-    const r = window.__petDebug.floatRect
-    const layer = document.querySelector('.pet-floats')
-    const chips = [...document.querySelectorAll('.pet-float')]
-    const mid = r ? { x: Math.round(r.x + r.w / 2), y: Math.round(r.y + r.h / 2) } : null
-    const top = mid ? document.elementFromPoint(mid.x, mid.y) : null
-    /**
-     * 最长的那条**可能**出现的标签（4 字标签 + 两位整数带一位小数）。
-     * 这一屏真飘出来的未必是最长的，所以要问的是 CSS 本身装不装得下——
-     * 芯片是 `overflow:hidden`，装不下就是悄悄裁掉，肉眼在 2× 远程桌面上看不出来。
-     * 只在层还可见时量一次，量完就摘掉（它不归定时器管，留着会一直挂在屏幕上）。
-     */
-    const roomOf = (t) => {
-      if (layer === null) return null
-      const probe = document.createElement('div')
-      probe.className = 'pet-float'
-      probe.textContent = t
-      layer.append(probe)
-      const got = { t, room: probe.clientWidth, need: probe.scrollWidth }
-      probe.remove()
-      return got
-    }
-    return {
-      texts: window.__petDebug.floatTexts,
-      rect: r,
-      hit: window.__petDebug.hitBox,
-      // room = 盒子放得下的宽度，need = 文字要的宽度：need > room 就是被裁了
-      fit: chips.map((c) => ({ t: c.textContent, room: c.clientWidth, need: c.scrollWidth })),
-      widest: roomOf('亲密度 +99.9'),
-      pe: layer ? getComputedStyle(layer).pointerEvents : '',
-      layerHits: layer ? layer.hasAttribute('data-hit') : null,
-      eaten: top ? `${top.tagName}.${top.className}` : null,
-      over: document.body.classList.contains('pet-over'),
-    }
-  })
   const after = await (async () => {
     // 落盘是异步的：轮一会儿，直到存档里至少有一格和喂之前不一样
     for (let i = 0; i < 30; i++) {
@@ -1486,6 +1457,54 @@ check('飘字：喂一口把涨的那几条飘出来，到点自己掉，全程�
     return null
   })()
   assert.ok(after, '前置：喂了一口却没写进存档')
+  // 账已经到了，可这一口还在演——这时候一个字都不该冒（用户 2026-11-06：动画播完再展示）。
+  // 反过来（不等存档直接断言没字）会假绿：字没冒也许只是数字还没回来。
+  assert.deepEqual(await page.evaluate(() => window.__petDebug.floatTexts), [],
+    '吃相还在演，数字就冒出来了：读起来像结算回执，不像「它吃了所以涨了」')
+
+  await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 15000 })
+  const shot = await page.evaluate(({ keys }) => {
+    const r = window.__petDebug.floatRect
+    const layer = document.querySelector('.pet-floats')
+    const chips = [...document.querySelectorAll('.pet-float')]
+    const mid = r ? { x: Math.round(r.x + r.w / 2), y: Math.round(r.y + r.h / 2) } : null
+    const top = mid ? document.elementFromPoint(mid.x, mid.y) : null
+    /**
+     * 「最长的那条可能出现的标签」按**它自己那档字号**量（探针必须带 data-key，
+     * 不带就量的是基类 12px，而饥饿是 14px——那才是最容易撑爆的一条）。
+     * 芯片是 overflow:hidden，撑爆就是悄悄裁掉，2× 远程桌面上看不出来。
+     */
+    const roomOf = (key, t) => {
+      if (layer === null) return null
+      const probe = document.createElement('div')
+      probe.className = 'pet-float'
+      probe.dataset.key = key
+      probe.textContent = t
+      layer.append(probe)
+      const cs = getComputedStyle(probe)
+      const got = { key, t, px: cs.fontSize, color: cs.color, room: probe.clientWidth, need: probe.scrollWidth }
+      probe.remove()
+      return got
+    }
+    const look = (c) => {
+      const cs = getComputedStyle(c)
+      return { key: c.dataset.key, color: cs.color, px: cs.fontSize }
+    }
+    return {
+      texts: window.__petDebug.floatTexts,
+      rect: r,
+      hit: window.__petDebug.hitBox,
+      look: chips.map(look),
+      // room = 盒子放得下的宽度，need = 文字要的宽度：need > room 就是被裁了
+      fit: chips.map((c) => ({ t: c.textContent, room: c.clientWidth, need: c.scrollWidth })),
+      widest: keys.map((k) => roomOf(k.key, k.text)),
+      pe: layer ? getComputedStyle(layer).pointerEvents : '',
+      layerHits: layer ? layer.hasAttribute('data-hit') : null,
+      eaten: top ? `${top.tagName}.${top.className}` : null,
+      over: document.body.classList.contains('pet-over'),
+    }
+  }, { keys: STAT_KEYS.map((k) => ({ key: k, text: `${STAT_LABELS[k]} +99.9` })) })
+
   const rose = STAT_KEYS.filter((k) => after[k] - before[k] > 0.05)
   assert.ok(rose.length > 0, '前置：喂了一口却没有任何数值上涨（早喂饱了？）')
   // 飘出来的正好是账上涨的那几条：多了就是衰减也在飘，少了就是漏了某条路
@@ -1504,8 +1523,20 @@ check('飘字：喂一口把涨的那几条飘出来，到点自己掉，全程�
   for (const f of shot.fit) {
     assert.ok(f.need <= f.room, `「${f.t}」被芯片裁掉了：要 ${f.need}px，只有 ${f.room}px`)
   }
-  assert.ok(shot.widest.need <= shot.widest.room,
-    `最长的那条标签装不下（${shot.widest.t}）：要 ${shot.widest.need}px，芯片只有 ${shot.widest.room}px——FLOAT_CHIP 该跟着改`)
+  // 分色分字号是 CSS 的契约，四条都得在场又各不相撞。判据用 widest 那批探针（按 key 各造一枚），
+  // 不靠「这一屏恰好飘了哪几条」：喂饱了就不飘饥饿，那不该让配色检查跟着瞎。
+  const byKey = new Map(shot.widest.map((w) => [w.key, w]))
+  assert.equal(new Set(shot.widest.map((w) => w.color)).size, 4,
+    `四条数值撞色了：${JSON.stringify(shot.widest.map((w) => [w.key, w.color]))}`)
+  for (const w of shot.widest) {
+    assert.notEqual(w.color, 'rgb(23, 117, 63)', `${w.key} 还在吃基类那支默认绿：data-key 没挂上？`)
+    assert.ok(w.need <= w.room, `「${w.t}」在 ${w.px} 那一档里装不下：要 ${w.need}px，芯片只有 ${w.room}px`)
+  }
+  const pxOf = (k) => Number(String(byKey.get(k).px).replace('px', ''))
+  assert.ok(pxOf('hunger') > pxOf('mood'), `饥饿该是最大的一档：${pxOf('hunger')} vs ${pxOf('mood')}`)
+  assert.ok(pxOf('mood') > pxOf('weight'), `心情该比体重醒目：${pxOf('mood')} vs ${pxOf('weight')}`)
+  // 真飘出来的那几条也得带上 key（探针带上了，不代表运行链路也带上了）
+  for (const l of shot.look) assert.ok(l.key, `芯片没带 data-key：${JSON.stringify(l)}`)
   assert.equal(shot.pe, 'none', '飘字层收得到鼠标：它会从桌面那儿把点击吞掉')
   assert.equal(shot.layerHits, false, '飘字层挂上 data-hit 了，会被算进交互区')
   assert.ok(!String(shot.eaten).includes('pet-float'), `芯片自己接住了这一点：${shot.eaten}`)
@@ -1518,32 +1549,49 @@ check('飘字：喂一口把涨的那几条飘出来，到点自己掉，全程�
   })
   assert.deepEqual(gone, { hidden: true, display: 'none' }, '字掉光了，这一层还留在布局里')
 
+  /**
+   * 没有自己动画的那一条：**不该等**。
+   * 点气泡那颗回应按钮报的是 +2 心情 / +0.3 亲密，它不启一条动画，所以压着等就等于
+   * 「理了它却没反应」。这里当场就要看到字（此刻环境链多半正在播 idle，等它演完至少要一两秒）。
+   */
+  const bondBefore = (readSave()?.stats.bond ?? 0)
+  await page.evaluate(() => window.__petDebug.say({ text: '在呢', reply: '抱抱' }, 60000))
+  await page.locator('.pet-bubble-reply').click()
+  await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 1200 })
+  const replied = await page.evaluate(() => ({
+    texts: window.__petDebug.floatTexts,
+    pool: window.__petDebug.current.pool,
+  }))
+  assert.ok(replied.texts.some((t) => /^亲密度 \+/.test(t)), `点了回应没飘亲密：${JSON.stringify(replied.texts)}`)
+  assert.notEqual(replied.pool, 'eat', '前置：这条不该在吃饭时测')
+  assert.ok((readSave()?.stats.bond ?? 0) > bondBefore, '前置：回应没涨亲密')
+
   // 拖起来那一刻整串清掉（用户拍板：人被拎走了，半空的数字读起来像掉帧）
-  await notEating()
+  // 先等回应那两条掉干净，否则下面「拖之前屏上该是空的」会被上一段的残字误判。
+  await page.waitForFunction(() => window.__petDebug.floatTexts.length === 0, null, { timeout: 4000 })
   await openFoods()
   await page.click('.pet-panel .pet-food[data-food="rice"]')
-  await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 5000 })
+  await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
   const dragged = await page.evaluate(async () => {
     const h = window.__petDebug.hitBox
     const from = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
     const fire = (type, p) =>
       window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
-    const beforeDrag = window.__petDebug.floatTexts.length
+    // 这一口的数字还攒着（演完了才给），先确认它确实到了账上又被压住
+    const held = window.__petDebug.floatTexts.length
     fire('pointerdown', from)
-    fire('pointermove', { x: from.x + 2, y: from.y })
-    const held = window.__petDebug.floatTexts.length      // 没过阈值是「点」，不该清
     fire('pointermove', { x: from.x + 130, y: from.y - 40 })
-    // 池子是同步换的，但松手就切回环境链——所以要在这里读，不能等 pointerup 之后再读
     const poolAtMove = window.__petDebug.current.pool
-    const started = window.__petDebug.floatTexts.length
+    const during = window.__petDebug.floatTexts.length
     fire('pointerup', { x: from.x + 130, y: from.y - 40 })
-    await new Promise((r) => setTimeout(r, 200))
-    return { beforeDrag, held, started, poolAtMove }
+    await new Promise((r) => setTimeout(r, 250))
+    // 落地那一拍放出来：这条吃相被物理打断了，等不到它的尾巴，但账是该还的
+    return { held, poolAtMove, during, landed: window.__petDebug.floatTexts }
   })
-  assert.ok(dragged.beforeDrag > 0, '前置：第二口没飘出字')
-  assert.equal(dragged.held, dragged.beforeDrag, '只按住没拖就把字清了：那是「点」')
+  assert.equal(dragged.held, 0, '前置：这一口的数字不该已经飘出来')
   assert.equal(dragged.poolAtMove, 'drag', `越过阈值那一步没判成拖拽：${dragged.poolAtMove}`)
-  assert.equal(dragged.started, 0, '真的拖起来了，飘字还挂在半空跟着宠物一路飘')
+  assert.equal(dragged.during, 0, '拎着的过程中冒数字：它会一路跟着宠物飘')
+  assert.ok(dragged.landed.length > 0, '落地了也没把攒着的数字放出来：那口饭白吃了')
   await page.evaluate(() => window.__petDebug.clearFloats())
 })
 

@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createFloatLayer } from '../src/renderer/float.js'
 import { FLOAT_MS } from '../src/shared/config.js'
+import type { FloatGain } from '../src/shared/stats.js'
 
 /**
  * 飘字层的 DOM 契约。
@@ -10,6 +11,7 @@ import { FLOAT_MS } from '../src/shared/config.js'
  * 逼出来：如果哪天有人把移除改成等动画事件，下面每条按时序写的断言都会红。
  */
 
+const g = (key: FloatGain['key'], text: string): FloatGain => ({ key, text })
 const texts = (el: HTMLElement): string[] =>
   [...el.querySelectorAll('.pet-float')].map((n) => n.textContent ?? '')
 
@@ -31,25 +33,26 @@ describe('飘字层', () => {
 
   it('不挂 data-hit、pointer-events 交给 CSS：它不许把鼠标接住', () => {
     const f = createFloatLayer(root)
-    f.show(['饥饿 +12'])
+    f.show([g('hunger', '饥饿 +12')])
     expect(f.el.hasAttribute('data-hit'), '挂上 data-hit 就会被算进交互区（problem/01 §1.15）').toBe(false)
     expect(f.el.getAttribute('aria-hidden')).toBe('true')
     expect(f.el.getAttribute('role'), '读屏该读状态栏，不是每喂一次念一遍数字').toBeNull()
   })
 
-  it('show 按给的顺序贴上去，空数组什么都不做', () => {
+  it('show 按给的顺序贴上去，每条带自己的 data-key（CSS 按它上色分字号）', () => {
     const f = createFloatLayer(root)
-    f.show(['饥饿 +14', '体重 +0.4'])
+    f.show([g('hunger', '饥饿 +14'), g('weight', '体重 +0.4')])
     expect(f.el.hidden).toBe(false)
     expect(f.count).toBe(2)
     expect(texts(f.el)).toEqual(['饥饿 +14', '体重 +0.4'])
+    expect([...f.el.querySelectorAll<HTMLDivElement>('.pet-float')].map((c) => c.dataset.key)).toEqual(['hunger', 'weight'])
     f.show([])
     expect(f.count).toBe(2)
   })
 
   it('到期自己掉：最后一条掉光时整层移出布局', () => {
     const f = createFloatLayer(root)
-    f.show(['饥饿 +14'])
+    f.show([g('hunger', '饥饿 +14')])
     vi.advanceTimersByTime(FLOAT_MS - 1)
     expect(f.count).toBe(1)
     expect(f.el.hidden).toBe(false)
@@ -61,11 +64,12 @@ describe('飘字层', () => {
 
   it('各条按自己出现的那一刻到期，不是一起掉', () => {
     const f = createFloatLayer(root)
-    f.show(['第一条'])
+    f.show([g('hunger', '第一条')])
     vi.advanceTimersByTime(FLOAT_MS / 2)
-    f.show(['第二条'])
+    f.show([g('mood', '第二条')])
     vi.advanceTimersByTime(FLOAT_MS / 2)
     expect(texts(f.el)).toEqual(['第二条'])
+    expect(f.el.hidden).toBe(false)
     vi.advanceTimersByTime(FLOAT_MS / 2)
     expect(f.count).toBe(0)
   })
@@ -74,14 +78,14 @@ describe('飘字层', () => {
     const f = createFloatLayer(root)
     f.place({ x: 12.6, y: 40.2 })
     expect(f.el.style.transform, '没有字的时候不该把整层放回布局').toBe('')
-    f.show(['饥饿 +14'])
+    f.show([g('hunger', '饥饿 +14')])
     f.place({ x: 12.6, y: 40.2 })
     expect(f.el.style.transform).toBe('translate(13px, 40px)')
 
     f.clear()
     expect(f.count).toBe(0)
-    f.show(['心情 +6'])
-    vi.advanceTimersByTime(FLOAT_MS - 1)   // 旧定时器若没被撤，此刻会把这条也算掉
+    f.show([g('mood', '心情 +6')])
+    vi.advanceTimersByTime(FLOAT_MS - 1)   // 旧定时器没被撤的话，此刻会把这条也算掉
     expect(texts(f.el)).toEqual(['心情 +6'])
     vi.advanceTimersByTime(1)
     expect(f.count).toBe(0)
@@ -89,7 +93,7 @@ describe('飘字层', () => {
 
   it('同一批里贴满再 clear：一层不留，位置也回不来', () => {
     const f = createFloatLayer(root)
-    f.show(['饥饿 +14', '心情 +6', '体重 +0.4'])
+    f.show([g('hunger', '饥饿 +14'), g('mood', '心情 +6'), g('weight', '体重 +0.4')])
     f.place({ x: 5, y: 5 })
     f.clear()
     expect(f.el.children.length).toBe(0)

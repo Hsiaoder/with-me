@@ -267,8 +267,8 @@ describe('飘字：涨的那几条才值得打扰主人', () => {
     const { stats } = applyEvent(before, { kind: 'feed', food: 'rice' }, { now: NOW, lastEventAt: {} })
     const out = gainsToFloat(before, stats)
     expect(out.length, '喂一次该有一条飘字').toBeGreaterThan(0)
-    expect(out[0]).toMatch(/^饥饿 \+\d/)
-    for (const line of out) expect(line).not.toContain('亲密度')
+    expect(out[0]?.text).toMatch(/^饥饿 \+\d/)
+    for (const g of out) expect(g.key).not.toBe('bond')
   })
 
   it('经验不参与：Stats 结构里就没有这一格（等级/经验是另一本账）', () => {
@@ -276,9 +276,13 @@ describe('飘字：涨的那几条才值得打扰主人', () => {
     expect(Object.keys(INITIAL_STATS)).not.toContain('exp')
   })
 
-  it('四条同时涨就按 STAT_KEYS 的顺序出四条', () => {
+  it('四条同时涨就按 STAT_KEYS 的顺序出三条，每条带自己的 key 给 CSS 上色', () => {
     const before = { hunger: 10, mood: 10, weight: 10, bond: 10 }
     const out = gainsToFloat(before, { hunger: 20, mood: 21.5, weight: 10, bond: 12 })
-    expect(out).toEqual(['饥饿 +10', '心情 +11.5', '亲密度 +2'])
+    expect(out).toEqual([
+      { key: 'hunger', text: '饥饿 +10' },
+      { key: 'mood', text: '心情 +11.5' },
+      { key: 'bond', text: '亲密度 +2' },
+    ])
   })
 })

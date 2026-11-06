@@ -9,6 +9,7 @@ import {
   FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
   FLOAT_CHIP, FLOAT_MS, FLOAT_HEAD_OFFSET,
 } from '../src/shared/config.js'
+import { STAT_KEYS } from '../src/shared/stats.js'
 import { mimeOf } from '../src/main/protocol.js'
 
 describe('素材合同', () => {
@@ -165,7 +166,8 @@ describe('选中态的声明方式', () => {
   })
 })
 
-describe('操作型视图共用宽裕的收起延时', () => {  it('VIEW_HIDE_MS 是 5000，旧名字 SETTING_HIDE_MS 已经不存在', () => {
+describe('操作型视图共用宽裕的收起延时', () => {
+  it('VIEW_HIDE_MS 是 5000，旧名字 SETTING_HIDE_MS 已经不存在', () => {
     expect(VIEW_HIDE_MS).toBe(5000)
     const src = readFileSync('src/shared/config.ts', 'utf8')
     expect(src).not.toContain('SETTING_HIDE_MS')
@@ -192,6 +194,34 @@ describe('飘字（属性涨了多少）的尺寸与时序', () => {
     const rise = Number(css.match(/@keyframes pet-float-rise \{[\s\S]*?to \{[^}]*translateY\(-(\d+)px\)/)?.[1] ?? -1)
     expect(rise, '读不到 keyframes 的上浮距离').toBeGreaterThan(0)
     expect(rise).toBeLessThanOrEqual(FLOAT_HEAD_OFFSET)
+  })
+
+  it('四条数值各有各的墨色：少一条就红（加第五条数值忘了配色，会渲染成基类那支绿）', () => {
+    for (const key of STAT_KEYS) {
+      const rule = css.match(new RegExp(`\\.pet-float\\[data-key='${key}'\\] \\{([^}]*)\\}`))?.[1]
+      expect(rule, `.pet-float[data-key='${key}'] 这条规则不在了`).toBeDefined()
+      expect(rule).toMatch(new RegExp(`color: var\\(--gain-${key}\\)`))
+    }
+    // 四个色锁死。换色要连着跑一遍 `node spike/float-color.mjs`：
+    // 它按白芯片压着近黑桌面混出来的最暗底（≈ #ededed）算对比度，四个都得 ≥4.5:1。
+    const inks = Object.fromEntries([...css.matchAll(/--gain-(hunger|mood|weight|bond): (#[0-9a-f]{6})/g)].map((m) => [m[1], m[2]]))
+    expect(inks).toEqual({ hunger: '#a04a00', mood: '#aa295f', weight: '#6938a7', bond: '#007840' })
+    // 体重这支刻意从蓝色挪到紫：状态条那三档报警色里有一支蓝（#5aa0e6），
+    // 同一屏里「蓝」不能一边表示「体重」一边表示「这条快满了」。
+    expect(inks.weight).not.toBe('#3e5fad')
+  })
+
+  it('字号分档：饥饿最大、心情其次，体重与亲密度走基类那档 12px', () => {
+    const size = (key: string): number | undefined => {
+      const raw = css.match(new RegExp(`\\.pet-float\\[data-key='${key}'\\] \\{[^}]*font-size: (\\d+)px`))?.[1]
+      return raw === undefined ? undefined : Number(raw)
+    }
+    expect(size('hunger'), '饥饿该是最大的一档').toBe(14)
+    expect(size('mood')).toBe(13)
+    expect(size('weight'), '体重不该单独加字号（它走基类 12px）').toBeUndefined()
+    expect(size('bond'), '亲密度不该单独加字号（它走基类 12px）').toBeUndefined()
+    expect(block('pet-float')).toMatch(/font: 600 12px\/1/)
+    // 14px 那一档撑不撑得下 84 的盒子，由 e2e 按 data-key 实测（jsdom 没有排版引擎）
   })
 
   it('整层不吃鼠标，收起时真的移出布局（作者样式必须显式写 [hidden]）', () => {

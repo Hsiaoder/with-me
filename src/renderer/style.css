@@ -49,10 +49,19 @@ body {
   --hover-fill: #cfe6f6;
   --on-fill: #a9d4ef;
   --scroll-fill: #607580;
-  /* 「涨了多少」那串飘字的墨色。绿是「变好了」的通用读法，和状态条那三档
-     （蓝=充足 / 黄=将够 / 红=不够）不是同一套语义，别互相套用。
-     #17753f 在卡片那层 92% 白上对比约 5.7:1，12px 粗体过 AA（AA 正文门槛 4.5:1）。 */
+  /* 飘字的默认墨色：只有 data-key 认不出来时才会用到（正常四条各有各的那支，见下面）。 */
   --gain-ink: #17753f;
+  /* 四条数值各自的墨色——颜色只回答「这是哪条」，不当警报。
+     四个值都在白芯片压着近黑桌面混出来的最暗底（≈ #ededed）上量过对比度
+     （`node spike/float-color.mjs`）：焦糖橙 5.16、玫红 5.62、紫 6.58、松绿 4.77，全过 AA 的 4.5:1。
+     体重原先是靛蓝 #3e5fad，挪到紫是因为状态条那三档报警色里有一支蓝（#5aa0e6）：
+     同一屏里「蓝」不能一边表示「这条快满了」、一边表示「体重」。
+     饥饿那支焦糖橙和报警红 (#e6572c) 同属暖色族，但明度差了两档，且条在面板里、字在宠物旁边，
+     不会同一处并排出现——真要读混的代价是「看不出这是哪条」，而每条都还带着自己的汉字。 */
+  --gain-hunger: #a04a00;
+  --gain-mood: #aa295f;
+  --gain-weight: #6938a7;
+  --gain-bond: #007840;
   /* 飘字寿命，和 config.ts 的 FLOAT_MS 是同一个数（test/config.test.ts 钉住）。
      清理归 JS 定时器，这个变量只管动画长度——两边对不上就会出现
      「字还在但已经透明」或者「字消失了动画还剩一截」。 */
@@ -371,6 +380,27 @@ body.pet-over {
      清理归 JS 的定时器，动画只负责好看——挂在 animationend 上清理的话，
      系统「减少动效」把动画关掉时那条事件永远不来，字就会堆在屏幕上不掉。 */
   animation: pet-float-rise var(--float-ms, 1100ms) ease-out both;
+}
+
+/* 四条数值各有各的颜色与字号：颜色认「哪条」，字号认「多要紧」。
+   饥饿给最大（它最常飘、也最该被看见），亲密度压到和体重同一档——那条是长期账，不该抢镜。
+   盒子仍是 FLOAT_CHIP 那一格，换字号不改锚点算的宽度（更宽的标签由 e2e 那条实测顶着）。 */
+.pet-float[data-key='hunger'] {
+  color: var(--gain-hunger);
+  font-size: 14px;
+}
+
+.pet-float[data-key='mood'] {
+  color: var(--gain-mood);
+  font-size: 13px;
+}
+
+.pet-float[data-key='weight'] {
+  color: var(--gain-weight);
+}
+
+.pet-float[data-key='bond'] {
+  color: var(--gain-bond);
 }
 
 @keyframes pet-float-rise {

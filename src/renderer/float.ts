@@ -1,4 +1,5 @@
 import { FLOAT_MS } from '../shared/config.js'
+import type { FloatGain } from '../shared/stats.js'
 import type { Point } from '../shared/types.js'
 
 /**
@@ -22,7 +23,7 @@ export interface FloatLayer {
   /** 现在屏幕上还有几条。0 时整层已经移出布局。 */
   readonly count: number
   /** 贴一批新的（由上往下排，新的一条接在下面）。空数组什么都不做。 */
-  show(items: readonly string[]): void
+  show(gains: readonly FloatGain[]): void
   /** 跟着宠物挪。只在有字时写 transform。 */
   place(at: Point): void
   /** 全部撤掉（拖拽时和气泡一起清：人被拎起来了，那串数字也不是他此刻要读的东西）。 */
@@ -51,12 +52,15 @@ export function createFloatLayer(root: HTMLElement): FloatLayer {
     get count() {
       return timers.size
     },
-    show(items) {
-      if (items.length === 0) return
-      for (const text of items) {
+    show(gains) {
+      if (gains.length === 0) return
+      for (const g of gains) {
         const chip = document.createElement('div')
+        // 颜色和字号挂在 data-key 上（和状态栏四条同一个约定）：这一层不认识数值，
+        // 它只知道「贴一条、标一个键、一秒后撤掉」。
         chip.className = 'pet-float'
-        chip.textContent = text
+        chip.dataset.key = g.key
+        chip.textContent = g.text
         el.append(chip)
         const timer = setTimeout(() => drop(chip, timer), FLOAT_MS)
         timers.add(timer)
