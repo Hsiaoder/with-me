@@ -167,6 +167,35 @@ export function expGain(e: StatEvent, ctx: EventCtx): number {
 /** 等级由经验算出来，不入库：入库就有两份真相，还会漂。 */
 export const levelOf = (exp: number): number => Math.floor(Math.max(0, exp) / EXP_PER_LEVEL) + 1
 
+/** 涨了多少写成人话：整数值不带小数点，其余一位；四舍五入成 0 的干脆不写。 */
+export function gainText(label: string, delta: number): string | null {
+  const rounded = Math.round(delta * 10) / 10
+  if (rounded <= 0) return null
+  const num = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return `${label} +${num}`
+}
+
+/**
+ * 两份快照之间该飘出来的那些字。
+ *
+ * 三条规矩，都是照 qqpet 的观感定的：
+ * ① **只有涨的飘**。自然衰减每分钟都在动，要是也飘，屏幕上永远在刷负数，
+ *    而衰减本来就不该被注意到（注意到了才叫打扰）。
+ * ② **经验不飘**。它是 0.2 / 0.3 这种小碎步，飘出来只会把真正要紧的那两条挤走。
+ * ③ 四舍五入成 0 的不飘（`+0.0` 比不飘更怪）。
+ *
+ * 纯函数、不碰 DOM：渲染层只管把拿到的每条贴上去，「该飘什么」这件事由这里说。
+ */
+export function gainsToFloat(prev: Stats, next: Stats): string[] {
+  const out: string[] = []
+  for (const key of STAT_KEYS) {
+    const text = gainText(STAT_LABELS[key], next[key] - prev[key])
+    if (text !== null) out.push(text)
+  }
+  return out
+}
+
+
 export function applyEvent(
   stats: Stats,
   e: StatEvent,

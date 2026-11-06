@@ -162,3 +162,33 @@ export function statsAnchor(body: Rect, size: { w: number; h: number }, screen: 
   const y = Math.min(Math.max(centered, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
   return { x, y }
 }
+
+/**
+ * 飘字（「饥饿 +12」）该摆在宠物哪一边。
+ *
+ * **左边优先**：状态栏天然挂右边，飘字再去右边就会跟它挤同一列；
+ * 而气泡在头顶、按钮条在脚下，头的左边常年是空的。
+ * 三种情况翻到右边：① 状态栏已经占了左边（宠物贴右边缘时它会翻过去）；
+ * ② 左边放不下（宠物贴左边缘）而右边放得下；③ 两边都放不下时夹回屏幕内——
+ * 夹进来会压在宠物身上，那是气泡和状态栏都踩过的坑（problem/05 §5.10），
+ * 但飘字只活一秒，压一下比整条数字跑到屏幕外好。
+ *
+ * 纵向取 `body.y + headOffset`：**由上往下排**，新的一条接在下面。
+ * 这样列的高度变化不会把已经飘起来的字顶来顶去，也保证它一路待在气泡下沿之外。
+ */
+export function floatAnchor(
+  body: Rect,
+  plate: Rect | null,
+  size: { w: number; h: number },
+  screen: Rect,
+  gap: number,
+  headOffset: number,
+): Point {
+  const plateOnLeft = plate !== null && plate.x + plate.w <= body.x
+  const leftRoom = body.x - gap - size.w >= screen.x
+  const rightRoom = body.x + body.w + gap + size.w <= screen.x + screen.w
+  const goRight = plateOnLeft || (!leftRoom && rightRoom)
+  const x0 = goRight ? body.x + body.w + gap : body.x - gap - size.w
+  const x = Math.min(Math.max(x0, screen.x), Math.max(screen.x, screen.x + screen.w - size.w))
+  return { x, y: body.y + headOffset }
+}

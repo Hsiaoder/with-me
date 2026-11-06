@@ -49,6 +49,14 @@ body {
   --hover-fill: #cfe6f6;
   --on-fill: #a9d4ef;
   --scroll-fill: #607580;
+  /* 「涨了多少」那串飘字的墨色。绿是「变好了」的通用读法，和状态条那三档
+     （蓝=充足 / 黄=将够 / 红=不够）不是同一套语义，别互相套用。
+     #17753f 在卡片那层 92% 白上对比约 5.7:1，12px 粗体过 AA（AA 正文门槛 4.5:1）。 */
+  --gain-ink: #17753f;
+  /* 飘字寿命，和 config.ts 的 FLOAT_MS 是同一个数（test/config.test.ts 钉住）。
+     清理归 JS 定时器，这个变量只管动画长度——两边对不上就会出现
+     「字还在但已经透明」或者「字消失了动画还剩一截」。 */
+  --float-ms: 1100ms;
 }
 
 /* 交互区（身体 + 开着的面板的外接矩形）里是同一枚 hand_point，值只有 --pet-cursor 一份。
@@ -325,6 +333,66 @@ body.pet-over {
 
 .pet-bubble-reply:hover {
   background: var(--hover-fill);
+}
+
+/* 属性变化时飘出来的数字（「饥饿 +12」）。
+   这一层**不挂 data-hit**：它点不着，所以不该接鼠标——交互区只算看得见且归我们管的那几块
+   （problem/01 §1.15）。它只活 FLOAT_MS，期间宠物怎么走都由 placeFloats 带着走。
+   宽高由 config 的 FLOAT_CHIP 定，`test/config.test.ts` 钉这两处是同一个数——
+   锚点算的是 84 宽，CSS 写成 100 就是「字压到宠物身上」那种查起来很费劲的错。 */
+.pet-floats {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.pet-floats[hidden] {
+  display: none;
+}
+
+.pet-float {
+  width: 84px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--gain-ink);
+  font: 600 12px/1 "Microsoft YaHei UI", sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  /* 上浮 + 淡出。时长是 --float-ms，和 config 的 FLOAT_MS 同一个数（测试钉住）：
+     清理归 JS 的定时器，动画只负责好看——挂在 animationend 上清理的话，
+     系统「减少动效」把动画关掉时那条事件永远不来，字就会堆在屏幕上不掉。 */
+  animation: pet-float-rise var(--float-ms, 1100ms) ease-out both;
+}
+
+@keyframes pet-float-rise {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+
+/* 减少动效：不浮、不淡，字直接出现又消失（消失由定时器管，见上面那条注释）。
+   留 opacity:0 会让它变成「看不见但还在占位」，那正是 §1.15 反复强调不要有的状态。 */
+@media (prefers-reduced-motion: reduce) {
+  .pet-float {
+    animation: none;
+  }
 }
 
 /* 命中区与排布：所有视图的按钮共用。40px 的方块留着当命中区——图标才 26px，

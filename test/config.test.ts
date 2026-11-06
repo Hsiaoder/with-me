@@ -7,6 +7,7 @@ import {
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_INNER_BOTTOM,
   BUBBLE_CAVITY, BUBBLE_RING_W,
   FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, VIEW_HIDE_MS,
+  FLOAT_CHIP, FLOAT_MS, FLOAT_HEAD_OFFSET,
 } from '../src/shared/config.js'
 import { mimeOf } from '../src/main/protocol.js'
 
@@ -164,11 +165,47 @@ describe('选中态的声明方式', () => {
   })
 })
 
-describe('操作型视图共用宽裕的收起延时', () => {
-  it('VIEW_HIDE_MS 是 5000，旧名字 SETTING_HIDE_MS 已经不存在', () => {
+describe('操作型视图共用宽裕的收起延时', () => {  it('VIEW_HIDE_MS 是 5000，旧名字 SETTING_HIDE_MS 已经不存在', () => {
     expect(VIEW_HIDE_MS).toBe(5000)
     const src = readFileSync('src/shared/config.ts', 'utf8')
     expect(src).not.toContain('SETTING_HIDE_MS')
+  })
+})
+
+describe('飘字（属性涨了多少）的尺寸与时序', () => {
+  // 先剥注释：这几条读的是 CSS 形状，注释里提一句属性名不该把自己判红（那条老规矩）
+  const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const block = (sel: string): string => css.match(new RegExp(`\\.${sel} \\{([^}]*)\\}`))?.[1] ?? ''
+
+  it('.pet-float 的宽高就是 FLOAT_CHIP：锚点按这个数算左右，写歪了字会压到宠物身上', () => {
+    expect(block('pet-float'), '读不到 .pet-float 块').not.toBe('')
+    expect(block('pet-float')).toContain(`width: ${FLOAT_CHIP.w}px`)
+    expect(block('pet-float')).toContain(`height: ${FLOAT_CHIP.h}px`)
+  })
+
+  it('--float-ms 和 config 的 FLOAT_MS 是同一个数，且动画真的引用它', () => {
+    expect(css).toMatch(new RegExp(`--float-ms: ${FLOAT_MS}ms`))
+    expect(block('pet-float')).toContain('animation: pet-float-rise var(--float-ms')
+  })
+
+  it('上浮的距离不许超过 FLOAT_HEAD_OFFSET：再高就顶进气泡里了', () => {
+    const rise = Number(css.match(/@keyframes pet-float-rise \{[\s\S]*?to \{[^}]*translateY\(-(\d+)px\)/)?.[1] ?? -1)
+    expect(rise, '读不到 keyframes 的上浮距离').toBeGreaterThan(0)
+    expect(rise).toBeLessThanOrEqual(FLOAT_HEAD_OFFSET)
+  })
+
+  it('整层不吃鼠标，收起时真的移出布局（作者样式必须显式写 [hidden]）', () => {
+    expect(block('pet-floats')).toContain('pointer-events: none')
+    expect(css).toMatch(/\.pet-floats\[hidden\] \{[^}]*display: none/)
+  })
+
+  it('减少动效那档把动画整条关掉：清理归定时器，不靠 animationend', () => {
+    // 文件里有好几处 @media (prefers-reduced-motion)（面板出场一条、飘字一条），要挑出飘字那条
+    const reduced = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/g)]
+      .map((m) => m[1] ?? '')
+      .find((b) => b.includes('.pet-float'))
+    expect(reduced, '找不到减少动效里关飘字动画的那条').toBeDefined()
+    expect(reduced).toMatch(/animation: none/)
   })
 })
 

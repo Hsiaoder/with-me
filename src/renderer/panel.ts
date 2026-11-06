@@ -60,6 +60,12 @@ export interface Panel {
   size(): { w: number; h: number } | null
   /** 副板尺寸。没有副板（动作视图）或还没打开时是 null——装配层不该按它夹屏幕。 */
   plateSize(): { w: number; h: number } | null
+  /**
+   * 副板自己的矩形（没开或没有副板时 null）。
+   * `rects()` 给的是两块的合集，分不出「挂在侧面那一条」和「长在下面那一条」，
+   * 而飘字要判断的正是状态栏有没有占了左边（见 geometry.floatAnchor）。
+   */
+  plateRect(): Rect | null
   /** 现在代表主块的那个节点（测试与装配层用来确认「量的是哪一块」）。 */
   primaryEl(): HTMLElement | null
   /** 开着时占着屏幕的那几块的真实矩形（收起时是空数组）。
@@ -517,6 +523,13 @@ export function createPanel(
     plateSize() {
       if (!at || plateEl === null || !hasSecondAnchor(current)) return null
       return { w: plateEl.offsetWidth, h: plateEl.offsetHeight }
+    },
+    plateRect() {
+      // 只看「有没有副板且开着」，不套 hasSecondAnchor：设置视图的副板就是主块本身，
+      // 它同样占着宠物旁边那块地方，飘字该躲的是它占的位置，不是它算不算"第二块"。
+      if (at === null || plateEl === null) return null
+      const r = plateEl.getBoundingClientRect()
+      return { x: r.x, y: r.y, w: r.width, h: r.height }
     },
     primaryEl() {
       return primary()

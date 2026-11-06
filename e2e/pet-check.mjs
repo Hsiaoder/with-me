@@ -14,7 +14,8 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CLIP_FADE_MS, PANEL_BUTTONS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { CLIP_FADE_MS, FLOAT_HEAD_OFFSET, PANEL_BUTTONS, PANEL_HIDE_MS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { STAT_KEYS, STAT_LABELS } from '../src/shared/stats.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -1365,6 +1366,187 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   assert.deepEqual(clickable, ['pet-gender is-male'], `状态栏里还有别的按钮：${JSON.stringify(clickable)}`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
+
+check('飘字：喂一口把涨的那几条飘出来，到点自己掉，全程不抢鼠标', async () => {
+  /**
+   * 观感照 qqpet：数值变了要在宠物旁边冒一下。这里只验只有真浏览器能验的三件事：
+   * ① 文字**没被芯片裁掉**（84px 装「亲密度 +0.2」这种最长的，jsdom 量不出来）；
+   * ② 这一层**不吃鼠标**（pointer-events:none 没生效就是 problem/01 §1.15 那个
+   *    「看不见却吞点击」换了个形态重来）；
+   * ③ 到点真的**移出布局**（清理归定时器，动画那一头关了也照样掉）。
+   * 「只有涨的飘、经验不飘」是纯函数的规矩，由 test/stats.test.ts 钉，不在这儿重复。
+   */
+  const file = join(userData, 'save.json')
+  const readSave = () => {
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'))
+    } catch {
+      return null
+    }
+  }
+  /**
+   * 先把宠物挪到屏幕中段。它要是被前面的检查留在屏幕顶上，面板上下都放不下，
+   * 只夹回屏幕内——那一夹副板就压住按钮条，「点喂食」这一下 Playwright 会一路重试到超时
+   * （真跑出来过）。那套夹持几何有自己的检查，这条要验的是飘字，不陪它。
+   */
+  const parkMid = async () => {
+    const { w, h } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }))
+    const b = await page.evaluate(() => window.__petDebug.hitBox)
+    const from = { x: Math.round(b.x + b.w / 2), y: Math.round(b.y + b.h / 2) }
+    const to = { x: Math.round(w / 2), y: Math.round(h * 0.42) }
+    await page.evaluate(async ({ from, to }) => {
+      const fire = (type, p) =>
+        window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
+      fire('pointerdown', from)
+      fire('pointermove', { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 })
+      fire('pointermove', to)
+      fire('pointerup', to)
+    }, { from, to })
+    await page.waitForTimeout(300)
+  }
+  await page.evaluate(() => {
+    window.__petDebug.hidePanel()
+    window.__petDebug.hideBubble()
+    window.__petDebug.clearFloats()
+  })
+  await notEating()
+  await parkMid()
+  /**
+   * 叫出食物列表。两步都不能省：
+   * ① 视图已经是 foods 时**不能再点喂食**——那一下是「收回列表」（用户要的开关键），
+   *    点了就等于把要用的东西关掉，然后 waitForSelector 干等 30 秒；
+   * ② 超时就报现场，光看 Playwright 的超时串查不出是哪种。
+   */
+  const openFoods = async () => {
+    assert.ok(await openOnBody(), '前置：面板叫不出来')
+    if ((await dbg()).view !== 'foods') await page.click('.pet-actions button[data-id="feed"]')
+    try {
+      await page.waitForSelector('.pet-panel .pet-food', { timeout: 5000 })
+    } catch {
+      throw new Error(`点喂食没出食物列表，现场：${JSON.stringify(await dbg())}`)
+    }
+  }
+  await openFoods()
+  // 开面板本身可能带一发增益（今天第一次开），等它落进快照与存档再抄初值，不然对不上账
+  await page.waitForTimeout(400)
+  await page.evaluate(() => window.__petDebug.clearFloats())
+  const before = readSave()?.stats
+  assert.ok(before, '前置：存档里读不到 stats')
+
+  const cell = await page.evaluate(() => {
+    const r = document.querySelector('.pet-panel .pet-food[data-food="crab"]').getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })
+  await feed(cell)
+  await page.click('.pet-panel .pet-food[data-food="crab"]')
+  await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 5000 })
+
+  const shot = await page.evaluate(() => {
+    const r = window.__petDebug.floatRect
+    const layer = document.querySelector('.pet-floats')
+    const chips = [...document.querySelectorAll('.pet-float')]
+    const mid = r ? { x: Math.round(r.x + r.w / 2), y: Math.round(r.y + r.h / 2) } : null
+    const top = mid ? document.elementFromPoint(mid.x, mid.y) : null
+    /**
+     * 最长的那条**可能**出现的标签（4 字标签 + 两位整数带一位小数）。
+     * 这一屏真飘出来的未必是最长的，所以要问的是 CSS 本身装不装得下——
+     * 芯片是 `overflow:hidden`，装不下就是悄悄裁掉，肉眼在 2× 远程桌面上看不出来。
+     * 只在层还可见时量一次，量完就摘掉（它不归定时器管，留着会一直挂在屏幕上）。
+     */
+    const roomOf = (t) => {
+      if (layer === null) return null
+      const probe = document.createElement('div')
+      probe.className = 'pet-float'
+      probe.textContent = t
+      layer.append(probe)
+      const got = { t, room: probe.clientWidth, need: probe.scrollWidth }
+      probe.remove()
+      return got
+    }
+    return {
+      texts: window.__petDebug.floatTexts,
+      rect: r,
+      hit: window.__petDebug.hitBox,
+      // room = 盒子放得下的宽度，need = 文字要的宽度：need > room 就是被裁了
+      fit: chips.map((c) => ({ t: c.textContent, room: c.clientWidth, need: c.scrollWidth })),
+      widest: roomOf('亲密度 +99.9'),
+      pe: layer ? getComputedStyle(layer).pointerEvents : '',
+      layerHits: layer ? layer.hasAttribute('data-hit') : null,
+      eaten: top ? `${top.tagName}.${top.className}` : null,
+      over: document.body.classList.contains('pet-over'),
+    }
+  })
+  const after = await (async () => {
+    // 落盘是异步的：轮一会儿，直到存档里至少有一格和喂之前不一样
+    for (let i = 0; i < 30; i++) {
+      const s = readSave()?.stats
+      if (s && STAT_KEYS.some((k) => s[k] !== before[k])) return s
+      await page.waitForTimeout(100)
+    }
+    return null
+  })()
+  assert.ok(after, '前置：喂了一口却没写进存档')
+  const rose = STAT_KEYS.filter((k) => after[k] - before[k] > 0.05)
+  assert.ok(rose.length > 0, '前置：喂了一口却没有任何数值上涨（早喂饱了？）')
+  // 飘出来的正好是账上涨的那几条：多了就是衰减也在飘，少了就是漏了某条路
+  assert.deepEqual(
+    [...new Set(shot.texts.map((t) => t.split(' ')[0]))].sort(),
+    rose.map((k) => STAT_LABELS[k]).sort(),
+    `飘的和账上对不上：账上涨的是 ${JSON.stringify(rose.map((k) => STAT_LABELS[k]))}，屏上飘的是 ${JSON.stringify(shot.texts)}`,
+  )
+  for (const t of shot.texts) {
+    assert.match(t, /^(饥饿|心情|体重|亲密度) \+\d+(\.\d)?$/, `这条不像人话：${t}`)
+    assert.ok(!/经验|等级/.test(t), `经验那本账飘出来了（0.2 的小碎步不该打扰人）：${t}`)
+  }
+  assert.ok(shot.rect !== null, '有字却量不到矩形：floatRect 的 null 分支写错了')
+  assert.ok(Math.abs(shot.rect.y - (shot.hit.y + FLOAT_HEAD_OFFSET)) < 1,
+    `顶端不在量好的那一行：飘字 ${shot.rect.y} 身体 ${shot.hit.y}`)
+  for (const f of shot.fit) {
+    assert.ok(f.need <= f.room, `「${f.t}」被芯片裁掉了：要 ${f.need}px，只有 ${f.room}px`)
+  }
+  assert.ok(shot.widest.need <= shot.widest.room,
+    `最长的那条标签装不下（${shot.widest.t}）：要 ${shot.widest.need}px，芯片只有 ${shot.widest.room}px——FLOAT_CHIP 该跟着改`)
+  assert.equal(shot.pe, 'none', '飘字层收得到鼠标：它会从桌面那儿把点击吞掉')
+  assert.equal(shot.layerHits, false, '飘字层挂上 data-hit 了，会被算进交互区')
+  assert.ok(!String(shot.eaten).includes('pet-float'), `芯片自己接住了这一点：${shot.eaten}`)
+  assert.equal(shot.over, true, '手停在食物格上，飘字冒出来却把交互区吐掉了（光标变回系统箭头）')
+
+  await page.waitForFunction(() => window.__petDebug.floatTexts.length === 0, null, { timeout: 4000 })
+  const gone = await page.evaluate(() => {
+    const el = document.querySelector('.pet-floats')
+    return { hidden: el?.hidden, display: el ? getComputedStyle(el).display : null }
+  })
+  assert.deepEqual(gone, { hidden: true, display: 'none' }, '字掉光了，这一层还留在布局里')
+
+  // 拖起来那一刻整串清掉（用户拍板：人被拎走了，半空的数字读起来像掉帧）
+  await notEating()
+  await openFoods()
+  await page.click('.pet-panel .pet-food[data-food="rice"]')
+  await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 5000 })
+  const dragged = await page.evaluate(async () => {
+    const h = window.__petDebug.hitBox
+    const from = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    const fire = (type, p) =>
+      window.dispatchEvent(new PointerEvent(type, { clientX: p.x, clientY: p.y, bubbles: true }))
+    const beforeDrag = window.__petDebug.floatTexts.length
+    fire('pointerdown', from)
+    fire('pointermove', { x: from.x + 2, y: from.y })
+    const held = window.__petDebug.floatTexts.length      // 没过阈值是「点」，不该清
+    fire('pointermove', { x: from.x + 130, y: from.y - 40 })
+    // 池子是同步换的，但松手就切回环境链——所以要在这里读，不能等 pointerup 之后再读
+    const poolAtMove = window.__petDebug.current.pool
+    const started = window.__petDebug.floatTexts.length
+    fire('pointerup', { x: from.x + 130, y: from.y - 40 })
+    await new Promise((r) => setTimeout(r, 200))
+    return { beforeDrag, held, started, poolAtMove }
+  })
+  assert.ok(dragged.beforeDrag > 0, '前置：第二口没飘出字')
+  assert.equal(dragged.held, dragged.beforeDrag, '只按住没拖就把字清了：那是「点」')
+  assert.equal(dragged.poolAtMove, 'drag', `越过阈值那一步没判成拖拽：${dragged.poolAtMove}`)
+  assert.equal(dragged.started, 0, '真的拖起来了，飘字还挂在半空跟着宠物一路飘')
+  await page.evaluate(() => window.__petDebug.clearFloats())
+})
+
 check('离开身体与面板满 1500ms 后面板自动收起', async () => {
   // 上一版这里直接喂离开坐标然后断言「收了」——可那时候面板已经被拖拽测试关掉了，
   // 断言的是「本来就没开」，什么都没测到。先把面板叫起来，再验它自己收回去。

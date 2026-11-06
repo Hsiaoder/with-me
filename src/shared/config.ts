@@ -139,6 +139,24 @@ export const BUBBLE_RING_W = 6
 export const BUBBLE_GAP = 12
 
 /**
+ * 属性变化时飘出来的那串小数字（「饥饿 +12」）。
+ * 尺寸是**锚点算得着的量**，所以和气泡那条 BUBBLE_W/H 一样走 config：
+ * `floatAnchor` 要拿它决定站左边还是右边，`test/config.test.ts` 钉 CSS 与它是同一个数。
+ * 宽 84 是按墨迹实测定下来的（`spike/float-width.mjs` 在真窗口里量）：最长的一条能出现的
+ * 标签「亲密度 +99.9」墨迹 74px，连不可能出现的「亲密度 +100.0」也才 82px。
+ * 芯片是 `overflow:hidden`，装不下就是**悄悄裁掉**，所以 e2e 里塞一条最宽的进去量。
+ */
+export const FLOAT_CHIP = { w: 84, h: 22 }
+/** 飘字与身体之间的水平间隙。 */
+export const FLOAT_GAP = 8
+/** 飘字顶端离身体顶沿多远：20 是量出来的——气泡底沿在身体顶再往上 12，
+ *  飘字从这里上升 20px 刚好一路待在气泡下沿之外，两者不会叠。 */
+export const FLOAT_HEAD_OFFSET = 20
+/** 一条飘字活多久。CSS 的上浮淡出也是这个时长（有测试钉住），定时器负责清理，
+ *  所以「系统减少动效」把动画关掉时数字照样会消失，不会堆在那儿。 */
+export const FLOAT_MS = 1100
+
+/**
  * 面板上的功能按钮，顺序即显示顺序。
  *
  * `pool` 是点下去播哪一类反应；`view` 是切到哪个视图。喂食与状态已经接上真功能

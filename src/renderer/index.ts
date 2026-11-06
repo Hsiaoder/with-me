@@ -4,6 +4,9 @@ import {
   BUBBLE_SHOW_MS,
   BUBBLE_W,
   DRAG_START_PX,
+  FLOAT_CHIP,
+  FLOAT_GAP,
+  FLOAT_HEAD_OFFSET,
   GRAB_HEARTBEAT_MS,
   IDLE_LONG_MS,
   PANEL_GAP,
@@ -14,17 +17,18 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, bubbleAnchor, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
 import { clamp, nextTalkIndex, pickTalk, TALK_FLOW, type TalkReason } from '../shared/talk.js'
-import { isBlue, isHungry } from '../shared/stats.js'
+import { gainsToFloat, isBlue, isHungry } from '../shared/stats.js'
 import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createBubble, type BubbleContent } from './bubble.js'
+import { createFloatLayer } from './float.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
 import { createVideoPlayer } from './player/video-backend.js'
@@ -245,8 +249,13 @@ function bootstrap(skin: SkinPayload): void {
   /** 主进程推来的数值快照。状态视图直接吃它，台词档也要看它。 */
   let snap: StatsSnapshot | null = null
   window.petBridge?.onStats((s) => {
+    const prev = snap
     snap = s
     panel.setStats(s)
+    // 上一份快照是「刚才屏幕上是什么」，这一份是「现在是什么」——两者一差就是刚才发生了什么。
+    // 反馈挂在这里而不是挂在喂食/逗玩/回应各调用点，是因为那四条路都会走到这一句，
+    // 分开喊迟早漏一条（qqpet 就是五个调用点各喊一遍）。
+    if (prev !== null) floatGains(prev, s)
   })
 
   // ---- 气泡 ----
@@ -291,6 +300,25 @@ function bootstrap(skin: SkinPayload): void {
     bubbleDeadline = null
     bubble.hide()
     recomputeInteraction()
+  }
+
+  // ---- 飘字（属性涨了多少）----
+  /**
+   * 飘字层**不参与交互区**：不挂 `data-hit`，`recomputeInteraction` 也不看它的矩形。
+   * 一个点不着、只活一秒的东西要是把鼠标接住，就是 problem/01 §1.15 那个
+   * 「看不见却吞点击」换了个形态重来一次。
+   */
+  const floats = createFloatLayer(root)
+
+  const placeFloats = (): void =>
+    floats.place(floatAnchor(hitBox(), panel.plateRect(), FLOAT_CHIP, screenRect(), FLOAT_GAP, FLOAT_HEAD_OFFSET))
+
+  /** 两份快照之间涨了的那些写成「饥饿 +12」贴到宠物旁边；一条都不涨就什么都不做。 */
+  function floatGains(prev: StatsSnapshot, next: StatsSnapshot): void {
+    const items = gainsToFloat(prev.stats, next.stats)
+    if (items.length === 0) return
+    floats.show(items)
+    placeFloats()
   }
 
   /** 光标压在气泡上就算「还在读」。判据用坐标，不用 CSS :hover：穿透一开就收不到 mouseleave。 */
@@ -475,6 +503,8 @@ function bootstrap(skin: SkinPayload): void {
     sprite.setFlip(motion.facing() === 'left' && walking && isMirrorable(manifest, current.name))
     if (panel.isOpen) placePanel()          // 宠物走动时面板要跟着，不然飘在旧位置
     if (bubble.isOpen) placeBubble()        // 气泡同理：话说到一半宠物走开了，气泡不能钉在原地
+    // 飘字也跟着走：它只活一秒，但那一秒里宠物正在转身的话，字钉在原地就像从空气里冒出来的
+    if (floats.count > 0) placeFloats()
     if (outlineOn) sprite.showOutline(hitBox())
   }
 
@@ -618,6 +648,8 @@ function bootstrap(skin: SkinPayload): void {
     // 气泡同理，而且它比菜单更该走：话说到一半人被拎起来，那句还钉在原来的位置上飘着，
     // 读起来像 bug 而不是话（用户拍的板：拖拽时不弹气泡）。
     dismissBubble()
+    // 飘字也一起清：刚喂下去那串「饥饿 +12」还挂在半空就被拎走，读起来像掉帧
+    floats.clear()
     requestClip('drag')
     // 这里原来还有一句 sayFor('drag')——「被拎起来必回一句」和「拖拽时不弹气泡」是冲突的，
     // 用户 2026-11-05 选了后者，所以台词一起去掉，不留一条走不到的路径。
@@ -700,6 +732,21 @@ function bootstrap(skin: SkinPayload): void {
     /** 立刻收掉气泡。e2e 用它收尾，免得残留的气泡影响后面几条检查的命中判定。 */
     hideBubble: (): boolean => {
       dismissBubble()
+      return true
+    },
+    /** 现在飘着的字（从上到下）。空数组就是这一层已经移出布局。 */
+    get floatTexts(): string[] {
+      return [...floats.el.querySelectorAll('.pet-float')].map((n) => n.textContent ?? '')
+    },
+    /** 飘字层的矩形；没字时是 null，别拿 0×0 去参与断言。 */
+    get floatRect(): Rect | null {
+      if (floats.count === 0) return null
+      const r = floats.el.getBoundingClientRect()
+      return { x: r.x, y: r.y, w: r.width, h: r.height }
+    },
+    /** 清掉所有飘字。e2e 用它收尾，免得上一条的残字混进下一条的断言。 */
+    clearFloats: (): boolean => {
+      floats.clear()
       return true
     },
     /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, bubbleAnchor, panelAnchor, stageRect, stackAnchor, statsAnchor, unionRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, panelAnchor, stageRect, stackAnchor, statsAnchor, unionRect } from '../src/shared/geometry.js'
 import { BUBBLE_H, BUBBLE_W, CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -224,6 +224,40 @@ describe('statsAnchor', () => {
   it('贴左边缘时右侧仍是首选（左边才是没地方去的那一侧）', () => {
     const left = { x: 10, y: 700, w: 140, h: 180 }
     expect(statsAnchor(left, size, screen, 12).x).toBe(10 + 140 + 12)
+  })
+})
+
+describe('floatAnchor', () => {
+  const screen = { x: 0, y: 0, w: 1600, h: 952 }
+  const body = { x: 700, y: 700, w: 140, h: 180 }
+  const size = { w: 84, h: 22 }
+  const gap = 8
+  const head = 20
+
+  it('默认站左边：状态栏常年挂在右侧，飘字再去就挤同一列', () => {
+    expect(floatAnchor(body, null, size, screen, gap, head)).toEqual({ x: 700 - gap - 84, y: 720 })
+    expect(floatAnchor(body, { x: 848, y: 700, w: 150, h: 120 }, size, screen, gap, head).x).toBe(608)
+  })
+
+  it('状态栏翻到左边时飘字改站右侧，两边让开', () => {
+    const plate = { x: 400, y: 700, w: 150, h: 120 }
+    expect(floatAnchor(body, plate, size, screen, gap, head)).toEqual({ x: 700 + 140 + gap, y: 720 })
+  })
+
+  it('左边放不下（宠物贴左墙）就翻右边', () => {
+    const left = { x: 40, y: 700, w: 140, h: 180 }
+    expect(floatAnchor(left, null, size, screen, gap, head).x).toBe(40 + 140 + gap)
+  })
+
+  it('两边都放不下才夹回屏幕内：飘字只活一秒，压一下比整条跑到屏幕外好', () => {
+    const narrow = { x: 0, y: 0, w: 200, h: 952 }
+    expect(floatAnchor({ x: 60, y: 700, w: 100, h: 180 }, null, size, narrow, gap, head).x).toBe(0)
+  })
+
+  it('纵向只认 headOffset：由上往下排，新的一条不会把旧的顶来顶去', () => {
+    const y = floatAnchor(body, null, size, screen, gap, head).y
+    expect(y).toBe(720)
+    expect(floatAnchor(body, { x: 400, y: 700, w: 150, h: 120 }, size, screen, gap, head).y).toBe(y)
   })
 })
 

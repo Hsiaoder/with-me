@@ -10,6 +10,8 @@ import {
   EXP_PER_LEVEL,
   expGain,
   FOOD_EFFECT,
+  gainText,
+  gainsToFloat,
   INITIAL_STATS,
   isBlue,
   isCheerful,
@@ -239,5 +241,44 @@ describe('经验与等级', () => {
     const again = expGain({ kind: 'play' }, { now: NOW + 5 * 60_000, lastEventAt: { play: NOW } })
     expect(again).toBeCloseTo(first * DIMINISH_MULT, 6)
     expect(expGain({ kind: 'play' }, { now: NOW + 11 * 60_000, lastEventAt: { play: NOW } })).toBeCloseTo(first, 6)
+  })
+})
+
+describe('飘字：涨的那几条才值得打扰主人', () => {
+  it('整数值不带小数点，小数留一位', () => {
+    expect(gainText('饥饿', 12)).toBe('饥饿 +12')
+    expect(gainText('心情', 0.3)).toBe('心情 +0.3')
+  })
+
+  it('四舍五入成 0 的干脆不写：+0.0 比不飘更怪', () => {
+    expect(gainText('亲密', 0.04)).toBeNull()
+    expect(gainText('亲密', 0)).toBeNull()
+  })
+
+  it('掉的不飘：自然衰减每分钟都在动，跟着飘就成了刷屏', () => {
+    expect(gainText('饥饿', -8)).toBeNull()
+    const before = { ...INITIAL_STATS }
+    const after = minutes(30)
+    expect(gainsToFloat(before, after)).toEqual([])
+  })
+
+  it('喂一次飘出吃饭那条，其余没动的不出声', () => {
+    const before = { ...INITIAL_STATS }
+    const { stats } = applyEvent(before, { kind: 'feed', food: 'rice' }, { now: NOW, lastEventAt: {} })
+    const out = gainsToFloat(before, stats)
+    expect(out.length, '喂一次该有一条飘字').toBeGreaterThan(0)
+    expect(out[0]).toMatch(/^饥饿 \+\d/)
+    for (const line of out) expect(line).not.toContain('亲密度')
+  })
+
+  it('经验不参与：Stats 结构里就没有这一格（等级/经验是另一本账）', () => {
+    expect(STAT_KEYS).not.toContain('exp')
+    expect(Object.keys(INITIAL_STATS)).not.toContain('exp')
+  })
+
+  it('四条同时涨就按 STAT_KEYS 的顺序出四条', () => {
+    const before = { hunger: 10, mood: 10, weight: 10, bond: 10 }
+    const out = gainsToFloat(before, { hunger: 20, mood: 21.5, weight: 10, bond: 12 })
+    expect(out).toEqual(['饥饿 +10', '心情 +11.5', '亲密度 +2'])
   })
 })
