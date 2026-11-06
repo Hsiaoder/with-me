@@ -433,7 +433,7 @@ describe('气泡尺寸', () => {
   })
 })
 
-describe('气泡的两支颜色：同一条青蓝（按钮面用青内圈原值，环压暗一档过 3:1）', () => {
+describe('气泡的两支颜色：淡蓝环（用户拍板，明度过不了 3:1）+ 圆底面那块淡蓝', () => {
   const svg = readFileSync('src/renderer/emotes/bubble.svg', 'utf8')
   const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
   /** 素材里两层同形状：先画的带色那层 = 环，后画的白层 = 内腔。 */
@@ -455,27 +455,31 @@ describe('气泡的两支颜色：同一条青蓝（按钮面用青内圈原值�
     return (Math.atan2(B, A) * 180) / Math.PI
   }
 
-  it('环是青内圈压暗一档：原值过不了 3:1，同色相的最亮解才用', () => {
-    // 用户 2026-11-07 要「改成按钮内边框那种蓝」= Kenney 圆底的 #36BDF7。
-    // 那支**直接当环是不够的**：对白内腔 2.15、对浅桌面 1.90，UI 组件门槛 3:1。
-    // 所以环走同一条 H=232 压到 L=63.1 的 #0095CC——是同一色相的另一档，不是另一种蓝。
-    expect(ring, 'bubble.svg 第一层不是解出来的那支青蓝').toBe('#0095cc')
+  it('环钉在 #92C7E3：这支是用户看过四轮之后挑的淡蓝，不是谁顺手调浅的', () => {
+    expect(ring, 'bubble.svg 第一层不是那支淡蓝环').toBe('#92c7e3')
     expect(cavity, '内腔不是纯白就没法当对比度的底').toBe('#ffffff')
-    expect(contrast(ring, cavity), `环对白色内腔只有 ${contrast(ring, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
-    expect(contrast(ring, '#eef1f5'), `环对浅桌面只有 ${contrast(ring, '#eef1f5').toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
-    // 深色桌面那面**故意不列进来**：压它的是整块白色身子（同圆底那套两层逻辑）。
-    expect(Math.abs(hue(ring) - hue('#36bdf7')), '环偏离了青内圈那条色相').toBeLessThan(10)
+    /**
+     * 这里**故意不写 `≥ 3`**。实测这支对白内腔 1.83、对浅桌面 1.61，不达 UI 组件的 3:1——
+     * 浅壁纸上气泡边缘会化开，那正是第二轮换成 #5492B2 的理由（`spike/bubble-color.mjs` 有算式）。
+     * 2026-11-07 用户看过淡的、深的、角色色、青蓝四轮之后说「最开始的环是淡蓝，改回去吧」：
+     * **观感优先于门槛**，这是他的决定，不是我们算错了。
+     * 所以这条钉的是「别有人拿 3:1 把它悄悄调深」——要调深请重新问用户，不要动测试。
+     * 补偿手段是 CSS 那层 `drop-shadow`（跟着 alpha 走），它才是浅壁纸上真正分出水泡的东西。
+     */
+    expect(contrast(ring, cavity), '环比当年更浅了，连投影都救不回来').toBeGreaterThan(1.5)
   })
 
-  it('按钮面用青内圈原值；文字仍是墨色，边界由深一档的边承担', () => {
-    expect(reply, '--reply-fill 不是圆底那圈青内圈的原值').toBe('#36bdf7')
+  it('按钮面 = 动作按钮那层圆底面；边界由描边扛，文字仍是墨色', () => {
+    expect(reply, '--reply-fill 不是圆底面那一支淡蓝').toBe('#ebf5fb')
     expect(contrast(ink, reply), `墨字对按钮面只有 ${contrast(ink, reply).toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
-    // 面自己只有 2.15:1，压不住白色内腔——所以这条量的是**描边**（对白内腔 ≥3）。
+    // 这块面对白内腔只有 1.11:1，压不住白色气泡——所以组件边界量的是**描边**。
     // 写成 toBeLessThan 是故意的：哪天有人把面调深到能自己扛，这条会逼他重看描边还要不要。
-    expect(contrast(reply, cavity), '青面自己就压得住白内腔？判据要重看').toBeLessThan(3)
+    expect(contrast(reply, cavity), '淡面自己就压得住白内腔？判据要重看').toBeLessThan(3)
     expect(contrast(pill, cavity), `描边对白内腔只有 ${contrast(pill, cavity).toFixed(2)}:1`).toBeGreaterThanOrEqual(3)
     // 边和面是同一个组件的两层，不要求 3:1；但得**分得开**，否则边等于没画
     expect(contrast(pill, reply), `描边和按钮面差 ${contrast(pill, reply).toFixed(2)}，边画了等于没画`).toBeGreaterThanOrEqual(2)
-    expect(Math.abs(hue(pill) - hue(ring)), `描边 ${pill} 偏离环 ${ring} 那条色相`).toBeLessThan(10)
+    // 边和环该在同一条 H≈232 上：淡蓝家族里混进一支别的蓝就变成「配色」了。
+    // 按钮面不参与比色相——C=0.013 的近中性色，色相跟着噪点飘，比它没意义。
+    expect(Math.abs(hue(pill) - hue(ring)), `描边 ${pill} 偏离环 ${ring} 那条色相`).toBeLessThan(12)
   })
 })
