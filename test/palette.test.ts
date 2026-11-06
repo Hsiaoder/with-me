@@ -46,14 +46,20 @@ describe('A 套配色：圆底 SVG', () => {
 
 describe('A 套配色：CSS 侧的板心', () => {
   const css = read('style.css')
-  const root = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf('--on-fill')))
+  // 切到 :root 那一块的收尾 `}`（行首那个），不是「第一个 }」：
+  // 以前者写法的话，token 后面多加一行注释或再加一档就会把要查的那几格切掉（这条本轮踩过一次）
+  const rootStart = css.indexOf(':root {')
+  const root = css.slice(rootStart, css.indexOf('\n}', rootStart))
 
-  it('四档填充都在同一条 H=232 阶梯上（改一档要一起改，别留半套）', () => {
+  it('五档填充都在同一条 H=232 阶梯上（改一档要一起改，别留半套）', () => {
     for (const [k, v] of [
       ['--plate-fill', '#ddeef8'],
       ['--hover-fill', '#cfe6f6'],
       ['--on-fill', '#a9d4ef'],
       ['--scroll-fill', '#607580'],
+      // 气泡里那颗回应按钮。它和 --on-fill 同格但角色不同，所以是独立一个 token
+      // （复用 --on-fill 的话，改选中态会顺带把按钮改了颜色，见 style.css 那条注释）
+      ['--reply-fill', '#a9d4ef'],
     ]) {
       expect(root, `${k} 不是 ${v}`).toContain(`${k}: ${v}`)
     }

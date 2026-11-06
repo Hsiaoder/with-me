@@ -19,7 +19,7 @@ const CAVITY_FILL = '#ffffff'
 /** 外扩 t：圆就是半径加 t，圆角矩形是四边各外扩、圆角再加 t（Minkowski 膨胀对这两类都是闭式）。 */
 function expand(shape, t) {
   return {
-    circles: [...shape.bumps, ...shape.tail].map((c) => ({ ...c, r: c.r + t })),
+    circles: [...shape.bumps, ...shape.foots, ...shape.tail].map((c) => ({ ...c, r: c.r + t })),
     rect: {
       x: shape.body.x - t,
       y: shape.body.y - t,

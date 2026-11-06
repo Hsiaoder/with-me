@@ -49,6 +49,10 @@ body {
   --hover-fill: #cfe6f6;
   --on-fill: #a9d4ef;
   --scroll-fill: #607580;
+  /* 气泡里那颗回应按钮的底色。**值和 --on-fill 同一格，但角色不同**，所以另开一个 token：
+     复用 --on-fill 的话，以后调「当前生效」那档的选中态会顺带把按钮改了颜色，而没人会想到它。
+     文字 #2b2f36 对它是 8.54:1（比原来压在近白底上还宽裕）。 */
+  --reply-fill: #a9d4ef;
   /* 飘字的默认墨色：只有 data-key 认不出来时才会用到（正常四条各有各的那支，见下面）。 */
   --gain-ink: #17753f;
   /* 四条数值各自的墨色——颜色只回答「这是哪条」，不当警报。
@@ -322,19 +326,25 @@ body.pet-over {
 }
 
 /* 回应按钮：文字区下面那一行，底边 143 正好压在 BUBBLE_INNER_BOTTOM 上（测试钉这条）。
-   宽度跟着文字区取 150——身子那块矩形上下一般宽，不必为下半截收着。
-   它自己也要「浮起来」一点：这颗是矩形，用 box-shadow 就够，不必动用 filter。 */
+   2026-11-06 用户三条：加背景色、加阴影立起来、长度缩短一点。
+   · 宽度 150 → 104 并**居中**（内容块中线在 CSS x 104）：以前它跟着文字区取满宽，
+     读起来像一条分隔栏而不是一个按钮，而正文最长也就 8 个字，用不到 150 宽的按钮。
+   · 底色取 A 套阶梯上 `#A9D4EF` 那一格，但**另开一个 token**（`--reply-fill`）而不是复用
+     `--on-fill`：同一格颜色、两个角色，以后改选中态不该顺带把这颗按钮改了。
+   · 阴影两层：`0 2px 0 #3E718C` 那道硬底边就是 Kenney 圆底「看着有厚度」的同一条路，
+     外面再罩一层软投影让它真的浮起来。只留软的那层会像糊了张灰纸。
+   文字 `#2b2f36` 对 `#A9D4EF` 是 8.54:1，比原来压在近白底上还宽裕。 */
 .pet-bubble-reply {
   position: absolute;
-  left: 29px;
+  left: 52px;
   top: 121px;
-  width: 150px;
+  width: 104px;
   height: 22px;
   padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.14);
+  border: 1px solid #6990a7;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  background: var(--reply-fill);
+  box-shadow: 0 2px 0 #3e718c, 0 4px 8px rgba(0, 0, 0, 0.22);
   color: #2b2f36;
   font: 12px/1 "Microsoft YaHei UI", sans-serif;
   pointer-events: auto;
@@ -345,8 +355,11 @@ body.pet-over {
   display: none;
 }
 
+/* 悬停不换底色（新底色已经比周围白了一档，再换浅反而像禁用），改成**按下去一点**：
+   硬底边从 2px 收成 1px、整颗下沉 1px，投影跟着近一点——这是「能点」最不打扰的说法。 */
 .pet-bubble-reply:hover {
-  background: var(--hover-fill);
+  translate: 0 1px;
+  box-shadow: 0 1px 0 #3e718c, 0 3px 6px rgba(0, 0, 0, 0.2);
 }
 
 /* 属性变化时飘出来的数字（「饥饿 +12」）。

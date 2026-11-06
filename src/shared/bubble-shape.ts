@@ -31,6 +31,12 @@ export type CloudShape = {
   body: CloudRect
   /** 顶上的三朵云包（圆心都压在身子上沿附近，只往上鼓） */
   bumps: CloudCircle[]
+  /**
+   * 底边的两朵云包（圆心压在下沿上，只往下鼓）。用户 2026-11-06 要「下面也变成云朵形状」：
+   * 以前只有顶上是云、底下是一条平边，读起来像「头上顶着一朵云的矩形」。
+   * 分在尾巴两侧——中间那格留给尾巴，不然云团会把尾巴根挤掉。
+   */
+  foots: CloudCircle[]
   /** 尾巴：三颗越往下越小的云团，指向宠物。不是一根尖——云朵气泡的尾巴也该是云 */
   tail: CloudCircle[]
 }
@@ -44,7 +50,9 @@ export type CloudShape = {
  * 数字（单位；CSS 值 = ×0.5）：
  * · 身子 x 12..404、y 108..318，圆角 62 → CSS 6..202 × 54..159，文字与回应按钮就落在这块里；
  * · 三朵云包顶到 y 12（含环 0），中间那朵最高（r 86、圆心还往上抬了 10）；
- * · 尾巴三颗越往下越小（28 → 16 → 8），尖那颗底到 364、含环 376 = 画布下沿，正好不空也不裁；
+ * · 底边两朵云包 r 36/38（比顶上那三朵小一档：云的下缘通常更碎），底到 356；
+ * · 尾巴三颗越往下越小（28 → 16 → 8），尖那颗底到 364、含环 376 = 画布下沿，正好不空也不裁。
+ *   **它必须仍是最低的那一个**：底边的云包要是鼓得比尾巴还低，尾巴就不指着宠物了，只是两条曲线；
  * · 尾巴整体偏中间一点（尖在 x 200，身子中线 208）——它得指着宠物，不是指着左下角。
  *   以前那版是一根三角尖，这版换成三颗渐小的云团：云朵气泡的尾巴也该是云。
  * · 内容块（文字 60 + 缝 4 + 按钮 22 = 86 高、150 宽）落在 CSS x 29..179、y 57..143，
@@ -59,6 +67,10 @@ export const CLOUD: CloudShape = {
     { x: 208, y: 98, r: 86 },
     { x: 313, y: 108, r: 66 },
   ],
+  foots: [
+    { x: 84, y: 318, r: 36 },
+    { x: 322, y: 318, r: 38 },
+  ],
   tail: [
     { x: 218, y: 310, r: 28 },
     { x: 208, y: 338, r: 16 },
@@ -66,8 +78,8 @@ export const CLOUD: CloudShape = {
   ],
 }
 
-/** 并集里所有圆（尾巴 + 云包 + 身子四角的圆弧部分由 rect 单独判，见 insideCloud）。 */
-export const cloudCircles = (s: CloudShape): CloudCircle[] => [...s.bumps, ...s.tail]
+/** 并集里所有圆（顶上云包 + 底边云包 + 尾巴；身子四角的圆弧由 rect 单独判，见 insideCloud）。 */
+export const cloudCircles = (s: CloudShape): CloudCircle[] => [...s.bumps, ...s.foots, ...s.tail]
 
 /** 一个点在不在**白色内腔**里（viewBox 单位，未加环）。 */
 export function insideCloud(s: CloudShape, x: number, y: number): boolean {
@@ -104,6 +116,7 @@ export function fitsInsideCloud(
       r: Math.max(0, s.body.r - pad),
     },
     bumps: s.bumps.map((c) => ({ x: c.x, y: c.y, r: c.r - pad })),
+    foots: s.foots.map((c) => ({ x: c.x, y: c.y, r: c.r - pad })),
     tail: s.tail.map((c) => ({ x: c.x, y: c.y, r: c.r - pad })),
   }
   const pts: [number, number][] = [
