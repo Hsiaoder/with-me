@@ -53,9 +53,11 @@ const need = (d: Partial<Stats>, k: StatKey): number => {
 }
 
 describe('数值形状', () => {
-  it('四条：饥饿 / 心情 / 体重 / 亲密度，标签齐全', () => {
+  it('四条：饥饿 / 心情 / 体重 / 亲密，标签齐全且都是两个字', () => {
     expect(STAT_KEYS).toEqual(['hunger', 'mood', 'weight', 'bond'])
-    expect(Object.values(STAT_LABELS)).toEqual(['饥饿', '心情', '体重', '亲密度'])
+    expect(Object.values(STAT_LABELS)).toEqual(['饥饿', '心情', '体重', '亲密'])
+    // 用户 2026-11-07「都要两个字的」：长短不齐时，状态栏那一列值的起笔会跟着歪
+    for (const [k, v] of Object.entries(STAT_LABELS)) expect(v, `${k} 的标签不是两个字`).toHaveLength(2)
   })
 
   it('初值都在 0..100 内，体重取中位（它是"养出来的痕迹"，不该一上来就偏胖或偏瘦）', () => {
@@ -336,10 +338,12 @@ describe('飘字：涨的那几条才值得打扰主人', () => {
   it('四条同时涨就按 STAT_KEYS 的顺序出三条，每条带自己的 key 给 CSS 上色', () => {
     const before = { hunger: 10, mood: 10, weight: 10, bond: 10 }
     const out = gainsToFloat(before, { hunger: 20, mood: 21.5, weight: 10, bond: 12 })
+    // 文案里的标签从 STAT_LABELS 推，不抄字符串——上一版抄了「亲密度」，
+    // 标签一改名这条就红在期望值上，而不是红在「顺序/键/格式」这些真正要钉的东西上
     expect(out).toEqual([
-      { key: 'hunger', text: '饥饿 +10' },
-      { key: 'mood', text: '心情 +11.5' },
-      { key: 'bond', text: '亲密度 +2' },
+      { key: 'hunger', text: `${STAT_LABELS.hunger} +10` },
+      { key: 'mood', text: `${STAT_LABELS.mood} +11.5` },
+      { key: 'bond', text: `${STAT_LABELS.bond} +2` },
     ])
   })
 })

@@ -10,11 +10,16 @@ export type StatKey = 'hunger' | 'mood' | 'weight' | 'bond'
 export type Stats = Record<StatKey, number>
 
 export const STAT_KEYS: readonly StatKey[] = ['hunger', 'mood', 'weight', 'bond']
+/**
+ * 状态栏与飘字共用的标签，**统一两个字**（用户 2026-11-07：「亲密度改为亲密，都要两个字的」）。
+ * 原来这条是「亲密度」，比另外三个长一个字——同一栏里标签长短不齐，值那一列就跟着歪。
+ * 飘字芯片读的是同一份，所以那边也从「亲密度 +99.9」变成「亲密 +99.9」，更窄更好读。
+ */
 export const STAT_LABELS: Record<StatKey, string> = {
   hunger: '饥饿',
   mood: '心情',
   weight: '体重',
-  bond: '亲密度',
+  bond: '亲密',
 }
 
 export const STAT_MAX = 100

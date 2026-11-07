@@ -151,25 +151,32 @@ export function stackAnchor(
  * 右边放不下（宠物贴右边缘）才翻到左边——**不是夹进屏幕**：夹过来会压在宠物身上，
  * 那正是气泡那条踩过的坑（见 problem/05 §5.10）。两边都不行才夹回屏幕内。
  *
- * 纵向：先和身体中线对齐，再往上抬 `lift`，最后夹回屏幕内。
- * 为什么要 `lift` 这个数而不是继续居中：这张卡比身体高（实测 186 vs 165，加了经验条之后），
- * 居中就必然从身体底沿再往下挂 10px 多，而那正是按钮条的地盘。抬 14 之后实测
- * 底沿离按钮条 15px、顶沿离气泡直边 8px，两头都空出来——气泡底边拉直（不再鼓云包）
- * 才腾得出这 8px，两件事是一起算的。
+ * 纵向：先和身体中线对齐，然后**保证底沿让开按钮条**（`barTop` 给了的话），最后夹回屏幕内。
+ * 为什么不是「往上抬 N 像素」那种写法：这张卡比身体高得多（2026-11-07 加了标题行与经验条之后 201，
+ * dshtry 那套身子 165、block 那套只有 141），**身子越矮，居中挂下去得越多**——
+ * 固定抬升在鲸鱼上刚好，在 block 上就压住按钮条（e2e 当场抓到）。
+ * 改成规则以后：底沿永远在按钮条上面留 `barMargin`，压不到能点的东西。
+ *
+ * 代价要说清：带（气泡直边 → 按钮条顶沿）装不下整张卡时，**让路的是气泡，不是按钮条**——
+ * 卡片顶上一段会被云盖住（z 序是 气泡 → 面板，见 README）。选这一头是因为
+ * 气泡只活几秒、形状还看得出来，而按钮被盖住就是点不动。
+ * 真要两头都空，得把四条读数并成两列把卡片压矮，那是布局决定，不是这里的旋钮（problem/05 §5.36）。
  */
 export function statsAnchor(
   body: Rect,
   size: { w: number; h: number },
   screen: Rect,
   gap: number,
-  lift = 0,
+  barTop: number | null = null,
+  barMargin = 6,
 ): Point {
   const right = body.x + body.w + gap
   const left = body.x - gap - size.w
   const x0 = right + size.w <= screen.x + screen.w ? right : left
   const x = Math.min(Math.max(x0, screen.x), Math.max(screen.x, screen.x + screen.w - size.w))
-  const centered = body.y + body.h / 2 - size.h / 2 - lift
-  const y = Math.min(Math.max(centered, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
+  const centered = body.y + body.h / 2 - size.h / 2
+  const y0 = barTop === null ? centered : Math.min(centered, barTop - barMargin - size.h)
+  const y = Math.min(Math.max(y0, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
   return { x, y }
 }
 

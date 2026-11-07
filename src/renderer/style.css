@@ -541,16 +541,17 @@ body.pet-over {
 
 /* 状态栏：竖一条，昵称在上、四条读数在中间、「此刻」两行在下面。宽度定死 150px——它站在宠物右侧，
    再宽就会在宠物贴右边缘时顶出屏幕，那时它只能翻到左边，反而压住宠物。
-   行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）→ 9 → 6（同一天，为了让卡塞进气泡和按钮条之间）。
+   行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）→ 6 → 4 → 3（同一天连着长了两行：经验条、标题行）。
    9px 那档确实比 5px 好读，但整张卡因此高到 206，比身体还高 41——居中就压按钮条、抬高就撞气泡。
-   6px 是两头都要的折中（卡高 182）。2026-11-07 卡片又多了**经验条那一行**（+20px），
-   只能再收到 4px 换回 16 的高度，剩下的靠 `STATS_LIFT=14` 让位（实测底沿离按钮条 15px）。
-   这条不是纯样式：**卡片高度就是那两条净空的总账**，改回 6 会让 e2e 的「状态栏底沿不许压按钮条」变红。
+   6px 是两头都要的折中（卡高 182）。2026-11-07 一天里卡片又长了两次：经验条那一行（+20）、
+   标题行那一行（+27）——现在 201，只能收到 3px 才塞得进那条 209 的带。
+   **这已经是「再加一行就得先减一行」的地步**，真要疏朗得改布局（四条读数并成两列），不是调间距。
+   这条不是纯样式：**卡片高度就是那两条净空的总账**，改回 4 会让 e2e 的「状态栏底沿不许压按钮条」变红。
    纵向变高由 statsAnchor 自己夹回屏幕内，不需要在这里防。 */
 .pet-plate.is-stats {
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: 3px;
   width: 150px;
 }
 
@@ -684,6 +685,51 @@ body.pet-over {
 
 .pet-stat-bar.is-low > i {
   background: #e6572c;
+}
+
+/* 档案卡片的标题行（用户 2026-11-07：「状态栏上方加一条横线，加个标题叫宠物档案，右边加个 ×」）。
+   横线走 `border-bottom` 而不是另画一个 div：这一行的下沿就是那条线，
+   多一个节点就多一处「它跟着谁对齐」的账（同 §3.10 那条「能用边线就不要用元素」）。
+   标题比读数重一档（600 字重）——它是这栏的名字，不是栏里的又一行。 */
+.pet-plate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(43, 47, 54, 0.28);
+}
+
+.pet-plate-title {
+  color: rgba(0, 0, 0, 0.72);
+  font: 600 12px/1.2 "Microsoft YaHei UI", sans-serif;
+}
+
+/* × 是这栏里第二枚能点的按钮（第一枚是性别符号）。和性别那条同一套规矩：
+   平时不带底、悬停浮一圈细边——「不要背景」说的是静止状态那块假卡片，
+   悬停给边是「这里能点」，不是「这里有个档」。
+   选择器要写到 `button.pet-plate-close` 这一层：上面那条 `.pet-plate.is-stats button`
+   是「2 类 + 1 元素」，只写类名压不过它，× 会连卡片那套边框和内边距一起继承过来
+   （性别符号那行同理，见上面那条注释）。 */
+.pet-plate.is-stats button.pet-plate-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: rgba(0, 0, 0, 0.55);
+  font: 14px/1 "Microsoft YaHei UI", sans-serif;
+  cursor: var(--pet-cursor);
+}
+
+.pet-plate.is-stats button.pet-plate-close:hover,
+.pet-plate.is-stats button.pet-plate-close:focus-visible {
+  box-shadow: 0 0 0 1.5px rgba(43, 47, 54, 0.35);
+  background: none;
+  color: rgba(0, 0, 0, 0.78);
 }
 
 /* 经验条：紧跟在等级那一行下面（用户 2026-11-07 看过之后点的位——「现在几级」和「还差多少」

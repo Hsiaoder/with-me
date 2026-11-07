@@ -15,7 +15,6 @@ import {
   PANEL_GAP,
   PANEL_HIDE_MS,
   PLATE_GAP,
-  STATS_LIFT,
   VIEW_HIDE_MS,
   STAGE_W_CSS,
   WALK_SPEED_PX_PER_SEC,
@@ -262,6 +261,15 @@ function bootstrap(skin: SkinPayload): void {
      */
     identity: (patch) => {
       window.petBridge?.setIdentity(patch)
+    },
+    /**
+     * 档案卡片右上角那颗 ×。走 closePanel 而不是 panel.hide：
+     * 后者只把 DOM 收掉，前者才把 hover 状态机、延时定时器、交互区一起复位
+     * ——少了 hover.reset()，鼠标停在原地就再也弹不出面板（problem/05 §5.12）。
+     */
+    close: () => {
+      lastInteractionAt = Date.now()
+      closePanel()
     },
     setting: (patch) => {
       settings = { ...settings, ...patch }
@@ -543,7 +551,16 @@ function bootstrap(skin: SkinPayload): void {
       // 以前就是 16 + 37 = 53px。
       // 按钮条和飘字那两条锚点照旧走命中框：它们要的是「脚下那一格」和「头顶那一片」，
       // 换墨迹会把已有的间距账（`FLOAT_HEAD_OFFSET` 按命中框顶沿量的）一起挪掉。
-      panel.showPlate(statsAnchor(inkRect(body, inkInsets), ps, screen, PANEL_GAP, STATS_LIFT))
+      // 纵向交给 statsAnchor 一条**规则**而不是一个抬升数：底沿必须让开按钮条，
+      // 因为卡片比身体高，而「高多少」随皮肤变（dshtry 身子 165、block 只有 141）。
+      // 只在按钮条摆在脚下时递它的顶沿过去；翻到头顶时那一横条不在下面，没有要让的东西。
+      panel.showPlate(statsAnchor(
+        inkRect(body, inkInsets),
+        ps,
+        screen,
+        PANEL_GAP,
+        at.side === 'below' ? at.y : null,
+      ))
     }
   }
 
@@ -932,6 +949,15 @@ function bootstrap(skin: SkinPayload): void {
     talkLines: (reason: TalkReason): string[] => TALK_LINES[reason].map((l) => l.say),
     get grabRequested(): boolean {
       return wantGrab
+    },
+    /**
+     * 装配层最后一次收到的光标位置（null = 这次运行还没收到过任何鼠标事件）。
+     * 名字不能叫 `cursor`——那个已经是「注入一个光标位置」的方法了。
+     * e2e 拿它分清「鼠标没放开」的两种成因：zone 判错了，还是 `recomputeInteraction`
+     * 在 lastCursor 为空时直接 return（那条早退是故意的：没有读数就不该改状态）。
+     */
+    get cursorSeen(): Point | null {
+      return lastCursor
     },
     get grabSends(): number {
       return grabSends

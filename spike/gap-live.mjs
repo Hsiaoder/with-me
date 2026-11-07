@@ -62,11 +62,19 @@ const rects = () => page.evaluate(() => {
 const base = await rects()
 console.log('只有按钮条：', JSON.stringify(base, null, 1))
 console.log(`按钮条顶沿 - 墨迹底沿 = ${base.bar.y - base.ink.bottom}px（命中框那条是 ${base.bar.y - base.hit.bottom}px）`)
+console.log(`可用的带：气泡直边 ${base.ink.y + Math.round((108 + 210 + 12) * 0.5)} → 按钮条顶沿 ${base.bar.y}`)
 
 await page.click('.pet-actions button[data-id="status"]')
 await page.waitForSelector('.pet-plate.is-stats')
 await page.waitForTimeout(400)
 const s = await rects()
+const rows = await page.evaluate(() =>
+  [...document.querySelectorAll('.pet-plate.is-stats > *')].map((n) => ({
+    cls: n.className.replace('pet-plate ', '').slice(0, 26),
+    h: Math.round(n.getBoundingClientRect().height),
+  })))
+console.log('各行高度：', JSON.stringify(rows))
+console.log(`卡片高 ${rows.reduce((a, r) => a + r.h, 0)}（行合计）+ 内边距/行距`)
 const xOver = Math.min(s.stats.right, s.bar.right) - Math.max(s.stats.x, s.bar.x)
 const yOver = s.stats.bottom - s.bar.y
 console.log('状态栏 + 按钮条：', JSON.stringify({ stats: s.stats, bar: s.bar }, null, 1))

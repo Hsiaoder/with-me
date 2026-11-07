@@ -22,8 +22,9 @@ const mount = (onClick = vi.fn()) => {
   const root = document.createElement('div')
   document.body.replaceChildren(root)
   const identity = vi.fn()
-  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), identity })
-  return { panel, root, onClick, identity }
+  const close = vi.fn()
+  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), close, identity })
+  return { panel, root, onClick, identity, close }
 }
 
 afterEach(() => { document.body.replaceChildren() })
@@ -126,7 +127,7 @@ describe('设置视图', () => {
     const action = vi.fn()
     const set = vi.fn()
     const view = vi.fn()
-    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn(), identity: vi.fn() })
+    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn(), close: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     return { panel, root, action, set, view }
   }
@@ -215,7 +216,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, identity: vi.fn() })
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, close: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setStats({
       stats: { hunger: 50, mood: 50, weight: 50, bond: 50 },
@@ -306,7 +307,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, identity: vi.fn() })
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, close: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setView('foods')
     const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
@@ -353,7 +354,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, identity: vi.fn() })
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, close: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setEating(true)
     panel.setView('foods')
@@ -461,7 +462,7 @@ describe('食物视图', () => {
     const view = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), identity: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), close: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     ;(panel.el.querySelector('button[data-id="feed"]') as HTMLElement).click()
     expect(action).not.toHaveBeenCalled()
@@ -488,7 +489,7 @@ describe('状态视图', () => {
     const { panel } = open()
     const rows = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat')]
     expect(rows.map((r) => r.dataset.key)).toEqual(['hunger', 'mood', 'weight', 'bond'])
-    expect(rows.map((r) => r.querySelector('.pet-stat-label')?.textContent)).toEqual(['饥饿：', '心情：', '体重：', '亲密度：'])
+    expect(rows.map((r) => r.querySelector('.pet-stat-label')?.textContent)).toEqual(['饥饿：', '心情：', '体重：', '亲密：'])
     expect(rows.map((r) => r.querySelector('.pet-stat-value')?.textContent)).toEqual(['82', '45', '20', '97'])
     expect(rows[1]?.querySelector('.pet-stat-bar > i')?.getAttribute('style')).toContain('width: 45%')
     // 等级不挂 .pet-stat：那个类专指「一条数值读数」，报警配色与上面这些数条数的地方都靠它
@@ -527,7 +528,7 @@ describe('状态视图', () => {
     const level = panel1.el.querySelector<HTMLElement>('.pet-stat-line[data-key="level"]')!
     expect(kids.indexOf(exp), '经验条没紧跟在等级下面').toBe(kids.indexOf(level) + 1)
     expect(exp.classList.contains('pet-stat'), '经验条不该冒充一条数值读数').toBe(false)
-    expect(exp.querySelector('.pet-stat-label')?.textContent).toBe('经验值：')
+    expect(exp.querySelector('.pet-stat-label')?.textContent).toBe('经验：')
     expect(exp.querySelector('.pet-exp-value')?.textContent).toBe(String(LEVEL_STEPS[0]))
     expect(exp.querySelector('.pet-exp-bar > i')?.getAttribute('style')).toContain('width: 0%')
     // 攒到本级一半：条跟着走一半，写的那个数是「门槛减已攒」
@@ -565,21 +566,54 @@ describe('状态视图', () => {
     expect(g.getAttribute('title')).toBe(g.getAttribute('aria-label'))
   })
 
-  it('冒号只在状态栏的标签上：加第十行不会漏，飘字芯片也不跟着变脏', () => {
+  it('冒号只在带标签的那几行上：标题行走的是另一套，飘字芯片也不跟着变脏', () => {
     /**
      * 用户 2026-11-06 要「每个状态的名字后面加个中文冒号」。冒号是在 `makeLabel` 里统一加的，
-     * 所以这里验的是**每一行都带上**（漏一行就是那行读起来像标题而不是像一行读数），
+     * 所以这里验的是**每一行带标签的都加上**（漏一行就是那行读起来像标题而不是像一行读数），
      * 以及 `STAT_LABELS` 那份清单**没被改**——飘字芯片共用它，「饥饿：+12」不是人话。
-     * 条数不写死：从卡片实际有几行推（身份三行 + 四条读数 + 此刻两行 + 经验一行 = 十行），
-     * 加行的人只会看到这一条跟着变，不会先红在期望值上。
+     * 条数不写死：数的是**有 `.pet-stat-label` 的那些行**（标题行没有标签，它走 .pet-plate-title）。
      */
     const { panel } = open()
     const labels = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-label')].map((n) => n.textContent ?? '')
-    const rows = [...panel.el.querySelectorAll('.pet-plate.is-stats > *')]
-    expect(labels).toHaveLength(rows.length)
-    expect(rows.length, '状态栏该有十行（身份 3 + 读数 4 + 此刻 2 + 经验 1）').toBe(10)
+    const tagged = [...panel.el.querySelectorAll('.pet-plate.is-stats > *')].filter((n) => n.querySelector('.pet-stat-label'))
+    expect(labels).toHaveLength(tagged.length)
+    expect(tagged.length, '该有十个带标签的行（身份 3 + 读数 4 + 此刻 2 + 经验 1）').toBe(10)
     for (const t of labels) expect(t.endsWith('：'), `「${t}」没带中文冒号`).toBe(true)
     for (const key of STAT_KEYS) expect(STAT_LABELS[key].endsWith('：'), `STAT_LABELS 被冒号污染了`).toBe(false)
+  })
+
+  it('标签都是两个字：同一栏里长短不齐，值那一列就跟着歪', () => {
+    // 用户 2026-11-07：「经验值改为经验，亲密度改为亲密，都要两个字的」。
+    // 「在线时间」是例外（它是时长不是属性，缩成两个字就读不出来了），所以这里只查读数与经验。
+    for (const key of STAT_KEYS) expect(STAT_LABELS[key], `${key} 的标签不是两个字`).toHaveLength(2)
+    const { panel } = open()
+    const labels = [...panel.el.querySelectorAll<HTMLElement>('.pet-stat-label')].map((n) => n.textContent ?? '')
+    for (const t of labels.filter((t) => !t.startsWith('在线'))) {
+      expect(t, `「${t}」不是「两个字 + 冒号」`).toHaveLength(3)
+    }
+  })
+
+  it('档案卡片有标题行：宠物档案 + 右上角 ×，× 点下去报 close', () => {
+    /**
+     * 用户 2026-11-07 三条一起要：横线、标题「宠物档案」、右边的 ×。
+     * 这条同时钉住**面板不自己收**：close 只是把点击递出去，
+     * 真正收起要连 hover 复位一起办，那是装配层的事（§5.12）。
+     */
+    const { panel, close } = open()
+    const head = panel.el.querySelector<HTMLElement>('.pet-plate-head')!
+    expect(head, '标题行没画出来').not.toBeNull()
+    expect(head.querySelector('.pet-plate-title')?.textContent).toBe('宠物档案')
+    // 它是卡片的第一行：横线在它下沿，读起来才是「标题 —— 内容」而不是又一行读数
+    const kids = [...panel.el.querySelectorAll('.pet-plate.is-stats > *')]
+    expect(kids[0], '标题行不是第一行').toBe(head)
+    const x = head.querySelector<HTMLButtonElement>('.pet-plate-close')!
+    expect(x.textContent).toBe('×')
+    expect(x.getAttribute('aria-label'), '× 只有符号，读屏得念出「关闭」').toContain('关闭')
+    expect(close).not.toHaveBeenCalled()
+    x.click()
+    expect(close).toHaveBeenCalledTimes(1)
+    // 面板不自个儿收：点了 × 之后 DOM 还在（收起由装配层接手）
+    expect(panel.isOpen, '面板自己收了，等于把装配层那套 hover 复位绕过去').toBe(true)
   })
 
   it('昵称 / 性别 / 等级三行的值紧跟冒号；读数与「此刻」那几行仍右对齐', () => {
@@ -685,7 +719,7 @@ describe('状态视图', () => {
     const view = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), identity: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), close: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.el.querySelector<HTMLButtonElement>('button[data-id="status"]')?.click()
     expect(action).not.toHaveBeenCalled()

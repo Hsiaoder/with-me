@@ -95,14 +95,25 @@ export function createVisibilityPolicy(
 }
 
 /**
+ * 探测脚本要排掉的「系统自己的窗口」类名。**这份清单是判据本体**，所以它是导出的数组，
+ * 而不是埋在 PowerShell 字符串里的一段——测试要拿同一个清单问不变量，抄两份就必然漂。
+ *   · 桌面（Progman/WorkerW）永远铺满整屏 → 不排就永远判成全屏
+ *   · 锁屏（LockApp，类名 Windows.UI.Core.CoreWindow）矩形正好铺满工作区
+ *     → 不排就「宠物一启动就把自己藏掉」（实测踩过）
+ *   · 任务栏、Alt+Tab、任务视图同理，它们出现时不该改变决定
+ */
+export const SHELL_CLASSES: readonly string[] = [
+  'Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd',
+  'MultitaskingViewFrame', 'XamlExplorerHostIslandWindow', 'ForegroundStaging',
+  'Windows.UI.Core.CoreWindow', 'ApplicationFrameWindow',
+]
+
+/** PowerShell 那段排除判据的字面量（`n == "Progman" || n == "WorkerW" || …`），由上面那份清单生成。 */
+const SHELL_TEST = SHELL_CLASSES.map((c) => `n == "${c}"`).join(' || ')
+
+/**
  * 探测脚本。导出它只为能被测试真跑一次：脚本语法坏掉时 stderr 是被丢掉的，
  * 整个可见性功能会静默失效，所以必须有一条「真的能打出可解析的一行」的证据。
- *
- * SHELL_CLASSES 是这条判据的关键。不排掉的话：
- *   · 桌面（Progman/WorkerW）永远铺满整屏 → 永远判成全屏
- *   · 锁屏（LockApp，类名 Windows.UI.Core.CoreWindow）矩形正好 0,0-1600,1000
- *     → 宠物一启动就把自己藏掉（实测踩过）
- *   · 任务栏、Alt+Tab、任务视图同理，它们出现时不该改变决定
  */
 export const PROBE_SCRIPT = (parentPid: number): string => `
 $ErrorActionPreference='SilentlyContinue'
@@ -118,9 +129,10 @@ Add-Type -Namespace PetVis -Name Native -MemberDefinition '
 [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public int dwFlags; }
 public static bool Shell(string n) {
-  return n == "Progman" || n == "WorkerW" || n == "Shell_TrayWnd" || n == "Shell_SecondaryTrayWnd"
-    || n == "MultitaskingViewFrame" || n == "XamlExplorerHostIslandWindow" || n == "ForegroundStaging"
-    || n == "Windows.UI.Core.CoreWindow" || n == "ApplicationFrameWindow";
+  return ${SHELL_TEST};
+}
+public static string ForegroundClass() {
+  var c = new System.Text.StringBuilder(64); GetClassName(GetForegroundWindow(), c, 64); return c.ToString();
 }
 public static bool Covers(IntPtr h) {
   if (h == IntPtr.Zero) return false;

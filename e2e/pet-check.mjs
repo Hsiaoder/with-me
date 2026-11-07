@@ -14,7 +14,7 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_CELL, FOOD_GAP, FOOD_ICON, FOOD_VISIBLE, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STATS_LIFT, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_CELL, FOOD_GAP, FOOD_ICON, FOOD_VISIBLE, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
 import { CLOUD, cloudScale } from '../src/shared/bubble-shape.ts'
 import { FOODS } from '../src/shared/food.ts'
 import { pageStep } from '../src/shared/scroll.ts'
@@ -1450,6 +1450,27 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
           label: n.querySelector('.pet-stat-label')?.textContent ?? '',
         }
       })(),
+      // 标题行：位置、标题文字、横线那条边的实际像素、× 的符号与命中区大小
+      head: (() => {
+        const kids = [...document.querySelectorAll('.pet-plate.is-stats > *')]
+        const h = document.querySelector('.pet-plate-head')
+        const x = document.querySelector('.pet-plate-close')
+        if (h === null || x === null) return { first: false, title: '(没画出来)', borderBottom: '0', glyph: '', hit: 0 }
+        const cs = getComputedStyle(h)
+        const r = x.getBoundingClientRect()
+        return {
+          first: kids[0] === h,
+          title: h.querySelector('.pet-plate-title')?.textContent ?? '',
+          borderBottom: cs.borderBottomWidth,
+          glyph: x.textContent ?? '',
+          hit: Math.min(Math.round(r.width), Math.round(r.height)),
+          // 静止状态不该有底和边框：`.pet-plate.is-stats button` 那条给卡片里所有按钮
+          // 发了「边框 + 4px 8px 内边距」，× 的选择器权重压不过它就会被套上一块假卡片
+          //（截图上看着就是一枚灰底方块，用户第一眼看成「又被选中了」）。
+          bg: getComputedStyle(x).backgroundColor,
+          border: getComputedStyle(x).borderTopWidth,
+        }
+      })(),
     }
   })
   assert.equal(g.name, '小鲸', `状态栏没显示存档里的名字：${g.name}`)
@@ -1482,7 +1503,16 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   assert.equal(g.expRow.afterLevel, true, '经验条没紧跟在等级那一行下面')
   assert.equal(g.expRow.cls, 'pet-exp', '经验条错挂了 .pet-stat：那是四条数值读数的类')
   assert.equal(g.expRow.text, String(Math.ceil(expToNext(exp))), `经验条写的数和表对不上：${g.expRow.text}`)
-  assert.equal(g.expRow.label, '经验值：', `经验条的标签不对：${g.expRow.label}`)
+  assert.equal(g.expRow.label, '经验：', `经验条的标签不对：${g.expRow.label}`)
+  // 标题行（用户 2026-11-07：横线 + 「宠物档案」+ 右边 ×）：真 Chromium 里量得到那条边线，
+  // jsdom 量不到排版，所以这条只在 e2e 有——单测钉的是 DOM，这里钉的是「它真的长在最上面」。
+  assert.equal(g.head.title, '宠物档案', `标题不对：${g.head.title}`)
+  assert.equal(g.head.first, true, '标题行不是卡片的第一行')
+  assert.ok(Number.parseFloat(g.head.borderBottom) >= 1, `标题行下沿那条横线没画出来：${g.head.borderBottom}`)
+  assert.equal(g.head.glyph, '×', `关闭按钮的符号不对：${g.head.glyph}`)
+  assert.ok(g.head.hit >= 24, `× 的命中区只有 ${g.head.hit}px，指尖点不到`)
+  assert.equal(g.head.bg, 'rgba(0, 0, 0, 0)', `× 静止状态有底色（被套上卡片那层假边框了）：${g.head.bg}`)
+  assert.equal(g.head.border, '0px', `× 静止状态有边框：${g.head.border}`)
   // 颜色必须跟着数字：分档写死在渲染里就会出「数值红了、条还是蓝的」那种假读数
   const bandOf = (v) => (v > 60 ? 'high' : v > 20 ? 'mid' : 'low')
   for (const r of g.rows) {
@@ -1502,7 +1532,7 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
     const bub = r('.pet-bubble')
     return {
       inkBottom: ink.y + ink.h, barTop: bar.top,
-      plateTop: plate.top, plateBottom: plate.bottom, plateLeft: plate.left,
+      plateTop: plate.top, plateBottom: plate.bottom, plateLeft: plate.left, plateH: Math.round(plate.height),
       bubTop: bub.top, bubBottom: bub.bottom, bubRight: bub.right,
     }
   })
@@ -1514,14 +1544,50 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   // 真正会撞上的高度是「身子下沿 + 环」，不是整块画布底沿（画布底沿是尾巴尖，它在中间）。
   const straight = lay.bubTop + (CLOUD.body.y + CLOUD.body.h + CLOUD.ring) * cloudScale(CLOUD, BUBBLE_W)
   const xOver = lay.bubRight - lay.plateLeft
-  if (xOver > 0) {
+  const band = lay.barTop - straight
+  if (xOver > 0 && lay.plateH <= band) {
+    // 带装得下整张卡 → 两头都不许碰。这是 dshtry 那套（身子 165）的情形。
     assert.ok(lay.plateTop >= straight,
-      `状态栏顶沿 ${lay.plateTop.toFixed(1)} 撞进气泡了（直边在 ${straight.toFixed(1)}，横向重叠 ${xOver.toFixed(1)}px）`)
+      `带够宽（${band.toFixed(0)} ≥ ${lay.plateH}）却撞进气泡了：顶沿 ${lay.plateTop.toFixed(1)}，直边 ${straight.toFixed(1)}`)
+  } else if (xOver > 0) {
+    // 带装不下（block 那套身子只有 141）→ 规则是**让路的是气泡，不是按钮条**：
+    // 气泡只活几秒、形状还看得出来；按钮被盖住就是点不动。这条 else 记下的是这个取舍，
+    // 不是「算了不管」——它仍然要求卡片完整在屏幕里（下面那条）。
+    assert.ok(lay.plateBottom <= lay.barTop, '带不够宽时优先让开的必须是按钮条')
   }
-  // 抬了也不许出屏幕上沿：STATS_LIFT 是净空，不是把卡片顶到屏幕外
+  // 抬了也不许出屏幕上沿：让位是往上让，不是把卡片顶到屏幕外
   assert.ok(lay.plateTop >= 0, `状态栏抬出屏幕上沿了：${lay.plateTop.toFixed(1)}`)
-  assert.ok(STATS_LIFT > 0, `STATS_LIFT=${STATS_LIFT} 抬不动就不算修过`)
+  assert.ok(lay.barTop - lay.inkBottom >= 1, '按钮条该在身子下面：底沿让位的前提是它在脚下')
   await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
+check('档案卡片那颗 ×：点下去整块面板收掉，鼠标也放开', async () => {
+  /**
+   * 用户 2026-11-07 要的这个 × 是**面板上第一枚真正的关闭按钮**（以前只能「再点一次状态键」或
+   * 「离开满延时自动收」）。它必须走装配层那条 closePanel：只把 DOM 藏掉的话，
+   * hover 状态机还记着「开着」，鼠标停在原地就再也弹不出面板（§5.12 那个坑）。
+   * 所以这里除了「收掉了」，还要问鼠标是不是真的放开了——那是同一条链上的另一半。
+   */
+  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+  await page.evaluate(() => window.__petDebug.hidePanel())
+  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: Math.round(inner.w / 2) - 90, y: inner.h - 260 })
+  await page.waitForTimeout(150)
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="status"]')
+  await page.waitForSelector('.pet-plate-head')
+  assert.equal(await page.evaluate(() => window.__petDebug.panelOpen), true, '前置：状态视图没开')
+  // 先把光标位置喂给装配层（`cursor` 那个方法是注入用的）：recomputeInteraction 在
+  // 从没收到过鼠标事件时直接 return，不先喂的话这条断言问的是空气。
+  const at = await page.locator('.pet-plate-close').boundingBox()
+  await page.evaluate((p) => window.__petDebug.cursor(p), { x: Math.round(at.x + at.width / 2), y: Math.round(at.y + at.height / 2) })
+  await page.click('.pet-plate-close')
+  await page.waitForTimeout(200)
+  assert.equal(await page.evaluate(() => window.__petDebug.panelOpen), false, '点了 × 面板还开着')
+  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'actions', '收起后没回到动作视图')
+  await page.waitForTimeout(400)
+  const after = await page.evaluate(() => ({ grab: window.__petDebug.grabRequested, cursor: window.__petDebug.cursorSeen }))
+  assert.equal(after.grab, false,
+    `面板收了鼠标还被抓着（光标在 ${JSON.stringify(after.cursor)}）：说明没走 closePanel，hover 复位在那条链上`)
 })
 
 check('状态栏的「此刻」两行：状态跟着画面换，在线时间一秒一跳', async () => {
@@ -1687,7 +1753,15 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   assert.equal(picked?.text, '♂', `雄的符号不是 ♂：${picked?.text}`)
   assert.equal(picked?.color, 'rgb(42, 95, 168)', `雄的符号该是深蓝：${picked?.color}`)
   assert.equal(picked?.label, '雄（点一下换成雌）', `换了档 aria-label 没跟着换：${picked?.label}`)
-  assert.equal(picked?.bg, 'rgba(0, 0, 0, 0)', `换档之后底色又回来了：${picked?.bg}`)
+  // 底色要在**鼠标离开之后**读：`.pet-plate.is-stats button:hover` 那条通用悬停规则
+  // 权重比 `.pet-plate.is-stats .pet-gender` 的 `background:none` 高（多一个伪类），
+  // 停在上面必然读到 hover-fill——那是悬停反馈，不是「底色又回来了」。
+  await page.evaluate((p) => window.__petDebug.cursor(p), { x: 20, y: 20 })
+  await page.mouse.move(4, 4)
+  await page.waitForTimeout(120)
+  const still = await glyph()
+  assert.equal(still?.bg, 'rgba(0, 0, 0, 0)', `换档之后静止状态又有了底色：${still?.bg}`)
+  assert.equal(still?.shadow, 'none', `鼠标离开后投影还挂着：${still?.shadow}`)
   assert.ok(picked?.hit.w >= 24 && picked?.hit.h >= 24, `换档之后命中区缩了：${JSON.stringify(picked?.hit)}`)
   let identity = null
   for (let i = 0; i < 30; i++) {
@@ -1701,10 +1775,12 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   }
   assert.equal(identity?.gender, 'male', `性别没落盘：${JSON.stringify(identity)}`)
   assert.equal(identity?.name, '小鲸', `改性别把名字弄丢了：${JSON.stringify(identity)}`)
-  // 返回按钮没了：卡片上除了性别符号不该再有别的可点项
+  // 卡片上能点的只有两枚：性别符号，和 2026-11-07 用户点名要的 ×（标题行右边那颗）。
+  // 「返回按钮」仍然没有——× 收起的是整块面板，不是退回上一层，两者不是同一个东西。
   const clickable = await page.evaluate(() =>
-    [...document.querySelectorAll('.pet-plate.is-stats button')].map((b) => b.className))
-  assert.deepEqual(clickable, ['pet-gender is-male'], `状态栏里还有别的按钮：${JSON.stringify(clickable)}`)
+    [...document.querySelectorAll('.pet-plate.is-stats button')].map((b) => b.className).sort())
+  assert.deepEqual(clickable, ['pet-gender is-male', 'pet-plate-close'],
+    `状态栏上的可点项不是这两枚：${JSON.stringify(clickable)}`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
@@ -1869,7 +1945,9 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
     }
   }
   for (const t of shot.texts) {
-    assert.match(t, /^(饥饿|心情|体重|亲密度) \+\d+(\.\d)?$/, `这条不像人话：${t}`)
+    // 标签清单从 STAT_LABELS 推：上一版抄了「亲密度」，用户把标签缩成两个字之后，
+    // 这条红在了期望值上而不是红在「飘字像人话」这件事上。
+    assert.match(t, new RegExp(`^(${Object.values(STAT_LABELS).join('|')}) \\+\\d+(\\.\\d)?$`), `这条不像人话：${t}`)
     assert.ok(!/经验|等级/.test(t), `经验那本账飘出来了（0.2 的小碎步不该打扰人）：${t}`)
   }
   assert.ok(shot.rect !== null, '有字却量不到矩形：floatRect 的 null 分支写错了')
@@ -1931,7 +2009,7 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
   await page.locator('.pet-bubble-reply').click()
   await page.waitForFunction(() => window.__petDebug.floatTexts.length > 0, null, { timeout: 1200 })
   const replied = await page.evaluate(() => ({ texts: window.__petDebug.floatTexts }))
-  assert.ok(replied.texts.some((t) => /^亲密度 \+/.test(t)), `点了回应没飘亲密：${JSON.stringify(replied.texts)}`)
+  assert.ok(replied.texts.some((t) => t.startsWith(`${STAT_LABELS.bond} +`)), `点了回应没飘亲密：${JSON.stringify(replied.texts)}`)
   assert.ok((readSave()?.stats.bond ?? 0) > bondBefore, '前置：回应没涨亲密')
 
   /**

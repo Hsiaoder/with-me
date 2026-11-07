@@ -204,13 +204,19 @@ describe('statsAnchor', () => {
     expect(statsAnchor(body, size, screen, 12)).toEqual({ x: 852, y: 730 })
   })
 
-  it('lift 就是「从居中再往上抬」：卡片比身体高时，居中会挂进按钮条那一横条', () => {
-    // 用户 2026-11-06：状态栏盖住了下面的按钮。抬 20 之后底沿从 850 收到 830。
-    expect(statsAnchor(body, size, screen, 12, 20)).toEqual({ x: 852, y: 710 })
-    // 横向不受 lift 影响——左右距离是另一条账（PANEL_GAP）
-    expect(statsAnchor(body, size, screen, 10, 20).x).toBe(850)
-    // 抬过头也不许出屏幕：夹回上沿，这是宠物贴屏幕顶那种情况
-    expect(statsAnchor({ x: 700, y: 20, w: 140, h: 180 }, size, screen, 12, 200).y).toBe(0)
+  it('barTop 给了就保证底沿让开按钮条——卡片比身体高时居中会挂进那一横条', () => {
+    // 用户 2026-11-06「状态栏盖住下面的按钮」；2026-11-07 换成规则而不是固定抬升数：
+    // 身子 180 的这里卡片 120，居中本来就压不到（860 < 870），所以规则不该多抬一下。
+    expect(statsAnchor(body, size, screen, 12, 900)).toEqual({ x: 852, y: 730 })
+    // 卡片比身子高：居中会挂到 860+，越过按钮条顶沿 850 → 抬到让开 6px
+    const tall = { w: 150, h: 201 }
+    expect(statsAnchor(body, tall, screen, 12, 850).y).toBe(850 - 6 - 201)
+    // 横向不受这条影响——左右距离是另一条账（PANEL_GAP）
+    expect(statsAnchor(body, tall, screen, 10, 850).x).toBe(850)
+    // 让位是往上让，不许越过屏幕上沿：夹回 0，宁可被云盖一角
+    expect(statsAnchor({ x: 700, y: 20, w: 140, h: 180 }, tall, screen, 12, 200).y).toBe(0)
+    // 按钮条翻到头顶时（barTop 传 null）没有要让的东西，回到纯居中
+    expect(statsAnchor(body, tall, screen, 12, null).y).toBe(700 + 90 - 100.5)
   })
 
   it('右侧放不下时翻到左侧——不是夹进屏幕把状态栏压在宠物身上', () => {

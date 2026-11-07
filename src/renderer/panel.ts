@@ -61,6 +61,11 @@ export interface PanelHandlers {
   pick(f: Food): void
   /** 点了性别那一档。改名要键盘，这扇窗默认不收键盘，见装配层的说明。 */
   identity(patch: { name?: string; gender?: string }): void
+  /**
+   * 点了档案卡片右上角那颗 ×。面板自己不收——收起要连 hover 复位、延时定时器、
+   * 交互区重算一起办，那些都在装配层（见 index.ts 的 closePanel）。
+   */
+  close(): void
   /** 视图换了。调用方据此换收起延时（操作型视图要更宽裕的时间）。 */
   view(v: PanelView): void
 }
@@ -365,6 +370,10 @@ export function createPanel(
    * 它是 qqpet 那种「一眼看到当前值」的面板，不是设置页——唯一还能就地改的是性别。
    */
   function renderStats(host: HTMLElement): void {
+    // 卡片标题：一条横线 + 「宠物档案」+ 右上角那颗 ×（用户 2026-11-07 三条一起要的）。
+    // × 走 handlers.close()，面板不自个儿收——收起要连 hover 复位、延时定时器、交互区重算
+    // 一起办，那些都在装配层。这里只管把按钮画出来、把点击递出去。
+    host.append(archiveHead())
     host.append(tight(plainLine('昵称', snap === null ? '…' : snap.identity.name, 'pet-stats-name')))
     // 性别要读得出是哪一档才画：没快照时给个空符号比猜一个诚实。
     if (snap !== null) host.append(tight(genderLine(snap.identity.gender)))
@@ -404,7 +413,30 @@ export function createPanel(
   }
 
   /**
-   * 经验那一行：标签「经验值」+ 本级比例条 + 还差多少。
+   * 档案卡片的标题行：左边「宠物档案」，右边一枚 ×。横线由 CSS 在这一行下沿画。
+   * × 用文字「×」而不是图标：它要跟着字号走、要在读屏里说清「关闭」，
+   * 而素材里那几颗线框叉是 24px 位图，压不进 12px 的一行标题里。
+   */
+  function archiveHead(): HTMLElement {
+    const head = document.createElement('div')
+    head.className = 'pet-plate-head'
+    const title = document.createElement('span')
+    title.className = 'pet-plate-title'
+    title.textContent = '宠物档案'
+    const x = document.createElement('button')
+    x.type = 'button'
+    x.className = 'pet-plate-close'
+    x.dataset.id = 'close'
+    x.textContent = '×'
+    x.setAttribute('aria-label', '关闭宠物档案')
+    x.title = '关闭（和再点一次「状态」是同一件事）'
+    x.addEventListener('click', () => handlers.close())
+    head.append(title, x)
+    return head
+  }
+
+  /**
+   * 经验那一行：标签「经验」+ 本级比例条 + 还差多少。
    * 刻意不挂 `.pet-stat`：那个类专指「四条数值读数」，测试按它数条数、CSS 按它上色报警，
    * 而经验既不会掉、也不是能靠喂食当场救回来的东西——混进去就多出第五条假警报。
    * 调用方只在快照已到时会走到这里，所以里面的 `snap!` 不是将就。
@@ -423,9 +455,9 @@ export function createPanel(
     const expOut = document.createElement('span')
     expOut.className = 'pet-stat-value pet-exp-value'
     // 写的数是**还差多少**（用户最初那句「显示当前升级还需要多少经验值」），
-    // 标签换成「经验值」之后这一点全靠 title 和条来说清——单看数字分不出「已攒」还是「还差」。
+    // 标签缩成两个字之后这一点全靠 title 和条来说清——单看数字分不出「已攒」还是「还差」。
     expOut.textContent = maxed ? '满级' : String(Math.ceil(expToNext(snap!.exp)))
-    exp.append(makeLabel('经验值'), expBar, expOut)
+    exp.append(makeLabel('经验'), expBar, expOut)
     exp.title = maxed
       ? `已到 Lv.${MAX_LEVEL}。经验继续累计，但不再升级`
       : `Lv.${lv} → Lv.${lv + 1} 共需 ${LEVEL_STEPS[lv - 1]}，还差 ${expToNext(snap!.exp).toFixed(1)}。累计经验 ${snap!.exp.toFixed(1)}（只增不减）`

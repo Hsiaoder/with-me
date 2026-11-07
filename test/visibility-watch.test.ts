@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { parseSample, createVisibilityPolicy, PROBE_SCRIPT } from '../src/main/visibility.js'
+import { parseSample, createVisibilityPolicy, PROBE_SCRIPT, SHELL_CLASSES } from '../src/main/visibility.js'
 import { spawn } from 'node:child_process'
 import type { Platform } from '../src/main/platform.js'
 import { mapScenario, type Settings } from '../src/shared/visibility.js'
@@ -141,11 +141,41 @@ describe('探测脚本真的能跑', () => {
     30_000,
   )
 
-  it('没有全屏应用时不该判成 fullscreen', async () => {
+  /** 同一份脚本再问一次前台窗口的类名（判据的输入，测试拿它才知道该期待什么）。 */
+  const ask = (expr: string): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const encoded = Buffer.from(`${PROBE_SCRIPT(process.pid)}\n[Console]::Out.WriteLine(${expr})`, 'utf16le').toString('base64')
+      const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+      let out = ''
+      let err = ''
+      const timer = setTimeout(() => { ps.kill(); reject(new Error(`15 秒没输出。stderr: ${err.slice(0, 300)}`)) }, 15_000)
+      ps.stdout.on('data', (d: Buffer) => {
+        out += d.toString()
+        // 前两行是探测循环自己打的（它会一直打），第三行才是我们要的类名——
+        // 所以取**最后一行非空**，并在拿到之后立刻杀掉循环。
+        const lines = out.split(/\r?\n/).filter((l) => l.trim() !== '')
+        if (lines.length >= 3) { clearTimeout(timer); ps.kill(); resolve(lines[lines.length - 1]!.trim()) }
+      })
+      ps.stderr.on('data', (d: Buffer) => { err += d.toString() })
+      ps.on('error', (e) => { clearTimeout(timer); reject(e) })
+    })
+
+  it('前台是系统自己的窗口时不许判成 fullscreen（锁屏那种铺满整屏的假全屏）', async () => {
+    /**
+     * 上一版写的是「没有全屏应用时不该判成 fullscreen」——那是在**赌机器状态**：
+     * 跑测试的人前台开着一个无边框最大化的窗（在 Qoder Desktop 里跑就必然是），
+     * 探针判 fullscreen 是对的，测试却红了。
+     * 现在问的是不变量：**前台属于 SHELL 清单 → 一定不算全屏**。
+     * 前台是别的东西时不断言（机器上真可能开着播放器/游戏，那是应该让路的场景）。
+     */
     if (process.platform !== 'win32') return
-    // 跑这条的时候机器可能正锁屏（LockApp 铺满 0,0-1600,1000）。
-    // 它必须被脚本的外壳排除表挡掉，否则宠物一启动就把自己藏掉——实测踩过一次。
+    const cls = await ask('[PetVis.Native]::ForegroundClass()')
     const s = parseSample(await run())
-    expect(mapScenario(s!.state, s!.covers)).not.toBe('fullscreen')
+    if (SHELL_CLASSES.includes(cls)) {
+      expect(mapScenario(s!.state, s!.covers), `前台是系统窗口「${cls}」却判成了全屏——宠物会把自己藏掉`).not.toBe('fullscreen')
+    }
   }, 30_000)
 })
