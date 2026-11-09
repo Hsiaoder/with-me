@@ -1,10 +1,12 @@
 import {
   addExp,
+  applyDebugPatch,
   applyEvent,
   eventDeltas,
   expGain,
   FOOD_EFFECT,
   IDLE_EXP_PER_MIN,
+  sanitizeDebugPatch,
   STAT_TICK_MS,
   tickStats,
   type StatEvent,
@@ -25,6 +27,8 @@ export interface StatsRuntime {
   event(raw: unknown): void
   /** 改名 / 改性别。没有真的变化就不落盘。 */
   identity(raw: unknown): void
+  /** 调试面板直接设数值 / 经验（写进真存档并广播）。畸形输入整包忽略。 */
+  debugSet(raw: unknown): void
   stop(): void
 }
 
@@ -37,6 +41,8 @@ export function toStatEvent(raw: unknown): StatEvent | null {
       return typeof r.food === 'string' && FOOD_EFFECT[r.food] !== undefined ? { kind: 'feed', food: r.food } : null
     case 'play':
       return { kind: 'play' }
+    case 'game':
+      return { kind: 'game', count: typeof r.count === 'number' && Number.isFinite(r.count) ? r.count : 1 }
     case 'reply':
       return { kind: 'reply' }
     case 'daily-open':
@@ -63,7 +69,7 @@ export function startStats(o: {
     stats: save.stats, identity: save.identity, exp: save.exp ?? 0, startedAt,
   })
 
-  /** 上次结算到的时刻。开机先拿存档里的 lastSeenAt 补一次离线，再把起点拧到现在。 */
+  /** 上次结算到的时刻。只服务于在线分钟 tick；开机不补算离线，起点直接拧到现在。 */
   let lastTick = now()
   /** 上次「有互动」的时刻：心情掉得快不快看它，不看开机时间。 */
   let lastInteractionAt = now()
@@ -81,14 +87,8 @@ export function startStats(o: {
     broadcast(snapshot())
   }
 
-  const seen = save.lastSeenAt
-  if (typeof seen === 'number' && Number.isFinite(seen)) {
-    const away = (now() - seen) / MIN_MS
-    if (away >= 1) {
-      save.stats = tickStats(save.stats, { minutes: away, idleMs: away * MIN_MS, offline: true })
-      commit()
-    }
-  }
+  // 数值**只在在线时变**：关闭宠物期间一律冻结，开机不做任何离线补算（用户 2026-11-09 拍板）。
+  // 所以这里不读 lastSeenAt 去补衰减——存档里是多少，开机就是多少，第一笔变化要等下面那分钟 tick。
 
   const timer = setInterval(() => {
     const t = now()
@@ -96,8 +96,7 @@ export function startStats(o: {
     lastTick = t
     if (!(minutes > 0)) return          // 时钟回拨（NTP 校正）不许倒着喂宠物
     save.stats = tickStats(save.stats, { minutes, idleMs: t - lastInteractionAt })
-    // 在线挂机的经验走同一个时钟：**进程在跑就算**（用户 2026-11-07 拍的板，关掉应用不涨，
-    // 所以上面那段离线补算里**故意不给经验**——只补饱食/心情那些会掉的）。
+    // 在线挂机的经验走同一个时钟：**进程在跑就算**（用户 2026-11-07 拍的板，关掉应用不涨）。
     // 必须走 addExp：0.2 这类增量直接相加会攒出 9.999…，`levelOf` 查表就差那一格不升级。
     save.exp = addExp(save.exp ?? 0, minutes * IDLE_EXP_PER_MIN)
     commit()
@@ -140,6 +139,16 @@ export function startStats(o: {
       })
       if (sameIdentity(save.identity, next.identity)) return
       save.identity = next.identity
+      commit()
+    },
+    debugSet(raw: unknown): void {
+      const patch = sanitizeDebugPatch(raw)
+      if (patch === null) return
+      const next = applyDebugPatch({ stats: save.stats, exp: save.exp ?? 0 }, patch)
+      save.stats = next.stats
+      save.exp = next.exp
+      // 算一次互动：调试设完心情高/低后，别让它立刻被「久未互动」加速衰减冲掉，留出观察窗口。
+      lastInteractionAt = now()
       commit()
     },
     stop(): void {

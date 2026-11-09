@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { FOODS } from '../src/shared/food.js'
 import {
   applyEvent,
   bondGain,
@@ -9,6 +10,12 @@ import {
   expGain,
   expToNext,
   FOOD_EFFECT,
+  GAME_BOND,
+  GAME_COUNT_CAP,
+  GAME_HUNGER_COST,
+  GAME_MOOD,
+  GAME_WEIGHT_COST,
+  gameCount,
   gainText,
   gainsToFloat,
   IDLE_EXP_PER_MIN,
@@ -26,8 +33,6 @@ import {
   isStarving,
   LONELY_AFTER_MS,
   MOOD_LONELY_PER_MIN,
-  OFFLINE_MAX_LOSS,
-  OFFLINE_RATE,
   STAT_KEYS,
   STAT_LABELS,
   tickStats,
@@ -102,46 +107,38 @@ describe('自然变化（每分钟口径）', () => {
   })
 })
 
-describe('离线补算（温和档）', () => {
-  it('按在线速率的 30% 折算', () => {
-    const s = tickStats(fresh(), { minutes: 60, idleMs: 0, offline: true })
-    expect(s.hunger).toBeCloseTo(70 - 60 * DECAY_PER_MIN.hunger * OFFLINE_RATE, 6)
-  })
-
-  it('离线再久也有一条损失上限，过夜回来不会饿到见底', () => {
-    const s = tickStats(fresh(), { minutes: 100_000, idleMs: 99e9, offline: true })
-    expect(70 - s.hunger).toBeCloseTo(OFFLINE_MAX_LOSS, 6)
-    expect(70 - s.mood).toBeCloseTo(OFFLINE_MAX_LOSS, 6)
-  })
-
-  it('离线不叠加「没人理」的加速，也不动体重', () => {
-    const s = tickStats(fresh(), { minutes: 60, idleMs: 99e9, offline: true })
-    expect(s.mood).toBeCloseTo(70 - 60 * DECAY_PER_MIN.mood * OFFLINE_RATE, 6)
-    expect(s.weight).toBe(50)
-  })
-})
-
 describe('喂食效果', () => {
-  it('十二种食物各有饥饿与热量（键是食物 id，和面板报上来的那个名字一致）', () => {
-    expect(Object.keys(FOOD_EFFECT).sort()).toEqual(
-      ['token', 'rice', 'noodle', 'youtiao', 'tanghulu', 'dumpling', 'melon', 'snack',
-        'crab', 'hotpot', 'niangao', 'icecream'].sort(),
-    )
+  it('每种食物各有饥饿与热量（键是食物 id，和面板报上来的那个名字一致）', () => {
+    // 期望从 FOODS 的 id 推，不抄清单：加/删一格时这里跟着动，而不是变成一份过期的名单。
+    expect(Object.keys(FOOD_EFFECT).sort()).toEqual(FOODS.map((f) => f.id).sort())
     for (const f of Object.values(FOOD_EFFECT)) {
       expect(f.hunger).toBeGreaterThan(0)
+      expect(f.mood).toBeGreaterThan(0)
       expect(f.weight).toBeGreaterThan(0)
     }
     expect(eff('hotpot').hunger).toBeGreaterThan(eff('tanghulu').hunger)
     expect(eff('hotpot').weight).toBeGreaterThan(eff('rice').weight)
   })
 
-  it('快吃饱了再喂，收益减半（吃不下）——这是 qqpet 缺的那道防刷闸', () => {
+  it('特殊口与火锅的取向：零食/冰淇淋低饱高心情，火锅双高', () => {
+    for (const id of ['snack', 'icecream']) {
+      expect(eff(id).hunger, `${id} 是特殊口，饱食该低`).toBeLessThan(8)
+      expect(eff(id).mood, `${id} 是特殊口，心情该高`).toBeGreaterThanOrEqual(15)
+    }
+    expect(eff('hotpot').hunger).toBeGreaterThanOrEqual(18)
+    expect(eff('hotpot').mood).toBeGreaterThanOrEqual(15)
+  })
+
+  it('吃撑了（>FULL_ABOVE）再喂，饥饿不再涨——这是「食物能一直点」的收口', () => {
     const notFull = eventDeltas({ kind: 'feed', food: 'rice' }, { now: NOW, lastEventAt: {}, stats: fresh() })
     const full = eventDeltas(
       { kind: 'feed', food: 'rice' },
       { now: NOW, lastEventAt: {}, stats: { ...INITIAL_STATS, hunger: 95 } },
     )
-    expect(need(full, 'hunger')).toBeCloseTo(need(notFull, 'hunger') * DIMINISH_MULT, 6)
+    expect(need(notFull, 'hunger')).toBeGreaterThan(0)
+    expect(need(full, 'hunger'), '已经吃撑了饥饿还往上涨').toBe(0)
+    // 心情与热量照旧给（收口只针对饥饿）
+    expect(need(full, 'mood')).toBeGreaterThan(0)
   })
 })
 
@@ -195,7 +192,9 @@ describe('事件增益落进数值', () => {
   })
 
   it('夹在 0..100：连喂到顶也不会溢出', () => {
-    let s = { ...INITIAL_STATS, hunger: 98 }
+    // 从 85（还没撑、<FULL_ABOVE）起，热锅一口 +20 会顶过 100，夹住；
+    // 之后每次都在 >90 的「撑」区间，饥饿不再涨，稳在 100。
+    let s = { ...INITIAL_STATS, hunger: 85 }
     for (let i = 0; i < 20; i++) s = applyEvent(s, { kind: 'feed', food: 'hotpot' }, { now: NOW + i * 60 * 60_000, lastEventAt: {} }).stats
     expect(s.hunger).toBe(100)
   })
@@ -279,7 +278,7 @@ describe('经验与等级', () => {
     // 2026-11-07 起两本账连**量级**都分开了：等级一个月要走 60 级，亲密条仍是 0~100 的读数。
     // 以前 play/reply/日开写成对亲密常量的引用（防漂），现在引用反而会把两条绑死——
     // 调亲密就顺手把曲线压平了。所以这里钉数值，并钉住「喂食仍是最大头」。
-    expect(EXP_GAIN).toEqual({ feed: 2, play: 3, reply: 1, 'daily-open': 2 })
+    expect(EXP_GAIN).toEqual({ feed: 2, play: 3, game: 3, reply: 1, 'daily-open': 2 })
     expect(EXP_GAIN.feed, '喂食不给经验的话，「喂着喂着长大了」这条就没了').toBeGreaterThan(0)
     expect(IDLE_EXP_PER_MIN * 60, '在线一小时给多少，是整条曲线的分母').toBe(12)
   })
@@ -288,6 +287,36 @@ describe('经验与等级', () => {
     const ctx = { now: NOW, lastEventAt: {} }
     expect(expGain({ kind: 'feed', food: 'rice' }, ctx)).toBeCloseTo(EXP_GAIN.feed, 6)
     expect(eventDeltas({ kind: 'feed', food: 'rice' }, ctx).bond).toBeUndefined()
+  })
+
+  it('游戏落地一次：心情/亲密涨，饱食/体重掉，四项各按自己的常量', () => {
+    const d = eventDeltas({ kind: 'game' }, { now: NOW, lastEventAt: {} })
+    expect(d.mood).toBeCloseTo(GAME_MOOD, 6)
+    expect(d.bond).toBeCloseTo(GAME_BOND, 6)
+    expect(d.hunger, '玩一场该更饿').toBeCloseTo(-GAME_HUNGER_COST, 6)
+    expect(d.weight, '抛来抛去是运动，该掉体重').toBeCloseTo(-GAME_WEIGHT_COST, 6)
+    // 从初始值真的往下走，而不是被夹在 0 地板上当没发生。
+    const applied = applyEvent(fresh(), { kind: 'game' }, { now: NOW, lastEventAt: {} }).stats
+    expect(applied.hunger).toBeCloseTo(INITIAL_STATS.hunger - GAME_HUNGER_COST, 6)
+    expect(applied.weight).toBeCloseTo(INITIAL_STATS.weight - GAME_WEIGHT_COST, 6)
+    expect(applied.mood).toBeGreaterThan(INITIAL_STATS.mood)
+    expect(applied.bond).toBeGreaterThan(INITIAL_STATS.bond)
+  })
+
+  it('猜动作按答对数结算：四项与经验 ×count，count 封顶、非法值兜底为 1', () => {
+    const ctx = { now: NOW, lastEventAt: {} }
+    const d3 = eventDeltas({ kind: 'game', count: 3 }, ctx)
+    expect(d3.mood).toBeCloseTo(GAME_MOOD * 3, 6)
+    expect(d3.hunger).toBeCloseTo(-GAME_HUNGER_COST * 3, 6)
+    expect(expGain({ kind: 'game', count: 3 }, ctx)).toBeCloseTo(EXP_GAIN.game * 3, 6)
+    // 封顶：答对 99 下也只按 GAME_COUNT_CAP 算，别一场抽干。
+    expect(gameCount({ kind: 'game', count: 99 })).toBe(GAME_COUNT_CAP)
+    expect(eventDeltas({ kind: 'game', count: 99 }, ctx).mood).toBeCloseTo(GAME_MOOD * GAME_COUNT_CAP, 6)
+    // 非法/缺省兜底为 1（鲸鲸会飞不传 count 就是 1）。
+    expect(gameCount({ kind: 'game' })).toBe(1)
+    expect(gameCount({ kind: 'game', count: 0 })).toBe(1)
+    expect(gameCount({ kind: 'game', count: -4 })).toBe(1)
+    expect(gameCount({ kind: 'play' })).toBe(1)
   })
 
   it('认不出的食物、以及 20 小时内第二次日开，都不给经验', () => {
@@ -319,6 +348,20 @@ describe('飘字：涨的那几条才值得打扰主人', () => {
     const before = { ...INITIAL_STATS }
     const after = minutes(30)
     expect(gainsToFloat(before, after)).toEqual([])
+  })
+
+  it('带 signed 时掉的要飘出来（小游戏把饱食/体重往下拉，用户要看得见）', () => {
+    expect(gainText('饥饿', -6, true)).toBe('饥饿 −6')
+    expect(gainText('体重', -1.2, true)).toBe('体重 −1.2')
+    expect(gainText('心情', 8, true)).toBe('心情 +8')     // 涨的照旧带 +
+    expect(gainText('亲密', 0, true), '没动的还是不写').toBeNull()
+    // 游戏落地那一下：四条里涨的两条 + 掉的两条都要写出来。
+    const before = { ...INITIAL_STATS }
+    const { stats } = applyEvent(before, { kind: 'game' }, { now: NOW, lastEventAt: {} })
+    const signed = gainsToFloat(before, stats, true)
+    expect(signed.map((g) => g.key).sort()).toEqual(['bond', 'hunger', 'mood', 'weight'])
+    expect(signed.find((g) => g.key === 'hunger')?.text).toBe(`${STAT_LABELS.hunger} −${GAME_HUNGER_COST}`)
+    expect(signed.find((g) => g.key === 'weight')?.text).toBe(`${STAT_LABELS.weight} −${GAME_WEIGHT_COST}`)
   })
 
   it('喂一次飘出吃饭那条，其余没动的不出声', () => {

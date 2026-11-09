@@ -14,11 +14,12 @@ import { createRequire } from 'node:module'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_CELL, FOOD_GAP, FOOD_ICON, FOOD_VISIBLE, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
+import { ACTIVITY_FALLBACK, ACTIVITY_LABELS, BUBBLE_H, BUBBLE_INNER_BOTTOM, BUBBLE_W, CLIP_FADE_MS, FLOAT_CHIP, FLOAT_GAP, FLOAT_HEAD_OFFSET, FOOD_CELL, FOOD_GAP, FOOD_ICON, FOOD_VISIBLE, GAME_CELL, ONLINE_TICK_MS, PANEL_BUTTONS, PANEL_GAP, PANEL_HIDE_MS, STAGE_W_CSS, VIEW_HIDE_MS } from '../src/shared/config.ts'
 import { CLOUD, cloudScale } from '../src/shared/bubble-shape.ts'
-import { FOODS } from '../src/shared/food.ts'
+import { FOODS, isUnlocked, unlockBadge, unlockHint } from '../src/shared/food.ts'
+import { GUESS_OPTIONS } from '../src/shared/guess.ts'
 import { pageStep } from '../src/shared/scroll.ts'
-import { EXP_GAIN, LEVEL_CUM, STAT_KEYS, STAT_LABELS, expToNext, levelOf } from '../src/shared/stats.ts'
+import { EXP_GAIN, LEVEL_CUM, LEVEL_STEPS, STAT_KEYS, STAT_LABELS, STAT_MAX, levelOf } from '../src/shared/stats.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -517,18 +518,17 @@ check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连�
   assert.equal(await tick(), true, '闲到交出决策权却一句话都没说')
   assert.ok((await text()).length > 0, '气泡开了但里面没字')
 
-  // 冷却：刚说过，点按钮不该又冒一句新的
+  // 冷却：刚说过，事件驱动那句也不该又冒一句新的。走 sayEvent 接缝，不借任何按钮的副作用。
+  // 判据用**气泡文字没被换掉**，不是 sayEvent 的返回值——idle 那句此刻正开着，bubbleOpen 恒真，
+  // 拿它当「feed 这句说没说」会永远读成说了（假绿），文字没变才证明冷却真把 feed 挡下了。
   const before = await text()
-  // 用 openOnBody 而不是 feed(身体)：feed 只喂光标坐标、不点击，2026-11-04 起面板要点击才出。
-  // 以前这条能过，靠的是上一条检查收尾时面板还开着——那是接残局，不是自证前置（§5.13）。
-  assert.ok(await openOnBody(), '前置：面板叫不出来就没有「点按钮」这回事')
-  await page.click('.pet-panel button[data-id="game"]')
+  await page.evaluate(() => window.__petDebug.sayEvent('feed'))
   assert.equal(await text(), before, '25 秒冷却没挡住，连着冒了第二句')
 
-  // 事件必说：把 rng 钉在掷不中 idle 的值上，点按钮仍然要回话
+  // 事件必说：清冷却、把 rng 钉在掷不中 idle 的值上，sayFor 仍然要回话（它不许看概率）。
   await clocks(0, Date.now(), 0.99)
-  await page.click('.pet-panel button[data-id="game"]')
-  assert.equal(await open(), true, '点了按钮没回话——事件驱动的台词不许看概率')
+  assert.equal(await page.evaluate(() => window.__petDebug.sayEvent('status')), true,
+    '事件驱动的台词没开口——它不许看概率')
 
   /**
    * 收尾：自己改过的状态自己还原（problem/06 §6.6 是双向的）。
@@ -539,6 +539,234 @@ check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连�
   await clocks(Date.now(), Date.now(), 0.99)
   await feed({ x: 4, y: 4 })
   await page.waitForTimeout(PANEL_HIDE_MS + 400)
+})
+
+/**
+ * 「鲸鲸会飞」端到端：按面板按钮进游戏 → HUD 出现（高度/最高/速度 + 退出键）→
+ * 抓起来往上抛 → 「最高」记下一个正高度 → 点退出键 → HUD 消失、回到普通态（身体还能叫出面板）。
+ *
+ * 抛的动作走**真实 DOM PointerEvent**（和 clickBody 一个路子）：game 控制器挂在 window 上的
+ * pointerdown/move/up 就是生产链路，测到的即用户那一下拽抛，不是另造一套。物理走 setInterval，
+ * 所以两次 evaluate 之间用 waitForTimeout 让节拍真的跑几步，而不是手动 tick。
+ *
+ * 用 try/finally 兜底 stopFly：这条一旦中途断言挂了，也必须把整屏从游戏态收回——否则后面每条
+ * 面板检查都会因为 `game.active()` 让路而「叫不出面板」，一个失败炸成一片（真发生过）。
+ */
+/**
+ * 「鲸鲸会飞」端到端：小游戏按钮出游戏列表 → 点「开始」进游戏态 → 脚下按钮条收掉且不弹气泡 →
+ * 抓起来用力往上抛 → 宠物整块飞出屏幕上沿（夹取真被绕过的铁证）→ 退出键 → 回到普通态。
+ *
+ * 三条以前只抛 ~66px 的检查给过假绿：`motion.setPosition` 会把 y 夹回屏幕内，小抛根本撞不到夹取，
+ * 看着「高度在涨」其实从没出过屏。这条把宠物狠抛出去，再用 `hitBox.y + h < 0` 验它真的整个离屏。
+ *
+ * 抛走**真实 DOM PointerEvent**（game 挂在 window 上的 pointerdown/move/up 就是生产链路）；
+ * 物理走 setInterval，靠 waitForFunction 轮询命中框，不手动 tick。
+ * finally 里 stopFly 兜底：中途挂了也要把整屏收回普通态，否则后面每条面板检查连锁红。
+ */
+check('鲸鲸会飞：游戏列表→开始收起按钮不弹气泡→抛出屏幕外→退出回普通态', async () => {
+  const flyActive = () => page.evaluate(() => window.__petDebug.flyActive)
+  const hud = () => page.evaluate(() => {
+    const el = document.querySelector('.pet-fly-hud')
+    if (!el) return null
+    const num = (s) => Number((document.querySelector(s)?.textContent ?? '').replace(/[^0-9.-]/g, ''))
+    return { height: num('.pet-fly-hud-big'), max: num('.pet-fly-hud-row b:nth-of-type(1)'), exit: !!document.querySelector('.pet-fly-exit') }
+  })
+  try {
+    // 1) 小游戏按钮出的是「游戏列表」这块副板，不是直接进游戏。
+    assert.ok(await openOnBody(), '前置：面板叫不出来就点不到小游戏')
+    await page.click('.pet-panel button[data-id="game"]')
+    await page.waitForTimeout(120)
+    assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'games', '点小游戏没切到游戏列表视图')
+    assert.ok(await page.evaluate(() => !!document.querySelector('.pet-panel button[data-id="start-fly"]')),
+      '游戏列表里没有「鲸鲸会飞」的开始键')
+    // 列表 chrome 与食物列表一致：左右翻页键 + 4 格宽视口。3 个游戏装得下 → 两键置灰、无拖拽条
+    // （和食物列表装得下时同行为）；游戏多了溢出时拖拽条才出现。
+    const chrome = await page.evaluate(() => {
+      const pages = [...document.querySelectorAll('.pet-games .pet-page')]
+      const vp = document.querySelector('.pet-game-viewport')
+      return {
+        arrows: pages.length,
+        bothDisabled: pages.length === 2 && pages.every((b) => b.disabled),
+        vpWidth: vp ? Math.round(vp.getBoundingClientRect().width) : 0,
+        thumb: !!document.querySelector('.pet-games .pet-thumb'),
+      }
+    })
+    assert.equal(chrome.arrows, 2, '游戏列表没有左右翻页键')
+    assert.equal(chrome.vpWidth, 204, '游戏视口该和食物列表同宽（4 格 204）')
+    assert.equal(chrome.bothDisabled, true, '3 个游戏装得下，翻页键该置灰')
+    assert.equal(chrome.thumb, false, '装得下时不该画拖拽条（骗用户还能拖）')
+    // 那一格该长得和食物格子一样：方形白卡 + 里面一张解码成功的图标（不是空卡、不是文字行）。
+    const cell = await page.evaluate(() => {
+      const b = document.querySelector('.pet-panel .pet-game')
+      const img = b?.querySelector('img')
+      const r = b?.getBoundingClientRect()
+      return {
+        square: !!r && Math.abs(r.width - r.height) < 1 && Math.round(r.width),
+        iconOk: !!img && img.complete && img.naturalWidth > 0,
+        src: img?.currentSrc ?? '',
+        bg: b ? getComputedStyle(b).backgroundImage : '',
+      }
+    })
+    assert.equal(cell.square, GAME_CELL, `游戏格子不是 ${GAME_CELL} 的方卡：${JSON.stringify(cell)}`)
+    assert.ok(cell.iconOk, `游戏图标没解码成功（404？抠空了？）：${JSON.stringify(cell)}`)
+    assert.match(cell.src, /icons\/game-fly\.png$/)
+    assert.equal(cell.bg, 'none', `游戏格不该铺圆形 Kenney 底（用户要去掉圆圈）：${cell.bg}`)
+    // 悬停弹「名字 + 一句话玩法」卡（和食物格同一套）。
+    await page.hover('.pet-panel button[data-id="start-fly"]')
+    await page.waitForTimeout(80)
+    const tip = await page.evaluate(() => {
+      const t = document.querySelector('.pet-food-tip')
+      return t && !t.hidden ? t.textContent : ''
+    })
+    assert.ok(tip.includes('鲸鲸会飞'), `悬停卡没显示游戏名：${tip}`)
+    assert.ok(tip.includes('抛'), `悬停卡没显示玩法：${tip}`)
+    await feed({ x: 4, y: 4 })   // 移开光标收掉悬停卡（卡片 pointer-events:none，不挡后续点击）
+    assert.equal(await flyActive(), false, '光是打开游戏列表不该就进游戏态')
+
+    // 2) 点「开始」：进游戏态 + 脚下按钮条收掉 + 不弹聊天气泡。
+    //    先清掉可能在游戏列表那一段里自己冒出来的 idle 气泡，才问得出「开始这一下有没有新说」。
+    await page.evaluate(() => window.__petDebug.hideBubble())
+    await page.click('.pet-panel button[data-id="start-fly"]')
+    await page.waitForTimeout(120)
+    assert.equal(await flyActive(), true, '点开始没进游戏态')
+    const started = await hud()
+    assert.ok(started && started.exit, '进游戏没出 HUD 或退出键')
+    assert.equal(started.height, 0, '刚进游戏宠物该在地面')
+    assert.equal(await page.evaluate(() => window.__petDebug.panelOpen), false, '开始游戏后脚下按钮条还开着')
+    assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), false, '开始游戏那一下弹了聊天气泡')
+
+    // 3) 狠往上抛。关键：几次 pointermove 之间要真的过时间——game 用 performance.now() 算抛速，
+    //    同步连着 dispatch 会挤在同一毫秒里、dt≈0、速度算成 0 → 直接落地不飞。用 waitForTimeout 拉开。
+    const h = await page.evaluate(() => window.__petDebug.hitBox)
+    const c = { x: h.x + h.w / 2, y: h.y + h.h / 2 }
+    await page.evaluate((p) => window.dispatchEvent(new PointerEvent('pointerdown', { clientX: p.x, clientY: p.y, bubbles: true, button: 0 })), c)
+    for (let i = 1; i <= 6; i++) {
+      await page.evaluate((q) => window.dispatchEvent(new PointerEvent('pointermove', { clientX: q.x, clientY: q.y, bubbles: true, button: 0 })), { x: c.x, y: c.y - i * 80 })
+      await page.waitForTimeout(18)
+    }
+    await page.evaluate((q) => window.dispatchEvent(new PointerEvent('pointerup', { clientX: q.x, clientY: q.y, bubbles: true, button: 0 })), { x: c.x, y: c.y - 6 * 80 })
+
+    // 4) 铁证：命中框整块越过屏幕上沿（y+h<0）。夹取没被绕过时这条永远等不到。
+    await page.waitForFunction(() => {
+      const b = window.__petDebug.hitBox
+      return b.y + b.h < 0
+    }, null, { timeout: 3000 })
+    const flying = await hud()
+    assert.ok(flying && flying.max > 0, `抛出屏幕后「最高」没记到正高度：${JSON.stringify(flying)}`)
+
+    // 5) 退出键收尾：HUD 移出、游戏态关掉、回普通交互。
+    await page.click('.pet-fly-exit')
+    await page.waitForTimeout(120)
+    assert.equal(await hud(), null, '点退出后 HUD 还在，没回到普通态')
+    assert.equal(await flyActive(), false, '点退出后仍是游戏态')
+
+    // 退出结算这一局的账：像吃完东西那样飘出数字，且**掉的那两条也要冒**（带符号）。
+    // 抛一次 → 心情/亲密涨、饱食/体重掉；默认「只飘涨的」会把 −饱食/−体重吞掉，用户就说没提示。
+    await page.waitForFunction(
+      () => window.__petDebug.floatTexts.some((t) => t.includes('−')),
+      null, { timeout: 2000 },
+    )
+    const floats = await page.evaluate(() => window.__petDebug.floatTexts)
+    assert.ok(floats.some((t) => /心情 \+\d/.test(t)), `退出没飘出心情涨幅：${JSON.stringify(floats)}`)
+    assert.ok(floats.some((t) => /饥饿 −\d/.test(t)), `退出没飘出饱食下降（signed 没生效？）：${JSON.stringify(floats)}`)
+
+    assert.ok(await openOnBody(), '退出游戏后身体叫不出面板，说明没回到普通交互态')
+    await feed({ x: 4, y: 4 })
+    await page.waitForTimeout(PANEL_HIDE_MS + 400)
+  } finally {
+    await page.evaluate(() => window.__petDebug.stopFly())
+  }
+})
+
+/**
+ * 「猜动作」端到端：游戏列表点猜动作 → 进游戏态(按钮条收、不弹气泡) → 浮层 + 3 个选项 →
+ * 读当前目标动作、点对那颗 → 分数 +1 → 退出按答对数结算、飘出带符号数字 → 回普通态。
+ * 目标动作的 name 经 __petDebug.guessTarget 读出（生产是 Math.random，e2e 不猜，直接点对的那颗验加分）。
+ * finally stopGuess 兜底，别把游戏态漏给后面。
+ */
+check('猜动作：进游戏出选项→点对加分→退出按答对数结算', async () => {
+  const guessActive = () => page.evaluate(() => window.__petDebug.guessActive)
+  try {
+    assert.ok(await openOnBody(), '前置：面板叫不出来就点不到小游戏')
+    await page.click('.pet-panel button[data-id="game"]')
+    await page.waitForTimeout(120)
+    assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'games', '点小游戏没切到游戏列表')
+    assert.ok(await page.evaluate(() => !!document.querySelector('.pet-panel button[data-id="start-guess"]')),
+      '游戏列表里没有猜动作那一格')
+    await page.evaluate(() => window.__petDebug.hideBubble())
+    await page.click('.pet-panel button[data-id="start-guess"]')
+    await page.waitForTimeout(150)
+    assert.equal(await guessActive(), true, '点开始没进猜动作')
+    assert.equal(await page.evaluate(() => window.__petDebug.panelOpen), false, '开始后脚下按钮条还开着')
+    assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), false, '开始那一下弹了聊天气泡')
+    assert.ok(await page.evaluate(() => !!document.querySelector('.pet-guess-hud')), '没出猜动作浮层')
+    assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-guess-opt').length), GUESS_OPTIONS,
+      '选项按钮数不对')
+
+    // 点对的那颗：读当前真做的动作 name（同分类干扰项池同名不同，只有 name 唯一），点对应按钮 → 分数应 +1。
+    const target = await page.evaluate(() => window.__petDebug.guessTarget)
+    assert.ok(target, '读不到当前目标动作')
+    await page.click(`.pet-guess-opt[data-name="${target}"]`)
+    await page.waitForTimeout(120)
+    assert.equal(await page.evaluate(() => Number(document.querySelector('.pet-guess-score b')?.textContent)), 1,
+      '点对没加分')
+
+    // 退出 → 按答对数(1)结算，飘出带符号数字（饱食/体重往下掉也要冒）。
+    await page.click('.pet-guess-exit')
+    await page.waitForTimeout(120)
+    assert.equal(await guessActive(), false, '退出后还在游戏态')
+    assert.equal(await page.evaluate(() => !!document.querySelector('.pet-guess-hud')), false, '退出后浮层还在')
+    await page.waitForFunction(() => window.__petDebug.floatTexts.some((t) => t.includes('−')), null, { timeout: 2000 })
+    assert.ok(await openOnBody(), '退出后身体叫不出面板，没回普通态')
+    await feed({ x: 4, y: 4 })
+    await page.waitForTimeout(PANEL_HIDE_MS + 400)
+  } finally {
+    await page.evaluate(() => window.__petDebug.stopGuess())
+  }
+})
+
+/**
+ * 「点破泡泡」端到端：游戏列表点点泡泡 → 进游戏态(按钮条收、不弹气泡) → 冒出泡泡 →
+ * 点破一个计数 +1 → 退出按破掉数结算、飘带符号数字 → 回普通态。
+ * 泡泡一直在上浮，Playwright 的 click 会等它「稳定」而干等，所以直接 dispatch pointerdown 触发破裂。
+ * finally stopBubble 兜底。
+ */
+check('点泡泡：进游戏冒泡泡→点破计数→退出按破掉数结算', async () => {
+  const bubbleActive = () => page.evaluate(() => window.__petDebug.bubbleActive)
+  try {
+    assert.ok(await openOnBody(), '前置：面板叫不出来就点不到小游戏')
+    await page.click('.pet-panel button[data-id="game"]')
+    await page.waitForTimeout(120)
+    assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'games', '点小游戏没切到游戏列表')
+    assert.ok(await page.evaluate(() => !!document.querySelector('.pet-panel button[data-id="start-bubble"]')),
+      '游戏列表里没有点泡泡那一格')
+    await page.evaluate(() => window.__petDebug.hideBubble())
+    await page.click('.pet-panel button[data-id="start-bubble"]')
+    await page.waitForTimeout(200)
+    assert.equal(await bubbleActive(), true, '点开始没进点泡泡')
+    assert.equal(await page.evaluate(() => window.__petDebug.panelOpen), false, '开始后脚下按钮条还开着')
+    assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), false, '开始那一下弹了聊天气泡')
+    assert.ok(await page.evaluate(() => !!document.querySelector('.pet-pop-hud')), '没出点泡泡 HUD')
+    // 开局立刻冒一个泡泡（可能还在屏下沿外，attached 即可，不必等它飘进可视区）。
+    await page.waitForSelector('.pet-pop', { state: 'attached', timeout: 2000 })
+    await page.evaluate(() => {
+      document.querySelector('.pet-pop')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
+    })
+    await page.waitForTimeout(120)
+    assert.equal(await page.evaluate(() => window.__petDebug.bubblePopped), 1, '点破没计数')
+
+    // 退出 → 按破掉数(1)结算，飘出带符号数字。
+    await page.click('.pet-pop-exit')
+    await page.waitForTimeout(120)
+    assert.equal(await bubbleActive(), false, '退出后还在游戏态')
+    assert.equal(await page.evaluate(() => !!document.querySelector('.pet-pop-hud')), false, '退出后 HUD 还在')
+    await page.waitForFunction(() => window.__petDebug.floatTexts.some((t) => t.includes('−')), null, { timeout: 2000 })
+    assert.ok(await openOnBody(), '退出后身体叫不出面板，没回普通态')
+    await feed({ x: 4, y: 4 })
+    await page.waitForTimeout(PANEL_HIDE_MS + 400)
+  } finally {
+    await page.evaluate(() => window.__petDebug.stopBubble())
+  }
 })
 const dbg = () => page.evaluate(() => ({
   open: window.__petDebug.panelOpen,
@@ -569,7 +797,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
     bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
   assert.deepEqual(labels,
     ['喂食=icons/rice.svg', '小游戏=icons/game.svg', '状态=icons/heart.svg', '设置=icons/settings.svg',
-      '说话=emotes/dots3.png'],
+      '调试=icons/debug.svg'],
     `按钮的文字/图标不对：${JSON.stringify(labels)}`)
   // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空片。
   // 先等 decode 落地再断言，否则抢到的是「还没解完」而不是「解不出来」。
@@ -625,7 +853,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   assert.equal((await dbg()).open, false, '再点一下没能把面板收掉')
 })
 
-check('五枚图标按实测墨迹逐枚定尺寸，说话那枚不被拉方', async () => {
+check('五枚图标按实测墨迹逐枚定尺寸，调试那枚是方图不被拉变形', async () => {
   assert.ok(await openOnBody(), '前置：面板叫不出来就量不到图标')
   // 真实鼠标停在上一处点击的位置，悬停的 scale(1.15) 会把量到的矩形放大——先挪开
   await page.mouse.move(2, 2)
@@ -645,56 +873,117 @@ check('五枚图标按实测墨迹逐枚定尺寸，说话那枚不被拉方', a
     })
   })
   assert.deepEqual(icons.map((i) => `${i.id}:${i.box}`),
-    ['feed:20x20', 'game:24x24', 'status:24x24', 'settings:20x20', 'talk:18x21'],
+    ['feed:20x20', 'game:24x24', 'status:24x24', 'settings:20x20', 'debug:22x22'],
     `图标尺寸和实测表不一致：${JSON.stringify(icons.map((i) => i.box))}`)
-  const talk = icons.find((i) => i.id === 'talk')
-  assert.ok(Math.abs(talk.box.split('x')[0] / talk.box.split('x')[1] - talk.nat[0] / talk.nat[1]) < 0.02,
-    `说话那枚又被拉方了：渲染 ${talk.box} vs 素材 ${talk.nat.join('x')}`)
-  // 只有白色实心那枚需要投影分边；深墨的四枚加投影只会在 2× 远程桌面上糊出灰晕
+  // 调试图标是方形矢量图（viewBox 1024），渲染框也按方形给，长宽比要和素材一致，别被拉变形。
+  const dbgIcon = icons.find((i) => i.id === 'debug')
+  assert.ok(Math.abs(dbgIcon.box.split('x')[0] / dbgIcon.box.split('x')[1] - dbgIcon.nat[0] / dbgIcon.nat[1]) < 0.02,
+    `调试那枚被拉变形了：渲染 ${dbgIcon.box} vs 素材 ${dbgIcon.nat.join('x')}`)
+  // 五枚都是深墨矢量图，图标本身都不该再单独加投影（圆底的投影在 button 那层，不在 img）。
   const shadowed = icons.filter((i) => i.shadow !== 'none').map((i) => i.id)
-  assert.deepEqual(shadowed, ['talk'], `投影没只留给白气泡：${JSON.stringify(shadowed)}`)
+  assert.deepEqual(shadowed, [], `图标层不该有投影（深墨图加投影会在 2× 远程桌面糊出灰晕）：${JSON.stringify(shadowed)}`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
-check('「说话」按钮：按顺序放台词，走完绕回，冷却拦不住它', async () => {
-  // 这颗按钮是给调试气泡用的：必须**每点必出**，且能逐条把台词表走一遍。
-  // 走 pickTalk 那条路就会被 25 秒冷却吞掉，点下去没反应——所以它绕开冷却，这条要钉住。
-  const flow = await page.evaluate(async () => {
-    const btn = document.querySelector('.pet-panel button[data-id="talk"]')
-    if (!btn) return { missing: true }
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-    const read = () => ({ open: window.__petDebug.bubbleOpen, text: window.__petDebug.bubbleText })
-    // 把冷却拧成「刚刚说过」：正式链路这会儿绝不会开口
-    window.__petDebug.setLastTalk(Date.now())
-    const seq = []
-    for (let i = 0; i < 3; i++) {
-      btn.click()
-      await sleep(40)
-      seq.push(read())
-    }
-    const first = seq[0].text
-    // 绕回不写死条数：一路点，把每句都记下来，直到又回到第一句。
-    // 断言用「周期里每句都不重样」，这样加台词不会把这条检查弄红。
-    let backAt = 0
-    const cycle = []
-    for (let i = 1; i <= 60; i++) {
-      btn.click()
-      await sleep(20)
-      const t = window.__petDebug.bubbleText
-      if (t === first) { backAt = i; break }
-      cycle.push(t)
-    }
-    const tail = read()
-    window.__petDebug.setLastTalk(0)
-    return { seq, first, backAt, tail, cycle }
+check('调试板：四 tab + 条件演示播片 + 台词出气泡 + 滑条改真存档', async () => {
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="debug"]')
+  await page.waitForSelector('.pet-plate.is-debug .pet-debug')
+  // 定位回归：调试板必须挂在宠物旁边（inkBox 右侧或左侧），不是沿用旧 plateAt 跑到屏幕角落。
+  const pos = await page.evaluate(() => {
+    const r = document.querySelector('.pet-plate.is-debug').getBoundingClientRect()
+    const b = window.__petDebug.inkBox
+    return { px: r.x, pw: r.width, bx: b.x, bw: b.w, sw: innerWidth }
   })
-  assert.ok(!flow.missing, '面板里没有 data-id="talk" 这颗按钮')
-  assert.ok(flow.seq.every((s) => s.open), `点三次有没出气泡的：${JSON.stringify(flow.seq)}`)
-  assert.notEqual(flow.seq[0].text, flow.seq[1].text, `连点两次还是同一句：${flow.seq[0].text}`)
-  assert.notEqual(flow.seq[1].text, flow.seq[2].text, `连点两次还是同一句：${flow.seq[1].text}`)
-  assert.ok(flow.backAt > 0, `点了 60 次也没绕回第一句，最后一句是：${flow.tail.text}`)
-  assert.equal(new Set(flow.cycle).size, flow.cycle.length, `周期里有重样的句子：${JSON.stringify(flow.cycle)}`)
-  await page.evaluate(() => window.__petDebug.hideBubble())
+  const beside = pos.px >= pos.bx + pos.bw - 1 || pos.px + pos.pw <= pos.bx + 1
+  assert.ok(beside, `调试板没挂在宠物旁边：板 x=${Math.round(pos.px)} 宽=${Math.round(pos.pw)}，身子 x=${Math.round(pos.bx)} 宽=${Math.round(pos.bw)}`)
+  assert.ok(pos.px >= -0.5 && pos.px + pos.pw <= pos.sw + 0.5, `调试板横向溢出屏幕：${JSON.stringify(pos)}`)
+  const tabs = await page.locator('.pet-debug-tab').evaluateAll((bs) => bs.map((b) => b.textContent))
+  assert.deepEqual(tabs, ['条件触发', '动画全集', '台词全表', '游戏食物'], `调试板四个一级标签不对：${JSON.stringify(tabs)}`)
+
+  // 动画全集：block 测试皮肤没有 daily/guess 池，条件演示那些具名片在这儿播不出（真试穿皮肤才有，
+  // 那条选择器路由由 debug-dom 单测钉）。这里验「按集合点一条真实存在的 clip」的按名播放路：click 池的 tapped。
+  const cur = await page.evaluate(() => {
+    document.querySelector('.pet-debug-tab[data-tab="1"]').click()
+    const item = [...document.querySelectorAll('.pet-debug-item')].find((b) => b.textContent === 'tapped')
+    item.click()
+    return window.__petDebug.current
+  })
+  assert.deepEqual(cur, { pool: 'click', name: 'tapped' }, `动画全集点 tapped 没播它：${JSON.stringify(cur)}`)
+
+  // 台词全表：点第一句 idle 应出气泡，且**绕开冷却**（先把冷却拧成「刚说过」）。
+  await page.evaluate(() => document.querySelector('.pet-debug-tab[data-tab="2"]').click())
+  await page.waitForSelector('.pet-debug-line')
+  const said = await page.evaluate(async () => {
+    window.__petDebug.setLastTalk(Date.now())
+    const b = document.querySelector('.pet-debug-line')
+    const text = b.textContent
+    b.click()
+    await new Promise((r) => setTimeout(r, 80))
+    return { text, open: window.__petDebug.bubbleOpen, bubble: window.__petDebug.bubbleText }
+  })
+  assert.ok(said.open, '点台词没出气泡（冷却没绕开？）')
+  assert.equal(said.bubble, said.text, `气泡文字和点的那句不一致：${said.bubble} vs ${said.text}`)
+
+  // 数值滑条：拖心情到 10 → IPC → 主进程落盘 → 广播回来，渲染层快照应真的变成 10。
+  await page.evaluate(() => {
+    const r = document.querySelector('.pet-debug-range[data-stat="mood"]')
+    r.value = '10'
+    r.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await page.waitForFunction(() => window.__petDebug.stats?.mood === 10, null, { timeout: 4000 })
+  assert.equal(await page.evaluate(() => window.__petDebug.stats.mood), 10, '拖心情滑条后存档没变成 10')
+
+  // 等级滑条：拖到 20 → exp 设成 Lv.20 阈值 → 广播回来等级应是 20。
+  await page.evaluate(() => {
+    const r = document.querySelector('.pet-debug-range[aria-label="设置等级"]')
+    r.value = '20'
+    r.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await page.waitForTimeout(200)
+  const lv = await page.evaluate(() => window.__petDebug.stats && document.querySelector('.pet-debug-num').textContent)
+  assert.equal(lv, 'Lv.20', `拖等级滑条后读数没到 Lv.20：${lv}`)
+
+  // 还原心情/等级到开局值：这条检查真写了存档，别把改动留给后面按开局值排例的检查。
+  await page.evaluate(() => {
+    const set = (sel, v) => { const r = document.querySelector(sel); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })) }
+    set('.pet-debug-range[data-stat="mood"]', 70)
+    set('.pet-debug-range[aria-label="设置等级"]', 1)
+  })
+  await page.waitForFunction(() => window.__petDebug.stats?.mood === 70, null, { timeout: 4000 })
+  await page.evaluate(() => { window.__petDebug.setLastTalk(0); window.__petDebug.hideBubble(); window.__petDebug.hidePanel() })
+})
+
+check('吃饭期间再喂一口被拒：数值只加一次（调试板食物也守吃饭闸门）', async () => {
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-panel button[data-id="debug"]')
+  await page.waitForSelector('.pet-plate.is-debug')
+  const setHunger = (v) => page.evaluate((val) => {
+    const r = document.querySelector('.pet-debug-range[data-stat="hunger"]')
+    r.value = String(val)
+    r.dispatchEvent(new Event('input', { bubbles: true }))
+  }, v)
+  // 先把饥饿设到 50：避开「吃饱(>90)封顶」让增量读不出来；记下原值收尾还原，别污染后面的检查。
+  const orig = Math.round(await page.evaluate(() => window.__petDebug.stats.hunger))
+  await setHunger(50)
+  await page.waitForFunction(() => window.__petDebug.stats.hunger === 50, null, { timeout: 4000 })
+  // 游戏食物 tab：同一拍先喂白饭（起吃相）、紧接着喂火锅（此刻还在吃，第二口该被拒）。
+  await page.evaluate(() => document.querySelector('.pet-debug-tab[data-tab="3"]').click())
+  await page.waitForSelector('.pet-debug-item')
+  await page.evaluate(() => {
+    const items = [...document.querySelectorAll('.pet-debug-item')]
+    items.find((b) => b.textContent === '白饭').click()
+    items.find((b) => b.textContent === '火锅').click()
+  })
+  await notEating()
+  await page.waitForTimeout(200)
+  const h1 = await page.evaluate(() => window.__petDebug.stats.hunger)
+  // 白饭 +8（被递减闸砍过也至少 +4）；火锅若被算进去会再 +10。只加一次 → 增量落在 [3,12)。
+  assert.ok(h1 - 50 >= 3 && h1 - 50 < 12,
+    `吃饭期间第二口被算进去了：饥饿 50 → ${h1.toFixed(1)}（只该加白饭那一口 ~8，火锅不该再 +10）`)
+  await setHunger(orig)
+  await page.waitForFunction((v) => window.__petDebug.stats.hunger === v, orig, { timeout: 4000 })
+  await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
 check('面板以角色的对称轴居中，不是贴着身体左沿', async () => {
@@ -825,9 +1114,9 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
    * 它说的不是「这是什么」，而是「为什么这点下去没反应」。
    * 期望值从 FOODS 现推，不写死：这一轮列表从 6 格变 12 格，写死的版本当场就红了。
    */
-  assert.deepEqual(art.cellText, FOODS.map((f) => (f.level > 1 ? `Lv.${f.level}` : '')),
-    '格子里的角标和等级表对不上（或还留着菜名）')
-  assert.deepEqual(art.labels, FOODS.map((f) => (f.level > 1 ? `${f.name}（Lv.${f.level} 解锁）` : f.name)),
+  assert.deepEqual(art.cellText, FOODS.map((f) => (isUnlocked(f, { level: 1 }) ? '' : unlockBadge(f))),
+    '格子里的角标和解锁表对不上（或还留着菜名）')
+  assert.deepEqual(art.labels, FOODS.map((f) => (isUnlocked(f, { level: 1 }) ? f.name : unlockHint(f))),
     `读屏名和菜名对不上：${JSON.stringify(art.labels)}`)
   for (const i of art.icons) {
     assert.equal(i.src, i.want, `格子指的图不对：${i.src} 应为 ${i.want}`)
@@ -858,9 +1147,6 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   assert.ok(!stack.overlapsButtons, `列表和按钮条叠住了：${JSON.stringify(stack)}`)
   assert.ok(!stack.overlapsBody, `列表压到身上了（该在按钮条外侧）：${JSON.stringify(stack)}`)
   assert.ok(stack.gap >= 4 && stack.gap <= 8, `列表与按钮条的间距该是 4..8px，现在 ${stack.gap}`)
-  await page.click('.pet-actions button[data-id="game"]')
-  await page.waitForTimeout(120)
-  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'foods', '列表开着时点别的按钮不该把视图换掉')
   // 再点一次喂食 = 收回列表：不然除了等 5 秒自动收，没有别的关法
   await page.click('.pet-actions button[data-id="feed"]')
   await page.waitForTimeout(150)
@@ -1034,7 +1320,7 @@ check('吃饭期间拖拽：吃相一路不被打断，格子也一路灰着', a
   // 用「整列不再全灰」当判据会在这一轮之后永远为真——它不再说明吃饭那层灰解开了。
   // 所以问的是 Lv.1 就解锁的那几格：它们既不该因吃饭灰，也不该因等级灰。
   // 清单从 FOODS 推（2026-11-07 解锁改成「前三格 Lv.1 就有，往后每两级一格」，抄死四样就红在期望值上）。
-  const lv1Ids = FOODS.filter((f) => f.level === 1).map((f) => f.id)
+  const lv1Ids = FOODS.filter((f) => isUnlocked(f, { level: 1 })).map((f) => f.id)
   const freeAfter = await page.evaluate(() =>
     [...document.querySelectorAll('.pet-panel .pet-food')]
       .filter((c) => !c.classList.contains('is-locked'))
@@ -1423,6 +1709,7 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
       keys: [...document.querySelectorAll('.pet-stat')].map((r) => r.dataset.key),
       rows: [...document.querySelectorAll('.pet-stat')].map((r) => ({
         value: Number(r.querySelector('.pet-stat-value')?.textContent),
+        total: r.querySelector('.pet-stat-total')?.textContent ?? '',
         band: r.querySelector('.pet-stat-bar')?.className,
         fill: r.querySelector('.pet-stat-bar > i')?.style.width,
       })),
@@ -1447,28 +1734,20 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
           afterLevel: kids[kids.indexOf(level) + 1] === n,
           cls: n.className,
           text: n.querySelector('.pet-exp-value')?.textContent ?? '',
+          total: n.querySelector('.pet-exp-total')?.textContent ?? '',
           label: n.querySelector('.pet-stat-label')?.textContent ?? '',
         }
       })(),
-      // 标题行：位置、标题文字、横线那条边的实际像素、× 的符号与命中区大小
+      // 标题行：位置、标题文字、横线那条边的实际像素（右上角 × 已去掉，用户 2026-11-09）
       head: (() => {
         const kids = [...document.querySelectorAll('.pet-plate.is-stats > *')]
         const h = document.querySelector('.pet-plate-head')
-        const x = document.querySelector('.pet-plate-close')
-        if (h === null || x === null) return { first: false, title: '(没画出来)', borderBottom: '0', glyph: '', hit: 0 }
+        if (h === null) return { first: false, title: '(没画出来)', borderBottom: '0' }
         const cs = getComputedStyle(h)
-        const r = x.getBoundingClientRect()
         return {
           first: kids[0] === h,
           title: h.querySelector('.pet-plate-title')?.textContent ?? '',
           borderBottom: cs.borderBottomWidth,
-          glyph: x.textContent ?? '',
-          hit: Math.min(Math.round(r.width), Math.round(r.height)),
-          // 静止状态不该有底和边框：`.pet-plate.is-stats button` 那条给卡片里所有按钮
-          // 发了「边框 + 4px 8px 内边距」，× 的选择器权重压不过它就会被套上一块假卡片
-          //（截图上看着就是一枚灰底方块，用户第一眼看成「又被选中了」）。
-          bg: getComputedStyle(x).backgroundColor,
-          border: getComputedStyle(x).borderTopWidth,
         }
       })(),
     }
@@ -1498,21 +1777,24 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   const exp = Number(/累计经验 ([\d.]+)/.exec(g.level.hint ?? '')?.[1] ?? Number.NaN)
   assert.ok(Number.isFinite(exp) && exp >= 0, `等级行的经验读数取不出来：${g.level.hint}`)
   assert.equal(g.level.text, `Lv.${levelOf(exp)}`, `等级和它对不上：${g.level.text} vs 经验 ${exp}`)
-  // 经验条（2026-11-07 用户要，同日第二次调整：标签「经验值」、位置紧跟等级那一行）。
-  // 不抄表里的数：那条差值用 expToNext 现算，和渲染走同一份表。
+  // 经验条（2026-11-07 用户要，同日多次调整；最终口径「本级已攒/所需」带总额）。
+  // 不抄表里的数：已攒 = 累计减本级起点，和渲染走同一份 LEVEL_CUM。
   assert.equal(g.expRow.afterLevel, true, '经验条没紧跟在等级那一行下面')
   assert.equal(g.expRow.cls, 'pet-exp', '经验条错挂了 .pet-stat：那是四条数值读数的类')
-  assert.equal(g.expRow.text, String(Math.ceil(expToNext(exp))), `经验条写的数和表对不上：${g.expRow.text}`)
+  const lvNow = levelOf(exp)
+  assert.equal(g.expRow.text, String(Math.floor(exp - LEVEL_CUM[lvNow - 1])), `经验条写的已攒数和表对不上：${g.expRow.text}`)
+  assert.equal(g.expRow.total, `/${LEVEL_STEPS[lvNow - 1]}`, `经验条缺总额后缀：${g.expRow.total}`)
   assert.equal(g.expRow.label, '经验：', `经验条的标签不对：${g.expRow.label}`)
-  // 标题行（用户 2026-11-07：横线 + 「宠物档案」+ 右边 ×）：真 Chromium 里量得到那条边线，
-  // jsdom 量不到排版，所以这条只在 e2e 有——单测钉的是 DOM，这里钉的是「它真的长在最上面」。
+  // 四条读数带 /100 总额后缀，数值本体仍是纯数字（右对齐与上面的 Number 解析靠它）
+  for (const r of g.rows) {
+    assert.equal(r.total, `/${STAT_MAX}`, `读数缺 /100 后缀：${JSON.stringify(r)}`)
+    assert.ok(Number.isFinite(r.value), `读数本体不是纯数字了：${JSON.stringify(r)}`)
+  }
+  // 标题行（用户 2026-11-07：横线 + 「宠物档案」；2026-11-09：去掉右边那颗 ×）：
+  // 真 Chromium 里量得到那条边线，jsdom 量不到排版，所以这条只在 e2e 有——单测钉的是 DOM，这里钉的是「它真的长在最上面」。
   assert.equal(g.head.title, '宠物档案', `标题不对：${g.head.title}`)
   assert.equal(g.head.first, true, '标题行不是卡片的第一行')
   assert.ok(Number.parseFloat(g.head.borderBottom) >= 1, `标题行下沿那条横线没画出来：${g.head.borderBottom}`)
-  assert.equal(g.head.glyph, '×', `关闭按钮的符号不对：${g.head.glyph}`)
-  assert.ok(g.head.hit >= 24, `× 的命中区只有 ${g.head.hit}px，指尖点不到`)
-  assert.equal(g.head.bg, 'rgba(0, 0, 0, 0)', `× 静止状态有底色（被套上卡片那层假边框了）：${g.head.bg}`)
-  assert.equal(g.head.border, '0px', `× 静止状态有边框：${g.head.border}`)
   // 颜色必须跟着数字：分档写死在渲染里就会出「数值红了、条还是蓝的」那种假读数
   const bandOf = (v) => (v > 60 ? 'high' : v > 20 ? 'mid' : 'low')
   for (const r of g.rows) {
@@ -1559,35 +1841,6 @@ check('状态视图：竖在宠物右侧，名字与四条读数都在，颜色�
   assert.ok(lay.plateTop >= 0, `状态栏抬出屏幕上沿了：${lay.plateTop.toFixed(1)}`)
   assert.ok(lay.barTop - lay.inkBottom >= 1, '按钮条该在身子下面：底沿让位的前提是它在脚下')
   await page.evaluate(() => window.__petDebug.hidePanel())
-})
-
-check('档案卡片那颗 ×：点下去整块面板收掉，鼠标也放开', async () => {
-  /**
-   * 用户 2026-11-07 要的这个 × 是**面板上第一枚真正的关闭按钮**（以前只能「再点一次状态键」或
-   * 「离开满延时自动收」）。它必须走装配层那条 closePanel：只把 DOM 藏掉的话，
-   * hover 状态机还记着「开着」，鼠标停在原地就再也弹不出面板（§5.12 那个坑）。
-   * 所以这里除了「收掉了」，还要问鼠标是不是真的放开了——那是同一条链上的另一半。
-   */
-  const inner = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
-  await page.evaluate(() => window.__petDebug.hidePanel())
-  await page.evaluate((p) => window.__petDebug.moveTo(p), { x: Math.round(inner.w / 2) - 90, y: inner.h - 260 })
-  await page.waitForTimeout(150)
-  assert.ok(await openOnBody(), '前置：面板叫不出来')
-  await page.click('.pet-panel button[data-id="status"]')
-  await page.waitForSelector('.pet-plate-head')
-  assert.equal(await page.evaluate(() => window.__petDebug.panelOpen), true, '前置：状态视图没开')
-  // 先把光标位置喂给装配层（`cursor` 那个方法是注入用的）：recomputeInteraction 在
-  // 从没收到过鼠标事件时直接 return，不先喂的话这条断言问的是空气。
-  const at = await page.locator('.pet-plate-close').boundingBox()
-  await page.evaluate((p) => window.__petDebug.cursor(p), { x: Math.round(at.x + at.width / 2), y: Math.round(at.y + at.height / 2) })
-  await page.click('.pet-plate-close')
-  await page.waitForTimeout(200)
-  assert.equal(await page.evaluate(() => window.__petDebug.panelOpen), false, '点了 × 面板还开着')
-  assert.equal(await page.evaluate(() => window.__petDebug.panelView), 'actions', '收起后没回到动作视图')
-  await page.waitForTimeout(400)
-  const after = await page.evaluate(() => ({ grab: window.__petDebug.grabRequested, cursor: window.__petDebug.cursorSeen }))
-  assert.equal(after.grab, false,
-    `面板收了鼠标还被抓着（光标在 ${JSON.stringify(after.cursor)}）：说明没走 closePanel，hover 复位在那条链上`)
 })
 
 check('状态栏的「此刻」两行：状态跟着画面换，在线时间一秒一跳', async () => {
@@ -1661,8 +1914,8 @@ check('状态栏贴右边缘时翻到宠物左侧，而不是夹过来压住宠�
 })
 
 check('喂食真的进了数值并落盘；点性别当场写进存档', async () => {
-  // 断言拿「开机初值 70」比而不是比前后差：本套检查里前面已经喂过几次，
-  // 饥饿可能已经顶到 100，那种时候「再喂一次会涨」是个不该成立的期待。
+  // 饥饿/体重比「喂前快照」的前后差，不比开机初值：前面喂过几次、两个小游戏又各扣了一截，
+  // 基准早不是 70/50；这条只证「这一口喂下去涨了」。白饭 +8 饥饿/+0.4 体重，此刻都没顶到上限，差值必为正。
   await page.evaluate(() => window.__petDebug.hidePanel())
   const file = join(userData, 'save.json')
   const readSave = () => {
@@ -1672,8 +1925,12 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
       return null
     }
   }
-  // 喂之前先抄一份：等级那本账要证的是「喂食进经验、但不进亲密条」，得有个对照
+  // 喂之前先抄一份：等级那本账要证的是「喂食进经验、但不进亲密条」，得有个对照。
+  // 饥饿/体重也拿这份「喂前」做基准，而不是开机初值 70/50——前面两个小游戏各扣了一截饱食/体重，
+  // 基准早就不是初值了；这条要证的是「这一口喂下去涨了」，比前后差才不会被游戏奖励误伤。
   const before = readSave()
+  const baseHunger = before?.stats?.hunger ?? 70
+  const baseWeight = before?.stats?.weight ?? 50
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')
   await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
@@ -1686,15 +1943,15 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   for (let i = 0; i < 30; i++) {
     try {
       stats = JSON.parse(readFileSync(file, 'utf8')).stats
-      if (stats && stats.hunger > 70) break
+      if (stats && stats.hunger > baseHunger) break
     } catch {
       /* 还没写出来 */
     }
     await page.waitForTimeout(100)
   }
   assert.ok(stats !== null, '存档里读不到 stats')
-  assert.ok(stats.hunger > 70, `喂了火锅饥饿没涨（初值 70）：${stats.hunger}`)
-  assert.ok(stats.weight > 50, `喂了火锅体重没涨（初值 50）：${stats.weight}`)
+  assert.ok(stats.hunger > baseHunger, `喂了白饭饥饿没涨（喂前 ${baseHunger}）：${stats.hunger}`)
+  assert.ok(stats.weight > baseWeight, `喂了白饭体重没涨（喂前 ${baseWeight}）：${stats.weight}`)
 
   // 经验：喂一次要涨。这里**不钉具体数值**——本套检查前面已经喂过几次，这一发常常落在
   // 10 分钟窗口内（于是是 0.1 而不是 0.2）；全额/减半那两条时序规则由 test/stats-runtime.test.ts 钉。
@@ -1775,12 +2032,11 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
   }
   assert.equal(identity?.gender, 'male', `性别没落盘：${JSON.stringify(identity)}`)
   assert.equal(identity?.name, '小鲸', `改性别把名字弄丢了：${JSON.stringify(identity)}`)
-  // 卡片上能点的只有两枚：性别符号，和 2026-11-07 用户点名要的 ×（标题行右边那颗）。
-  // 「返回按钮」仍然没有——× 收起的是整块面板，不是退回上一层，两者不是同一个东西。
+  // 卡片上能点的只有性别符号那一枚——右上角那颗 × 已去掉（用户 2026-11-09），收起靠状态键切换 / 悬停延时。
   const clickable = await page.evaluate(() =>
     [...document.querySelectorAll('.pet-plate.is-stats button')].map((b) => b.className).sort())
-  assert.deepEqual(clickable, ['pet-gender is-male', 'pet-plate-close'],
-    `状态栏上的可点项不是这两枚：${JSON.stringify(clickable)}`)
+  assert.deepEqual(clickable, ['pet-gender is-male'],
+    `状态栏上的可点项不该只剩性别这一枚：${JSON.stringify(clickable)}`)
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
@@ -1970,7 +2226,7 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
   for (const f of shot.fit) {
     assert.ok(f.need <= f.room, `「${f.t}」被芯片裁掉了：要 ${f.need}px，只有 ${f.room}px`)
   }
-  // 分色分字号是 CSS 的契约，四条都得在场又各不相撞。判据用 widest 那批探针（按 key 各造一枚），
+  // 分色、统一字号是 CSS 的契约，四条都得在场又各不相撞。判据用 widest 那批探针（按 key 各造一枚），
   // 不靠「这一屏恰好飘了哪几条」：喂饱了就不飘饥饿，那不该让配色检查跟着瞎。
   const byKey = new Map(shot.widest.map((w) => [w.key, w]))
   assert.equal(new Set(shot.widest.map((w) => w.color)).size, 4,
@@ -1980,8 +2236,10 @@ check('飘字：这一口演完才冒、各有各的颜色字号、不等的当�
     assert.ok(w.need <= w.room, `「${w.t}」在 ${w.px} 那一档里装不下：要 ${w.need}px，芯片只有 ${w.room}px`)
   }
   const pxOf = (k) => Number(String(byKey.get(k).px).replace('px', ''))
-  assert.ok(pxOf('hunger') > pxOf('mood'), `饥饿该是最大的一档：${pxOf('hunger')} vs ${pxOf('mood')}`)
-  assert.ok(pxOf('mood') > pxOf('weight'), `心情该比体重醒目：${pxOf('mood')} vs ${pxOf('weight')}`)
+  // 2026-11-07 起飘字统一 Fredoka 14px，不再按条分档；四条同字号、只靠颜色区分。
+  for (const k of ['hunger', 'mood', 'weight', 'bond']) {
+    assert.equal(pxOf(k), 14, `飘字该统一 14px：${k}=${pxOf(k)}`)
+  }
   // 真飘出来的那几条也得带上 key（探针带上了，不代表运行链路也带上了）
   for (const l of shot.look) assert.ok(l.key, `芯片没带 data-key：${JSON.stringify(l)}`)
   assert.equal(shot.pe, 'none', '飘字层收得到鼠标：它会从桌面那儿把点击吞掉')
@@ -2149,7 +2407,7 @@ check('吃饭期间整列食物点不动（置灰是真 disabled），饭后自�
   // 分开看的是 is-locked 这个**原因标记**（面板把两件事的判据合成一个 disabled，
   // 但只有它能告诉用户「为什么点不动」）。
   const unlocked = free.filter((c) => !c.locked)
-  assert.deepEqual(unlocked.map((c) => c.id), FOODS.filter((f) => f.level === 1).map((f) => f.id),
+  assert.deepEqual(unlocked.map((c) => c.id), FOODS.filter((f) => isUnlocked(f, { level: 1 })).map((f) => f.id),
     'Lv.1 该放开的那几样和表对不上')
   assert.ok(unlocked.every((c) => !c.disabled), `没在吃饭也把能吃的格子灰了：${JSON.stringify(unlocked)}`)
   assert.ok(free.filter((c) => c.locked).every((c) => c.disabled), '没解锁的格子没灰')
@@ -2185,7 +2443,7 @@ check('吃饭期间整列食物点不动（置灰是真 disabled），饭后自�
   await page.evaluate(() => window.__petDebug.hidePanel())
 })
 
-check('等级解锁：Lv.2 只放开前三格，跨过 Lv.3 那一口当场解开第四格并说一句', async () => {
+check('等级解锁：Lv.4 只放开开局四格，跨过 Lv.5 那一口当场解开晚餐并说一句', async () => {
   /**
    * 这条要另开一只宠物：判据是**存档里的 exp**，而主套那只是空档（exp 0 = Lv.1），
    * 喂一口才 2 经验，跑到后面的级要几十口——那不该是 e2e 等的事。
@@ -2200,14 +2458,14 @@ check('等级解锁：Lv.2 只放开前三格，跨过 Lv.3 那一口当场解�
    * 上一版抄的是 9.6 和「那四样」，曲线一改就红在期望值上，而不是红在行为上。
    */
   const dir = mkdtempSync(join(tmpdir(), 'pet-e2e-lv-'))
-  // 目标：跨过 Lv.3 的门槛。留两口的量——daily-open 那一份是**开面板**那一刻发的，
+  // 目标：跨过 Lv.5 的门槛（第一格等级解锁 = 晚餐）。留两口的量——daily-open 那一份是**开面板**那一刻发的，
   // 不把它算进来，种子会在「叫出面板」那一瞬就悄悄跨级，后面「喂一口才升级」验的就是空气。
-  const SEED = LEVEL_CUM[2] - (EXP_GAIN['daily-open'] + EXP_GAIN.feed)
+  const SEED = LEVEL_CUM[4] - (EXP_GAIN['daily-open'] + EXP_GAIN.feed)
   writeFileSync(join(dir, 'save.json'), JSON.stringify({
     version: 3,
     skin: 'block',
     identity: { name: '小鲸', gender: 'female' },
-    stats: { hunger: 40, mood: 40, weight: 40, bond: 40 },
+    stats: { hunger: 40, mood: 40, weight: 40, bond: 0 },
     exp: SEED,
     lastSeenAt: Date.now(),
   }), 'utf8')
@@ -2243,21 +2501,21 @@ check('等级解锁：Lv.2 只放开前三格，跨过 Lv.3 那一口当场解�
       locked: c.classList.contains('is-locked'),
       badge: c.querySelector('.pet-food-lock')?.textContent ?? '',
     })))
-    // 先看跨级前列表摆得对不对：种子是 Lv.2，前三格（Lv.1）该亮，第 4 格（Lv.3）还锁着
+    // 先看跨级前列表摆得对不对：种子是 Lv.4，开局四格该亮，等级那十二格还锁着
     const before = await read2()
-    const openAt = (lv) => FOODS.filter((f) => f.level <= lv).map((f) => f.id)
-    assert.deepEqual(before.filter((c) => !c.locked).map((c) => c.id), openAt(2),
-      `Lv.2 只该放开那 ${openAt(2).length} 样，实际是 ${JSON.stringify(before.filter((c) => !c.locked).map((c) => c.id))}`)
-    assert.equal(before.filter((c) => c.locked).length, FOODS.length - openAt(2).length, '带角标的格数不对')
+    const openAt = (lv) => FOODS.filter((f) => isUnlocked(f, { level: lv })).map((f) => f.id)
+    assert.deepEqual(before.filter((c) => !c.locked).map((c) => c.id), openAt(4),
+      `Lv.4 只该放开那 ${openAt(4).length} 样，实际是 ${JSON.stringify(before.filter((c) => !c.locked).map((c) => c.id))}`)
+    assert.equal(before.filter((c) => c.locked).length, FOODS.length - openAt(4).length, '带角标的格数不对')
     assert.ok(before.every((c) => c.locked === (c.badge !== '')), '角标与 is-locked 不是一件事：有一个是空话')
     // 等级行也得自洽：状态栏那个 Lv. 与格子的锁是同一份 exp 算出来的，两边不一致就是有两本账。
     // （只能在状态视图开着时读——那一行不在别的视图里，写在这儿顺序才不是「等一个不存在的节点」。）
     await tap2('.pet-panel button[data-id="status"]')
     await p2.waitForSelector('.pet-stats-level')
-    assert.equal(await p2.evaluate(() => document.querySelector('.pet-stats-level')?.textContent), 'Lv.2',
-      `种子 exp ${SEED} + 日开 ${EXP_GAIN['daily-open']} 该停在 Lv.2`)
+    assert.equal(await p2.evaluate(() => document.querySelector('.pet-stats-level')?.textContent), 'Lv.4',
+      `种子 exp ${SEED} + 日开 ${EXP_GAIN['daily-open']} 该停在 Lv.4`)
 
-    // 喂这一口：feed 再给 EXP_GAIN.feed → 经验正好跨过 Lv.3 的门槛
+    // 喂这一口：feed 再给 EXP_GAIN.feed → 经验正好跨过 Lv.5 的门槛
     await p2.evaluate(() => window.__petDebug.setLastTalk(0))
     await tap2('.pet-panel button[data-id="feed"]')
     await p2.waitForSelector('.pet-panel .pet-food')
@@ -2275,10 +2533,10 @@ check('等级解锁：Lv.2 只放开前三格，跨过 Lv.3 那一口当场解�
     const said = await p2.evaluate(() => window.__petDebug.bubbleText)
     assert.ok(levelupLines.includes(said), `跨级说的是「${said}」，不在 levelup 那一档里`)
 
-    // 等级真的落进快照了：状态栏那一行自己变 Lv.3（切回状态视图才读得到）
+    // 等级真的落进快照了：状态栏那一行自己变 Lv.5（切回状态视图才读得到）
     await tap2('.pet-panel button[data-id="status"]')
     await p2.waitForFunction(
-      () => document.querySelector('.pet-stats-level')?.textContent === 'Lv.3', null, { timeout: 15000 })
+      () => document.querySelector('.pet-stats-level')?.textContent === 'Lv.5', null, { timeout: 15000 })
     // 这一口演完再看格子：吃饭那层灰和等级那层灰都表现为 disabled，
     // 嘴里还含着饭的时候「该放开的还灰着」是**对的**，验不出解锁。
     await p2.waitForFunction(() => window.__petDebug.current.pool !== 'eat', null, { timeout: 15000 })
@@ -2286,21 +2544,21 @@ check('等级解锁：Lv.2 只放开前三格，跨过 Lv.3 那一口当场解�
     await p2.waitForSelector('.pet-panel .pet-food')
     const after = await read2()
     assert.deepEqual(after.filter((c) => c.locked).map((c) => c.id).sort(),
-      FOODS.filter((f) => f.level > 3).map((f) => f.id).sort(), '跨过 Lv.3 之后还锁着的不是表里那几格')
-    assert.ok(after.filter((c) => !c.locked).every((c) => !c.disabled), 'Lv.3 了还有该放开的格子灰着')
+      FOODS.filter((f) => !isUnlocked(f, { level: 5 })).map((f) => f.id).sort(), '跨过 Lv.5 之后还锁着的不是表里那几格')
+    assert.ok(after.filter((c) => !c.locked).every((c) => !c.disabled), 'Lv.5 了还有该放开的格子灰着')
     // 刚解锁的那一格要真能喂出去，不是只把灰擦掉。
-    // 油条在 block 皮肤里没有对应吃相（会回落到 click 池），所以这里**不问动画，问账**：
-    // 喂油条该让饥饿动起来。
+    // Lv.5 跨级解开的是晚餐；block 皮肤没有 eat 池（回落 click 池），所以这里**不问动画，问账**：
+    // 喂晚餐该让饥饿动起来。
     const hungerBefore = JSON.parse(readFileSync(join(dir, 'save.json'), 'utf8')).stats.hunger
     await p2.evaluate(() => window.__petDebug.setLastTalk(0))
-    await tap2('.pet-panel .pet-food[data-food="youtiao"]')
+    await tap2('.pet-panel .pet-food[data-food="dinner"]')
     let hungerAfter = hungerBefore
     for (let i = 0; i < 40 && !(hungerAfter > hungerBefore); i++) {
       await p2.waitForTimeout(100)
       hungerAfter = JSON.parse(readFileSync(join(dir, 'save.json'), 'utf8')).stats.hunger
     }
     assert.ok(hungerAfter > hungerBefore,
-      `Lv.3 刚解开的油条格点下去没喂进去（饥饿 ${hungerBefore} → ${hungerAfter}）`)
+      `Lv.5 刚解开的晚餐格点下去没喂进去（饥饿 ${hungerBefore} → ${hungerAfter}）`)
   } finally {
     await app2.close()
     try { rmSync(dir, { recursive: true, force: true }) } catch { /* 句柄没放干净就算了 */ }
@@ -2401,6 +2659,87 @@ check('同一个 userData 的第二个实例被单实例锁挡掉', async () => 
   assert.ok(!r.error, `第二个实例没能在 20 秒内自行退出，锁没起作用：${String(r.error)}`)
   assert.equal(r.status, 0, `第二实例退出码 ${r.status}，输出：${r.stdout?.slice(0, 200)}`)
   assert.match(r.stdout ?? '', /已经有一只宠物在跑了/, '第二实例退出了但没说明原因')
+})
+
+check('悬浮收益卡：鼠标停在食物格上，旁边弹出名字与饥饿/心情/经验（不写体重）', async () => {
+  assert.ok(await openOnBody(), '前置：面板叫不出来')
+  await page.click('.pet-actions button[data-id="feed"]')
+  await page.waitForSelector('.pet-panel .pet-food')
+  await page.hover('.pet-panel .pet-food[data-food="rice"]')
+  const tip = await page.evaluate(() => {
+    const t = document.querySelector('.pet-food-tip')
+    if (!t || t.hidden) return null
+    const cell = document.querySelector('.pet-food[data-food="rice"]')?.getBoundingClientRect()
+    return {
+      text: t.textContent ?? '',
+      top: Math.round(t.getBoundingClientRect().top),
+      cellTop: Math.round(cell.top),
+      cellBottom: Math.round(cell.bottom),
+    }
+  })
+  assert.ok(tip, 'hover 食物格没弹出悬浮卡')
+  assert.match(tip.text, /白饭/, '卡片没写名字')
+  assert.match(tip.text, /饥饿 \+\d+/, '卡片没写饥饿收益')
+  assert.match(tip.text, /心情 \+\d+/, '卡片没写心情')
+  assert.match(tip.text, /经验 \+\d+/, '卡片没写经验')
+  assert.ok(!tip.text.includes('体重'), '卡片不该写体重热量')
+  // 卡片落在格子附近（上方或下方），不是屏幕角落
+  assert.ok(Math.abs(tip.top - tip.cellTop) < 120 || Math.abs(tip.top - tip.cellBottom) < 120,
+    `悬浮卡离格子太远：top=${tip.top} 格子 ${tip.cellTop}..${tip.cellBottom}`)
+  await page.evaluate(() => window.__petDebug.hidePanel())
+})
+
+check('界面字体真的加载并生效：默认/状态栏思源、飘字 Fredoka 14px', async () => {
+  await page.evaluate(() => document.fonts.ready)
+  const r = await page.evaluate(() => {
+    const probe = (cls) => {
+      const n = document.createElement('div')
+      n.className = cls
+      n.textContent = '饥饿 +2'
+      document.body.append(n)
+      const cs = getComputedStyle(n)
+      const out = { family: cs.fontFamily, size: cs.fontSize }
+      n.remove()
+      return out
+    }
+    return {
+      sansLoaded: document.fonts.check('12px "WithMe Sans"'),
+      numLoaded: document.fonts.check('14px "WithMe Num"'),
+      label: probe('pet-stat-label'),
+      float: probe('pet-float'),
+      body: getComputedStyle(document.body).fontFamily,
+    }
+  })
+  // 白名单或路径漏一个，字体就静默 404 落回雅黑、功能测试全绿——所以这里直接问 fonts 与 computed。
+  assert.ok(r.sansLoaded, 'WithMe Sans 没加载（copy-static / protocol 白名单或 url 路径漏了）')
+  assert.ok(r.numLoaded, 'WithMe Num 没加载')
+  assert.match(r.body, /^"?WithMe Sans"?/, 'body 默认不是思源')
+  assert.match(r.label.family, /^"?WithMe Sans"?/, '状态栏标签不是思源')
+  assert.match(r.float.family, /^"?WithMe Num"?/, '飘字数字栈首位不是 Fredoka')
+  assert.equal(r.float.size, '14px', '飘字该统一 14px')
+})
+
+check('屏幕变矮后宠物被夹回可见区，不留在已经消失的下半屏', async () => {
+  // 验 resize 接线：主进程跟随显示器工作区重摆覆盖层，渲染层收到 window 'resize' 后
+  // motion.setBounds 重算夹取并把宠物拉回新地面。OS 级的 display-metrics-changed 在 e2e
+  // 里造不出来，但走的是同一条 window 'resize'——用 setViewportSize 把视口直接压矮来触发。
+  const before = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }))
+  const oldStageTop = await page.evaluate(() => document.querySelector('.pet-stage').getBoundingClientRect().top)
+
+  const shrunk = Math.max(180, Math.floor(before.h / 4))   // 压到旧高度的 1/4，必然矮过旧地面
+  await page.setViewportSize({ width: before.w, height: shrunk })
+  await page.waitForTimeout(220)   // 至少过一帧：监听器把边界重算并夹回来
+
+  const after = await page.evaluate(() => {
+    const r = document.querySelector('.pet-stage').getBoundingClientRect()
+    return { h: innerHeight, top: r.top }
+  })
+  // 反向确认这条不是恒真：旧舞台顶沿确实比新视口深，"留在原地"才会整只跑出屏幕。
+  assert.ok(oldStageTop > after.h, `旧地面 top=${Math.round(oldStageTop)} 没比新视口 ${after.h} 低，这台机器测不出回归`)
+  // 关键判据：宠物重新可见（舞台顶沿落在新视口内）。没接线时它停在旧地面 ~875px，早跑到屏外。
+  assert.ok(after.top < after.h - 20, `压到 ${after.h}px 后宠物没被夹回：舞台顶 top=${Math.round(after.top)} 仍在屏外`)
+
+  await page.setViewportSize({ width: before.w, height: before.h })   // 还原视口，别影响收尾
 })
 
 beforePids = psPids()

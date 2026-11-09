@@ -107,6 +107,7 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   click: '正在打招呼',
   drag: '被拎着',
   eat: '正在吃饭',
+  guess: '在做动作',
 }
 /** 皮肤里有自定义池（比如 sleep）时的兜底。 */
 export const ACTIVITY_FALLBACK = '正在发呆'
@@ -201,16 +202,16 @@ export type PanelButton = {
   label: string
   icon: string
   pool?: string
-  view?: 'settings' | 'foods' | 'stats'
+  view?: 'settings' | 'foods' | 'stats' | 'games' | 'debug'
 }
 
 export const PANEL_BUTTONS: readonly PanelButton[] = [
   { id: 'feed', label: '喂食', icon: 'icons/rice.svg', view: 'foods' },
-  { id: 'game', label: '小游戏', icon: 'icons/game.svg', pool: 'click' },
+  { id: 'game', label: '小游戏', icon: 'icons/game.svg', view: 'games' },
   { id: 'status', label: '状态', icon: 'icons/heart.svg', view: 'stats' },
   { id: 'settings', label: '设置', icon: 'icons/settings.svg', view: 'settings' },
-  // 调试气泡用：点一次按顺序放一条台词（含那颗回应按钮），绕开冷却与概率。
-  { id: 'talk', label: '说话', icon: 'emotes/dots3.png', pool: 'click' },
+  // 调试台：条件触发 / 动画全集 / 台词全表 / 游戏食物 + 等级与数值滑条。测试用，替换旧的「说话」按钮。
+  { id: 'debug', label: '调试', icon: 'icons/debug.svg', view: 'debug' },
 ]
 
 // ---- 喂食列表 ----
@@ -228,6 +229,12 @@ export const FOOD_GAP = 4
 /** 一屏可见格数。视口宽 = 4×48 + 3×4 = 204。 */
 export const FOOD_VISIBLE = 4
 /** 食物表本体在 `shared/food.ts`——那里要带排版宽度函数，config 只放常量。 */
+
+// ---- 游戏列表 ----
+/** 和食物列表同一套格子量级（48 方卡 / 40 图 / 4 间距），UI 才长得一样。表本体在 `shared/games.ts`。 */
+export const GAME_CELL = 48
+export const GAME_ICON = 40
+export const GAME_GAP = 4
 
 // ---- 存档 ----
 /**

@@ -1,14 +1,17 @@
-import { FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, PANEL_BUTTONS, type PanelButton } from '../shared/config.js'
-import { FOODS, type Food } from '../shared/food.js'
+import { FOOD_CELL, FOOD_GAP, FOOD_VISIBLE, GAME_CELL, GAME_GAP, PANEL_BUTTONS, type PanelButton } from '../shared/config.js'
+import { FOODS, isUnlocked, unlockBadge, unlockHint, type Food } from '../shared/food.js'
+import { GAMES, type Game } from '../shared/games.js'
 import { clampScroll, pageStep, thumbGeometry } from '../shared/scroll.js'
 import {
   EXP_GAIN,
+  FOOD_EFFECT,
   IDLE_EXP_PER_MIN,
+  LEVEL_CUM,
   LEVEL_STEPS,
   MAX_LEVEL,
   STAT_KEYS,
   STAT_LABELS,
-  expToNext,
+  STAT_MAX,
   levelFraction,
   levelOf,
   statBand,
@@ -16,6 +19,7 @@ import {
 import { GENDER_GLYPHS, GENDER_LABELS, type Gender, type StatsSnapshot, otherGender } from '../shared/save.js'
 import type { Settings, Visibility } from '../shared/visibility.js'
 import type { Point, Rect } from '../shared/types.js'
+import { createDebugPlate, type DebugContext } from './debug.js'
 
 /**
  * 悬停面板：一个定位层 + 两块各自摆位的内容。
@@ -38,7 +42,7 @@ import type { Point, Rect } from '../shared/types.js'
 
 /** 按钮的形状完全由 config 的 PANEL_BUTTONS 决定，这里不复制一份。 */
 export type PanelAction = PanelButton
-export type PanelView = 'actions' | 'settings' | 'foods' | 'stats'
+export type PanelView = 'actions' | 'settings' | 'foods' | 'games' | 'stats' | 'debug'
 
 /**
  * 状态栏底下那两行「此刻」的读数。
@@ -59,15 +63,14 @@ export interface PanelHandlers {
   setting(patch: Partial<Settings>): void
   /** 点了食物列表里的某一格。播哪条动画、说什么话由装配层决定，面板只管「选了哪个」。 */
   pick(f: Food): void
+  /** 点了游戏列表里某个「开始」。开哪个游戏、怎么接管整屏由装配层决定，面板只管「选了哪个」。 */
+  game(g: Game): void
   /** 点了性别那一档。改名要键盘，这扇窗默认不收键盘，见装配层的说明。 */
   identity(patch: { name?: string; gender?: string }): void
-  /**
-   * 点了档案卡片右上角那颗 ×。面板自己不收——收起要连 hover 复位、延时定时器、
-   * 交互区重算一起办，那些都在装配层（见 index.ts 的 closePanel）。
-   */
-  close(): void
   /** 视图换了。调用方据此换收起延时（操作型视图要更宽裕的时间）。 */
   view(v: PanelView): void
+  /** 点了设置视图里的「退出桌宠」：装配层先说 bye 再让主进程退出。 */
+  quit(): void
 }
 
 export interface Panel {
@@ -165,6 +168,7 @@ export function createPanel(
   actions: PanelAction[],
   settings: Settings,
   handlers: PanelHandlers,
+  debug?: DebugContext,
 ): Panel {
   const el = document.createElement('div')
   el.className = 'pet-panel'
@@ -191,6 +195,14 @@ export function createPanel(
   /** 两块内容节点。render 时重建，收起时都摘掉；null 表示这一视图里没有它。 */
   let actionsEl: HTMLElement | null = null
   let plateEl: HTMLElement | null = null
+  /**
+   * 调试副板**跨重绘复用**（和按钮条同一个理由）：它内部有 tab 状态和正在拖的滑条，
+   * 数值快照推过来时只 refresh 读数、绝不重建，否则用户拖到一半的滑条/打开的 tab 会被冲掉。
+   * 没传 debug 上下文（多数单测）时保持 null，debug 视图渲染成空板。
+   */
+  let debugHandle: { el: HTMLElement; refresh(): void } | null = null
+  // 食物悬浮卡：附在整屏层 .pet-panel 上（不是副板里），免得被视口 overflow:hidden 裁掉。
+  let tipEl: HTMLElement | null = null
 
   /** 摆一块。位置为 null 就不动——量不到尺寸时（还没进布局）别把 transform 写成 NaN。 */
   function place(node: HTMLElement | null, p: Point | null): void {
@@ -205,7 +217,7 @@ export function createPanel(
 
   const hasPlate = (v: PanelView): boolean => v !== 'actions'
   /** 副板有没有自己的锚点：设置板走主块那条，不参与 stackAnchor/statsAnchor。 */
-  const hasSecondAnchor = (v: PanelView): boolean => v === 'foods' || v === 'stats'
+  const hasSecondAnchor = (v: PanelView): boolean => v === 'foods' || v === 'games' || v === 'stats' || v === 'debug'
 
   // 滚动状态只属于食物视图，就住在这里：一个数，其余全是纯函数算出来的（shared/scroll.ts）。
   const VIEW_W = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
@@ -223,6 +235,51 @@ export function createPanel(
   /** 换视图/收起都要复位：下次进来从头看，不该停在用户上次看一半的位置。 */
   function resetScroll(): void {
     scrollX = 0
+    gameScrollX = 0
+  }
+
+  // 游戏列表的滚动状态，和食物那套同构（同一套 shared/scroll 纯函数）。视口与食物同宽（4 格）；
+  // 现在 3 个游戏装得下，箭头置灰、拖拽条不出现——和食物列表装得下时一致；以后游戏多了自然能滚。
+  const GAME_VIEW_W = FOOD_VISIBLE * GAME_CELL + (FOOD_VISIBLE - 1) * GAME_GAP
+  const GAME_CONTENT_W = GAMES.length * GAME_CELL + (GAMES.length - 1) * GAME_GAP
+  const GAME_STEP = pageStep(FOOD_VISIBLE, GAME_CELL, GAME_GAP)
+  let gameScrollX = 0
+  let gameRefs: { strip: HTMLElement; prev: HTMLButtonElement; next: HTMLButtonElement; thumb: HTMLElement | null } | null = null
+
+  function syncGameScroll(): void {
+    if (gameRefs === null) return
+    const { strip, prev, next, thumb } = gameRefs
+    strip.style.transform = `translateX(${-gameScrollX}px)`
+    prev.disabled = gameScrollX <= 0
+    next.disabled = gameScrollX >= GAME_CONTENT_W - GAME_VIEW_W
+    if (thumb !== null) {
+      const t = thumbGeometry(gameScrollX, GAME_CONTENT_W, GAME_VIEW_W)
+      if (t === null) return
+      thumb.style.width = `${t.w}px`
+      thumb.style.transform = `translateX(${t.x}px)`
+    }
+  }
+
+  function setGameScroll(x: number): void {
+    gameScrollX = clampScroll(x, GAME_CONTENT_W, GAME_VIEW_W)
+    syncGameScroll()
+    place(primary(), at)
+    place(plateEl, plateAt)
+  }
+
+  function startGameDrag(e: MouseEvent): void {
+    e.preventDefault()
+    const fromX = e.clientX
+    const fromScroll = gameScrollX
+    const track = GAME_VIEW_W - (thumbGeometry(fromScroll, GAME_CONTENT_W, GAME_VIEW_W)?.w ?? GAME_VIEW_W)
+    const ratio = track > 0 ? GAME_CONTENT_W / track : 1
+    const move = (ev: MouseEvent): void => setGameScroll(fromScroll + (ev.clientX - fromX) * ratio)
+    const up = (): void => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
   }
 
   /**
@@ -246,6 +303,7 @@ export function createPanel(
   function setScroll(x: number): void {
     scrollX = clampScroll(x, CONTENT_W, VIEW_W)
     syncScroll()
+    hideTip()   // 格子跟着滚走了，卡片停在原地会指错格子
     // 内容高度没变，但夹取结果可能贴着屏幕边，位置仍按当前锚点重贴一次
     place(primary(), at)
     place(plateEl, plateAt)
@@ -268,6 +326,66 @@ export function createPanel(
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
+  }
+
+  /** 一行悬浮卡文字。 */
+  function tipLine(text: string, cls: string): HTMLElement {
+    const s = document.createElement('span')
+    s.className = cls
+    s.textContent = text
+    return s
+  }
+
+  /**
+   * 鼠标停在某格（或键盘聚焦）时，在格子旁边弹一张卡：名字 + 吃了有什么收益。
+   * 数字从 FOOD_EFFECT（含该食物自己的心情）/ EXP_GAIN 现取，不写死——改数值表时卡片跟着走。
+   * 卡片附在整屏层 `el` 上，坐标用 client 值（覆盖层就在 0,0），贴顶放不下就翻到格子下方。
+   */
+  function showTip(f: Food, cell: HTMLElement): void {
+    if (tipEl === null) {
+      tipEl = document.createElement('div')
+      tipEl.className = 'pet-food-tip'
+      el.append(tipEl)
+    }
+    const e = FOOD_EFFECT[f.id]!
+    tipEl.replaceChildren(
+      tipLine(f.name, 'pet-food-tip-name'),
+      tipLine(`饥饿 +${e.hunger}`, 'pet-food-tip-stat'),
+      tipLine(`心情 +${e.mood}`, 'pet-food-tip-stat'),
+      tipLine(`经验 +${EXP_GAIN.feed}`, 'pet-food-tip-stat'),
+    )
+    tipEl.hidden = false
+    placeTip(cell)
+  }
+
+  /** 把悬浮卡摆到格子旁边：水平居中夹回屏内，贴顶放不下就翻到格子下方。食物/游戏卡共用。 */
+  function placeTip(cell: HTMLElement): void {
+    if (tipEl === null) return
+    const cr = cell.getBoundingClientRect()
+    const tr = tipEl.getBoundingClientRect()
+    const left = Math.max(4, Math.min(cr.left + cr.width / 2 - tr.width / 2, window.innerWidth - tr.width - 4))
+    const top = cr.top - tr.height - 6 < 4 ? cr.bottom + 6 : cr.top - tr.height - 6
+    tipEl.style.left = `${Math.round(left)}px`
+    tipEl.style.top = `${Math.round(top)}px`
+  }
+
+  /** 游戏格悬停卡：名字 + 一句话玩法（和食物卡同一块 tipEl，视图切换时随 render 清掉）。 */
+  function showGameTip(g: Game, cell: HTMLElement): void {
+    if (tipEl === null) {
+      tipEl = document.createElement('div')
+      tipEl.className = 'pet-food-tip'
+      el.append(tipEl)
+    }
+    tipEl.replaceChildren(
+      tipLine(g.name, 'pet-food-tip-name'),
+      tipLine(g.desc, 'pet-game-tip-desc'),
+    )
+    tipEl.hidden = false
+    placeTip(cell)
+  }
+
+  function hideTip(): void {
+    if (tipEl !== null) tipEl.hidden = true
   }
 
   function renderFoods(host: HTMLElement): void {
@@ -300,6 +418,10 @@ export function createPanel(
       badge.className = 'pet-food-lock'
       cell.append(badge)
       cell.addEventListener('click', () => handlers.pick(f))
+      cell.addEventListener('mouseenter', () => showTip(f, cell))
+      cell.addEventListener('mouseleave', hideTip)
+      cell.addEventListener('focus', () => showTip(f, cell))
+      cell.addEventListener('blur', hideTip)
       strip.append(cell)
       items.push({ cell, badge, food: f })
     }
@@ -340,22 +462,22 @@ export function createPanel(
    *
    * 两件事会同时动这一列的灰态，所以合成一个函数：
    * ① **正在吃饭**（一口没吃完，整列点不动，用户拍的板）；
-   * ② **还没到解锁等级**（2026-11-06 的「等级低只能吃简单的」）。
-   * 判据分开算、`disabled` 取两者的或；升级那一刻只翻这几个属性，**不重建列表**——
+   * ② **还没解锁**（开局/等级两档，判据走 food.isUnlocked，别在这里再写一份比较）。
+   * 判据分开算、`disabled` 取两者的或；解锁那一刻只翻这几个属性，**不重建列表**——
    * 重建会把用户的滚动位置与他手里的旧节点一起弄丢（和 `syncScroll` 同一条理由）。
    */
   function syncCells(): void {
     if (foodRefs === null) return
-    const lv = levelNow()
+    const ctx = { level: levelNow() }
     for (const { cell, badge, food: f } of foodRefs.items) {
-      const locked = f.level > lv
+      const locked = !isUnlocked(f, ctx)
       cell.disabled = eating || locked
       cell.classList.toggle('is-locked', locked)
-      badge.textContent = locked ? `Lv.${f.level}` : ''
-      // 图不带字，悬停与读屏是唯一的说明——锁住的那格必须连「为什么点不动」一起说清
-      const text = locked ? `${f.name}（Lv.${f.level} 解锁）` : f.name
-      cell.title = text
-      cell.setAttribute('aria-label', text)
+      badge.textContent = locked ? unlockBadge(f) : ''
+      // 图不带字，读屏与悬停是唯一的说明。已解锁格**不再挂原生 title**（收益改由悬浮卡显示，
+      // 原生 tooltip 会和卡片重复）；未解锁格仍留 title 说清「为什么点不动」。
+      cell.setAttribute('aria-label', locked ? unlockHint(f) : f.name)
+      cell.title = locked ? unlockHint(f) : ''
     }
   }
 
@@ -365,14 +487,74 @@ export function createPanel(
   }
 
   /**
+   * 游戏列表：和食物列表同一套「一排方形格子、格子里是图标」的 UI。点一格 = 开那个游戏
+   * （`handlers.game(g)`），不像食物那样带解锁/吃饭灰态——现在只有一个游戏，也还没做解锁。
+   * 名字退成 title / aria-label，和食物格子、翻页箭头同一套约定（图不带字时的兜底说明）。
+   */
+  function renderGames(host: HTMLElement): void {
+    const row = document.createElement('div')
+    row.className = 'pet-games'
+
+    // 翻页键和食物列表同一套（Kenney 箭头 + .pet-page），点一下翻一屏。
+    const prev = imgBtn('上一页', 'icons/arrow_basic_w_small.svg', { page: 'prev' }, 'pet-arrow')
+    const next = imgBtn('下一页', 'icons/arrow_basic_e_small.svg', { page: 'next' }, 'pet-arrow')
+    prev.classList.add('pet-page')
+    next.classList.add('pet-page')
+    prev.addEventListener('click', () => setGameScroll(gameScrollX - GAME_STEP))
+    next.addEventListener('click', () => setGameScroll(gameScrollX + GAME_STEP))
+
+    const viewport = document.createElement('div')
+    viewport.className = 'pet-game-viewport'
+    const strip = document.createElement('div')
+    strip.className = 'pet-game-strip'
+    for (const g of GAMES) {
+      const cell = imgBtn(g.name, g.icon, { id: `start-${g.id}`, game: g.id }, 'pet-game-icon')
+      cell.classList.add('pet-game')
+      cell.addEventListener('click', () => handlers.game(g))
+      // 悬停/聚焦弹「名字 + 一句话玩法」卡（和食物格同一套）；原生 title 清掉免得和卡片重复。
+      cell.title = ''
+      cell.setAttribute('aria-label', `${g.name}：${g.desc}`)
+      cell.addEventListener('mouseenter', () => showGameTip(g, cell))
+      cell.addEventListener('mouseleave', hideTip)
+      cell.addEventListener('focus', () => showGameTip(g, cell))
+      cell.addEventListener('blur', hideTip)
+      strip.append(cell)
+    }
+    viewport.append(strip)
+
+    // 「视口 + 拖拽条」成一列夹在两个翻页键中间，和食物列表同构。
+    const main = document.createElement('div')
+    main.className = 'pet-game-main'
+    main.append(viewport)
+
+    let thumb: HTMLElement | null = null
+    const t = thumbGeometry(gameScrollX, GAME_CONTENT_W, GAME_VIEW_W)
+    if (t !== null) {
+      // 装得下就不画轨道（3 个游戏 < 4 格时这里为 null）：没东西可滚却摆横条是骗用户还能拖。
+      const track = document.createElement('div')
+      track.className = 'pet-scroll'
+      thumb = document.createElement('div')
+      thumb.className = 'pet-thumb'
+      thumb.addEventListener('pointerdown', startGameDrag)
+      track.append(thumb)
+      main.append(track)
+    }
+
+    row.append(prev, main, next)
+    host.append(row)
+
+    gameRefs = { strip, prev, next, thumb }
+    syncGameScroll()
+  }
+
+  /**
    * 状态栏：昵称一行、性别一行，然后「等级 + 经验值」两行挨着，下面四条读数，最后「此刻」两行，
    * 没有返回按钮（收起靠再点一次状态键）。
    * 它是 qqpet 那种「一眼看到当前值」的面板，不是设置页——唯一还能就地改的是性别。
    */
   function renderStats(host: HTMLElement): void {
-    // 卡片标题：一条横线 + 「宠物档案」+ 右上角那颗 ×（用户 2026-11-07 三条一起要的）。
-    // × 走 handlers.close()，面板不自个儿收——收起要连 hover 复位、延时定时器、交互区重算
-    // 一起办，那些都在装配层。这里只管把按钮画出来、把点击递出去。
+    // 卡片标题：一条横线 + 「宠物档案」。右上角那颗 × 已去掉（用户 2026-11-09）——
+    // 收起靠「再点一次状态键」或「离开满 1500ms 自动收」，不必再造一枚关闭按钮。
     host.append(archiveHead())
     host.append(tight(plainLine('昵称', snap === null ? '…' : snap.identity.name, 'pet-stats-name')))
     // 性别要读得出是哪一档才画：没快照时给个空符号比猜一个诚实。
@@ -399,7 +581,7 @@ export function createPanel(
 
     for (const key of STAT_KEYS) {
       const v = snap.stats[key]
-      host.append(barLine(`is-${statBand(v)}`, key, STAT_LABELS[key], Math.round(v), String(Math.round(v))))
+      host.append(barLine(`is-${statBand(v)}`, key, STAT_LABELS[key], Math.round(v), String(Math.round(v)), String(STAT_MAX)))
     }
 
     // 「此刻」两行排在读数下面：上面四条是「攒了多少」，这两条是「现在」，
@@ -413,9 +595,8 @@ export function createPanel(
   }
 
   /**
-   * 档案卡片的标题行：左边「宠物档案」，右边一枚 ×。横线由 CSS 在这一行下沿画。
-   * × 用文字「×」而不是图标：它要跟着字号走、要在读屏里说清「关闭」，
-   * 而素材里那几颗线框叉是 24px 位图，压不进 12px 的一行标题里。
+   * 档案卡片的标题行：一行「宠物档案」，下沿一条横线（由 CSS 画）。
+   * 只留标题——右上角那颗 × 已去掉（用户 2026-11-09），收起改由状态键切换 / 悬停延时负责。
    */
   function archiveHead(): HTMLElement {
     const head = document.createElement('div')
@@ -423,15 +604,7 @@ export function createPanel(
     const title = document.createElement('span')
     title.className = 'pet-plate-title'
     title.textContent = '宠物档案'
-    const x = document.createElement('button')
-    x.type = 'button'
-    x.className = 'pet-plate-close'
-    x.dataset.id = 'close'
-    x.textContent = '×'
-    x.setAttribute('aria-label', '关闭宠物档案')
-    x.title = '关闭（和再点一次「状态」是同一件事）'
-    x.addEventListener('click', () => handlers.close())
-    head.append(title, x)
+    head.append(title)
     return head
   }
 
@@ -454,13 +627,18 @@ export function createPanel(
     const maxed = lv >= MAX_LEVEL
     const expOut = document.createElement('span')
     expOut.className = 'pet-stat-value pet-exp-value'
-    // 写的数是**还差多少**（用户最初那句「显示当前升级还需要多少经验值」），
-    // 标签缩成两个字之后这一点全靠 title 和条来说清——单看数字分不出「已攒」还是「还差」。
-    expOut.textContent = maxed ? '满级' : String(Math.ceil(expToNext(snap!.exp)))
-    exp.append(makeLabel('经验'), expBar, expOut)
-    exp.title = maxed
-      ? `已到 Lv.${MAX_LEVEL}。经验继续累计，但不再升级`
-      : `Lv.${lv} → Lv.${lv + 1} 共需 ${LEVEL_STEPS[lv - 1]}，还差 ${expToNext(snap!.exp).toFixed(1)}。累计经验 ${snap!.exp.toFixed(1)}（只增不减）`
+    // 2026-11-07 用户要求读数带总额：写「本级已攒 / 本级所需」（和那条 bar 同一口径）。
+    // 满级不写假读数。
+    const within = Math.floor(snap!.exp - LEVEL_CUM[lv - 1]!)
+    expOut.textContent = maxed ? '满级' : String(within)
+    const expTotal = document.createElement('span')
+    expTotal.className = 'pet-stat-total pet-exp-total'
+    expTotal.textContent = maxed ? '' : `/${LEVEL_STEPS[lv - 1]}`
+    const expBox = document.createElement('span')
+    expBox.className = 'pet-stat-out'
+    expBox.append(expOut, expTotal)
+    exp.append(makeLabel('经验'), expBar, expBox)
+    // 不挂 title：用户 2026-11-07 嫌悬停那段「共需/还差/累计」太罗嗦，读数本身已带 /总额。
     return exp
   }
 
@@ -483,8 +661,10 @@ export function createPanel(
     return line.lastElementChild as HTMLElement
   }
 
-  /** 「标签 + 进度条 + 右端数值」一行，四条读数与等级共用。 */
-  function barLine(bandCls: string, key: string, labelText: string, pct: number, valueText: string): HTMLElement {
+  /** 「标签 + 进度条 + 右端数值/总数」一行，四条读数共用。
+   *  值与「/总数」包在一个无 gap 的 wrapper 里：行 gap 是 4px，直接并列会把「62 /100」拆开；
+   *  数值本体仍是独立的 .pet-stat-value（e2e 按它 Number 解析），后缀单独 .pet-stat-total。 */
+  function barLine(bandCls: string, key: string, labelText: string, pct: number, valueText: string, totalText: string): HTMLElement {
     const line = document.createElement('div')
     line.className = 'pet-stat'
     line.dataset.key = key
@@ -496,7 +676,13 @@ export function createPanel(
     const out = document.createElement('span')
     out.className = 'pet-stat-value'
     out.textContent = valueText
-    line.append(makeLabel(labelText), bar, out)
+    const total = document.createElement('span')
+    total.className = 'pet-stat-total'
+    total.textContent = `/${totalText}`
+    const box = document.createElement('span')
+    box.className = 'pet-stat-out'
+    box.append(out, total)
+    line.append(makeLabel(labelText), bar, box)
     return line
   }
 
@@ -583,6 +769,14 @@ export function createPanel(
       }
       host.append(line)
     }
+    const credit = document.createElement('div')
+    credit.className = 'pet-credit'
+    credit.textContent = '字体：思源黑体 / Fredoka（SIL OFL 1.1）'
+    host.append(credit)
+    // 退出桌宠：走装配层的 bye 流程（先说再见、再让主进程落盘退出），面板自己不关窗。
+    const quit = btn('退出桌宠', { id: 'quit' }, false)
+    quit.addEventListener('click', () => handlers.quit())
+    host.append(quit)
     const back = btn('返回', { view: 'actions' }, false)
     back.addEventListener('click', () => switchTo('actions'))
     host.append(back)
@@ -595,6 +789,22 @@ export function createPanel(
    * ② 重建还会把监听器与焦点状态一起丢掉。
    * 副板（列表 / 读数 / 设置）内容随视图变，照旧整块换——它换一次就是「来了一张新卡片」，该弹。
    */
+  /** 调试副板：构造一次后复用，每次进视图只重挂 + refresh 读数（不重建，保住 tab 与滑条状态）。 */
+  function renderDebug(host: HTMLElement): void {
+    if (debug === undefined) {
+      const p = document.createElement('p')
+      p.className = 'pet-debug-hint'
+      p.textContent = '调试上下文未注入。'
+      host.append(p)
+      return
+    }
+    if (debugHandle === null) {
+      debugHandle = createDebugPlate(debug, () => (snap === null ? null : { stats: snap.stats, exp: snap.exp }))
+    }
+    host.append(debugHandle.el)
+    debugHandle.refresh()
+  }
+
   function render(): void {
     const wantActions = current !== 'settings'
     if (plateEl !== null) {
@@ -602,6 +812,7 @@ export function createPanel(
       plateEl = null
     }
     foodRefs = null                 // 旧列表节点已经不在了，别让 syncScroll 去摸它们
+    if (tipEl !== null) { tipEl.remove(); tipEl = null }   // 悬浮卡随列表一起退场
     runtimeRefs = null              // 同上：那两行的字要等下一次 renderStats 重新交出来
     if (!wantActions) {
       if (actionsEl !== null) {
@@ -617,7 +828,9 @@ export function createPanel(
       plateEl.className = 'pet-plate'
       plateEl.classList.add(`is-${current}`)
       if (current === 'foods') renderFoods(plateEl)
+      else if (current === 'games') renderGames(plateEl)
       else if (current === 'stats') renderStats(plateEl)
+      else if (current === 'debug') renderDebug(plateEl)
       else renderSettings(plateEl)
       el.append(plateEl)
     }
@@ -720,6 +933,8 @@ export function createPanel(
       // 数值是主进程每 tick / 每次动作推过来的，状态栏开着就得跟着改；
       // 只在这里重绘，收起时不重绘——省掉一批没人看的 DOM 操作。
       if (current === 'stats') render()
+      // 调试板开着：只把滑条/等级读数同步到新快照，**不重建**（用户可能正拖着滑条、开着某个 tab）。
+      else if (current === 'debug') debugHandle?.refresh()
       // 列表开着时升级要当场解锁：只翻格子，不重建整块（滚动位置是用户的）。
       // 没开着时 foodRefs 是 null，这一句自己 no-op。
       else syncCells()
@@ -734,6 +949,7 @@ export function createPanel(
     setEating(on) {
       if (on === eating) return
       eating = on
+      hideTip()
       syncCells()
     },
   }

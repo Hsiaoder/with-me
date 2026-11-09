@@ -31,6 +31,10 @@ const ADD = [
   { name: 'snack', src: 'assets/webm/大口吃零食.webm' },
   { name: 'icecream', src: 'assets/webm/吃冰淇淋融化.webm' },
   { name: 'ricecake', src: 'assets/webm/吃年糕.webm' },
+  { name: 'dinner', src: 'assets/webm/吃晚餐.webm' },
+  { name: 'tangyuan', src: 'assets/webm/吃汤圆.webm' },
+  { name: 'qingtuan', src: 'assets/webm/吃青团.webm' },
+  { name: 'labaporridge', src: 'assets/webm/吃腊八粥.webm' },
 ]
 
 const fd = openSync(ASAR, 'r')

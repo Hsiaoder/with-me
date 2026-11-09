@@ -36,21 +36,43 @@ export interface Motion {
   setFacing(f: Facing): void
   /** 拖拽落点：夹进可走范围，y 也夹，免得被拖出屏幕找不回来。 */
   setPosition(p: Point): Point
+  /**
+   * 「鲸鲸会飞」专用：**不夹** y，宠物该能飞出屏幕上沿并继续被计数，落地前不回来。
+   * 单开一个口子而不是把 `setPosition` 的夹取去掉——拖拽那条仍然必须夹（否则人被丢出屏幕找不回），
+   * 两件事的意图相反，共用一个方法只会互相将死。
+   */
+  setPositionUnclamped(p: Point): Point
   /** 脚底贴住范围下沿。 */
   snapToBottom(): Point
   /** 按时间积分推进一步，撞边界就掉头。 */
   step(dtMs: number): Point
+  /**
+   * 工作区变了（改分辨率/缩放/旋转/任务栏自动隐藏）：按新范围重算夹取边界，
+   * 并**立刻把当前身体夹回新范围**——屏幕缩小时这一下保证宠物不留在看不见的地方。
+   */
+  setBounds(b: Rect): Point
 }
 
 export function createMotion(opts: MotionOptions): Motion {
-  const { bounds, feetOffsetCss } = opts
+  const { feetOffsetCss } = opts
   const inset: BodyInset = opts.bodyInset ?? { left: 0, right: 0, top: 0 }
-  /** 夹的是身体框的四边，不是舞台矩形：舞台允许部分走出屏幕。 */
-  const minX = bounds.x - inset.left
-  const maxX = Math.max(minX, bounds.x + bounds.w - STAGE_W_CSS + inset.right)
-  /** 舞台顶边的允许区间：脚底贴下沿，头顶不超出范围上沿。 */
-  const bottomY = bounds.y + bounds.h - (STAGE_H_CSS - feetOffsetCss)
-  const topY = Math.min(bottomY, bounds.y - inset.top)
+  /**
+   * 夹的是身体框的四边，不是舞台矩形：舞台允许部分走出屏幕。
+   * 用 `let` 而不是 `const`——工作区在运行中会变，`setBounds` 靠 `fit` 重算这一组边界；
+   * 把它们钉死在创建时，就是"启动后不跟屏幕变"的根因。
+   */
+  let minX = 0
+  let maxX = 0
+  let bottomY = 0
+  let topY = 0
+  const fit = (bounds: Rect): void => {
+    minX = bounds.x - inset.left
+    maxX = Math.max(minX, bounds.x + bounds.w - STAGE_W_CSS + inset.right)
+    /** 舞台顶边的允许区间：脚底贴下沿，头顶不超出范围上沿。 */
+    bottomY = bounds.y + bounds.h - (STAGE_H_CSS - feetOffsetCss)
+    topY = Math.min(bottomY, bounds.y - inset.top)
+  }
+  fit(opts.bounds)
 
   let pos: Point = { ...opts.start ?? { x: minX, y: bottomY } }
   let facing: Facing = opts.facing ?? 'right'
@@ -66,6 +88,10 @@ export function createMotion(opts: MotionOptions): Motion {
     },
     setPosition(p) {
       pos = { x: clampX(p.x), y: clampY(p.y) }
+      return { ...pos }
+    },
+    setPositionUnclamped(p) {
+      pos = { ...p }
       return { ...pos }
     },
     snapToBottom() {
@@ -84,6 +110,12 @@ export function createMotion(opts: MotionOptions): Motion {
         facing = 'right'
       }
       pos = { ...pos, x: nx }
+      return { ...pos }
+    },
+    setBounds(b) {
+      fit(b)
+      // 重算完立刻把当前身体夹回新范围：屏幕缩小时宠物可能已在旧地面，这一步把它拉回可见区。
+      pos = { x: clampX(pos.x), y: clampY(pos.y) }
       return { ...pos }
     },
   }

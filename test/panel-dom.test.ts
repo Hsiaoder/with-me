@@ -2,10 +2,10 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
-import { PANEL_BUTTONS, REQUIRED_POOLS, FOOD_CELL, FOOD_GAP, FOOD_VISIBLE } from '../src/shared/config.js'
+import { PANEL_BUTTONS, FOOD_CELL, FOOD_GAP, FOOD_VISIBLE } from '../src/shared/config.js'
 import { pageStep } from '../src/shared/scroll.js'
-import { FOODS, FOOD_TIERS } from '../src/shared/food.js'
-import { LEVEL_CUM, LEVEL_STEPS, MAX_LEVEL, STAT_KEYS, STAT_LABELS } from '../src/shared/stats.js'
+import { FOODS, FOOD_TIERS, isUnlocked, unlockBadge, unlockHint } from '../src/shared/food.js'
+import { EXP_GAIN, FOOD_EFFECT, LEVEL_CUM, LEVEL_STEPS, MAX_LEVEL, STAT_KEYS, STAT_LABELS } from '../src/shared/stats.js'
 import type { StatsSnapshot } from '../src/shared/save.js'
 
 /**
@@ -22,17 +22,16 @@ const mount = (onClick = vi.fn()) => {
   const root = document.createElement('div')
   document.body.replaceChildren(root)
   const identity = vi.fn()
-  const close = vi.fn()
-  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), close, identity })
-  return { panel, root, onClick, identity, close }
+  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), game: vi.fn(), identity, quit: vi.fn() })
+  return { panel, root, onClick, identity }
 }
 
 afterEach(() => { document.body.replaceChildren() })
 
 describe('defaultActions', () => {
-  it('五个按钮：喂食/小游戏/状态/设置/说话，顺序即 PANEL_BUTTONS', () => {
-    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status', 'settings', 'talk'])
-    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])
+  it('五个按钮：喂食/小游戏/状态/设置/调试，顺序即 PANEL_BUTTONS', () => {
+    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status', 'settings', 'debug'])
+    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态', '设置', '调试'])
   })
 
   it('每个按钮都带一张能进 dist 的图：icons/ 下的 SVG 或 emotes/ 下的 PNG', () => {
@@ -43,12 +42,11 @@ describe('defaultActions', () => {
     }
   })
 
-  it('带反应池的按钮只能用皮肤契约保证存在的池', () => {
-    // 反应来自 click 池，而 click 是 REQUIRED_POOLS 之一，任何合法皮肤都有它。
-    // 喂食、状态、设置都不带 pool——它们切视图，不点歌。
+  it('默认五颗都切视图，没有带反应池的按钮（旧「说话」那颗已换成调试视图）', () => {
+    // 反应池按钮的路径仍由 panel 支持（见下方「点按钮回调」用合成动作测），只是默认清单里不再有点歌的。
     const withPool = defaultActions().filter((a) => a.pool !== undefined)
-    expect(withPool).toHaveLength(2)
-    for (const a of withPool) expect(REQUIRED_POOLS).toContain(a.pool)
+    expect(withPool).toHaveLength(0)
+    for (const a of defaultActions()) expect(a.view).toBeDefined()
   })
 })
 
@@ -87,15 +85,22 @@ describe('createPanel', () => {
     expect(panel.el.style.transform).toBe('')
   })
 
-  it('点按钮回调带上被点的动作', () => {
-    const { panel, onClick } = mount()
+  it('点带反应池的按钮回调带上被点的动作（默认清单已无此颗，用合成动作验路径）', () => {
+    const onClick = vi.fn()
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const panel = createPanel(
+      root,
+      [{ id: 'poke', label: '戳', icon: 'icons/heart.svg', pool: 'click' }],
+      { ...DEFAULT_SETTINGS },
+      { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() },
+    )
     panel.show({ x: 0, y: 0 })
-    // 用小游戏而不是喂食：喂食现在切视图，不带 pool 了（食物视图那条路另有测试）
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="game"]')!.dispatchEvent(
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="poke"]')!.dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     )
     expect(onClick).toHaveBeenCalledTimes(1)
-    expect(onClick.mock.calls[0]![0]).toMatchObject({ id: 'game', pool: 'click' })
+    expect(onClick.mock.calls[0]![0]).toMatchObject({ id: 'poke', pool: 'click' })
   })
 
   it('面板自身必须可点：不能继承舞台那层 pointer-events:none', () => {
@@ -127,7 +132,7 @@ describe('设置视图', () => {
     const action = vi.fn()
     const set = vi.fn()
     const view = vi.fn()
-    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn(), close: vi.fn(), identity: vi.fn() })
+    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
     panel.show({ x: 0, y: 0 })
     return { panel, root, action, set, view }
   }
@@ -136,10 +141,10 @@ describe('设置视图', () => {
     const { panel } = mountWithSettings()
     const buttons = [...panel.el.querySelectorAll('button')]
     expect(buttons.map((b) => b.querySelector('img')?.getAttribute('src'))).toEqual([
-      'icons/rice.svg', 'icons/game.svg', 'icons/heart.svg', 'icons/settings.svg', 'emotes/dots3.png',
+      'icons/rice.svg', 'icons/game.svg', 'icons/heart.svg', 'icons/settings.svg', 'icons/debug.svg',
     ])
-    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])
-    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '设置', '说话'])
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '设置', '调试'])
+    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '设置', '调试'])
     expect(panel.view).toBe('actions')
   })
 
@@ -208,15 +213,15 @@ const pointer = (type: string, x: number): MouseEvent =>
 
 describe('食物视图', () => {
   /**
-   * exp 决定当前等级，也就决定哪几格是锁着的（2026-11-06 的按等级解锁）。
-   * 默认给 Lv.1 的经验——**没推快照时面板也按 Lv.1 处理**，所以这两种情况行为一致。
+   * exp 决定哪几格锁着（2026-11-07 两档：开局4 + 等级 Lv.5 起每两级一格）。
+   * 默认 Lv.1——**没推快照时面板也按 Lv.1 处理**，两种情况行为一致。
    */
   const mountFoods = (exp = 0) => {
     const pick = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, close: vi.fn(), identity: vi.fn() })
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setStats({
       stats: { hunger: 50, mood: 50, weight: 50, bond: 50 },
@@ -227,7 +232,7 @@ describe('食物视图', () => {
     panel.setView('foods')
     return { panel, pick }
   }
-  /** 全解锁：经验正好攒到最后一格的门槛（从 FOOD_TIERS 推，不抄数字——加一行菜它自己跟着走）。 */
+  /** 全解锁：经验正好攒到最高等级档的门槛（从 FOOD_TIERS 推，不抄数字——加/改一格它自己跟着走）。 */
   const mountAll = () => mountFoods(LEVEL_CUM[Math.max(...FOOD_TIERS) - 1]!)
 
   it('切到 foods 后副板是那块可见底板：格子数等于 FOODS 长度', () => {
@@ -247,25 +252,57 @@ describe('食物视图', () => {
     cells.forEach((cell, i) => {
       const f = FOODS[i]!
       expect(cell.getAttribute('aria-label'), `${f.id} 的读屏名丢了`).toBe(f.name)
-      expect(cell.title).toBe(f.name)
+      expect(cell.title, '已解锁格不再挂原生 title（收益改由悬浮卡显示）').toBe('')
       expect(cell.textContent, '格子里不该再有文字（图和字并排会挤）').toBe('')
       const img = cell.querySelector('img')
       expect(img, `${f.id} 格子里没有图`).not.toBeNull()
       expect(img!.getAttribute('src')).toBe(f.icon)
     })
-    // Lv.1 时那些还没解锁的格子：title 要说「为什么点不动」，角标要把等级写在格子上。
-    // 条数与第一把锁都从表里推（前 3 格 Lv.1 就有，第 4 格是油条 Lv.3）——抄死数字的话，
-    // 改解锁节奏时这条会红在**期望值**上，而不是红在行为上。
+    // Lv.1 时那些还没解锁的格子：title 要说「为什么点不动」，角标要把门槛写在格子上。
+    // 条数与第一把锁都从 isUnlocked 推——抄死数字的话，改解锁节奏时这条会红在**期望值**上，而不是红在行为上。
     const low = mountFoods().panel
     const lockedCells = [...low.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     const locked = lockedCells.filter((c) => c.classList.contains('is-locked'))
-    const expectLocked = FOODS.filter((f) => f.level > 1)
+    const expectLocked = FOODS.filter((f) => !isUnlocked(f, { level: 1 }))
     expect(locked).toHaveLength(expectLocked.length)
     const first = expectLocked[0]!
-    expect(locked[0]!.title).toBe(`${first.name}（Lv.${first.level} 解锁）`)
-    expect(locked[0]!.getAttribute('aria-label')).toBe(`${first.name}（Lv.${first.level} 解锁）`)
-    expect(locked[0]!.textContent).toBe(`Lv.${first.level}`)
+    expect(locked[0]!.title).toBe(unlockHint(first))
+    expect(locked[0]!.getAttribute('aria-label')).toBe(unlockHint(first))
+    expect(locked[0]!.textContent).toBe(unlockBadge(first))
     expect(locked[0]!.disabled).toBe(true)
+    // 最后一格（火锅 Lv.27）锁得最死：角标写 Lv.27、title 说「Lv.27 解锁」
+    const hotpotFood = FOODS.find((f) => f.id === 'hotpot')!
+    const hotpotCell = lockedCells[FOODS.indexOf(hotpotFood)]!
+    expect(hotpotCell.textContent).toBe('Lv.27')
+    expect(hotpotCell.title).toBe('火锅（Lv.27 解锁）')
+  })
+
+  it('悬浮卡：鼠标停在格子上弹出名字与收益，数字从表里推', () => {
+    const { panel } = mountAll()
+    const cells = [...panel.el.querySelectorAll<HTMLElement>('.pet-food')]
+    const rice = cells[FOODS.findIndex((f) => f.id === 'rice')]!
+    rice.dispatchEvent(new MouseEvent('mouseenter'))
+    const tip = panel.el.querySelector<HTMLElement>('.pet-food-tip')
+    expect(tip, 'hover 没弹出悬浮卡').not.toBeNull()
+    expect(tip!.hidden).toBe(false)
+    const texts = [...tip!.querySelectorAll('span')].map((s) => s.textContent)
+    expect(texts[0], '第一行该是食物名字').toBe('白饭')
+    expect(texts).toContain(`饥饿 +${FOOD_EFFECT.rice!.hunger}`)
+    expect(texts).toContain(`心情 +${FOOD_EFFECT.rice!.mood}`)
+    expect(texts).toContain(`经验 +${EXP_GAIN.feed}`)
+    expect(texts.join(' '), '卡片不该再写体重热量').not.toContain('体重')
+    rice.dispatchEvent(new MouseEvent('mouseleave'))
+    expect(panel.el.querySelector<HTMLElement>('.pet-food-tip')!.hidden, '移开鼠标卡片该收掉').toBe(true)
+  })
+
+  it('已解锁格不挂原生 title（悬浮卡顶替），未解锁格仍说清为什么点不动', () => {
+    const { panel } = mountFoods()   // Lv.1
+    const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
+    const token = cells[FOODS.findIndex((f) => f.id === 'token')]!
+    expect(token.title, '已解锁格不该再有原生 title（会和悬浮卡重复）').toBe('')
+    expect(token.getAttribute('aria-label')).toBe('代币')
+    const hotpot = cells[FOODS.findIndex((f) => f.id === 'hotpot')]!
+    expect(hotpot.title).toBe('火锅（Lv.27 解锁）')
   })
 
   it('点一格把整个 food 报给 pick，并且不切视图', () => {
@@ -277,41 +314,40 @@ describe('食物视图', () => {
   })
 
   /**
-   * 按等级解锁（2026-11-07 用户的节奏：「一开始只能选前 3 个，后面每升两级解锁一个」）。
-   * 面板这半边钉三件事：灰态与角标跟着等级翻、**不重建列表**、以及升级那一刻当场生效。
-   * 「灰格子真不吃点击」是浏览器行为，由 e2e 在真 Chromium 里验。
+   * 按等级解锁（等级档那十二格）。面板这半边钉三件事：灰态与角标跟着等级翻、**不重建列表**、
+   * 以及升级那一刻当场生效。「灰格子真不吃点击」是浏览器行为，由 e2e 在真 Chromium 里验。
    */
-  it('Lv.1 只放开前三格；攒到 Lv.3 当场多出一格（油条）', () => {
+  it('Lv.1 只放开开局四格；攒到 Lv.5 当场多出晚餐', () => {
     const { panel } = mountFoods()
     const cells = () => [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     expect(cells().filter((c) => !c.disabled).map((c) => c.dataset.food))
-      .toEqual(FOODS.filter((f) => f.level === 1).map((f) => f.id))
+      .toEqual(FOODS.filter((f) => isUnlocked(f, { level: 1 })).map((f) => f.id))
     const first = cells()[0]
     // 升级：主进程推一份 exp 更高的快照过来，面板只翻属性，不重建（滚动位置是用户的）
     panel.setStats({
       stats: { hunger: 50, mood: 50, weight: 50, bond: 50 },
       identity: { name: '小鲸', gender: 'female' },
-      exp: LEVEL_CUM[2]!,   // Lv.3 的门槛
+      exp: LEVEL_CUM[4]!,   // Lv.5 的门槛：第一格等级解锁（晚餐）在这里开
       startedAt: 1_000,
     })
     const open = cells().filter((c) => !c.disabled).map((c) => c.dataset.food)
-    expect(open).toEqual(FOODS.filter((f) => f.level <= 3).map((f) => f.id))
-    expect(open, 'Lv.3 该比 Lv.1 多一格').toHaveLength(4)
+    expect(open).toEqual(FOODS.filter((f) => isUnlocked(f, { level: 5 })).map((f) => f.id))
+    expect(open, 'Lv.5 该比 Lv.1 多一格').toHaveLength(5)
     expect(panel.el.querySelector('.pet-food')).toBe(first)
   })
 
-  it('没推快照时按 Lv.1 处理：前三格能点，其余灰着——不是整列都能点', () => {
+  it('没推快照时按 Lv.1 处理：前四格能点，其余灰着——不是整列都能点', () => {
     // 这一条管的是「数据还没到」的默认方向。猜成「全开」会让用户点到一格喂出个不该有的东西，
     // 猜成「全关」会让刚开列表的人以为功能坏了；取 Lv.1 是因为它等于「按最保守的已知档位摆」。
     const pick = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, close: vi.fn(), identity: vi.fn() })
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setView('foods')
     const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
-    expect(cells.filter((c) => !c.disabled)).toHaveLength(FOODS.filter((f) => f.level === 1).length)
+    expect(cells.filter((c) => !c.disabled)).toHaveLength(FOODS.filter((f) => isUnlocked(f, { level: 1 })).length)
   })
 
   /**
@@ -329,15 +365,15 @@ describe('食物视图', () => {
   })
 
   it('吃饭与没解锁两件事取「或」：饭后只回到「按等级该灰的还灰着」', () => {
-    const { panel } = mountFoods()    // Lv.1：除前三格外都锁着
+    const { panel } = mountFoods()    // Lv.1：除前四格外都锁着
     panel.setEating(true)
     const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
     expect(cells.every((c) => c.disabled)).toBe(true)
     panel.setEating(false)
-    // 灰态**不该整列解开**：按等级该锁的那些还得锁着（清单从表里推，不抄 id——
-    // 抄 id 的那版在解锁节奏改成「每两级一格」之后，红在了期望值上而不是行为上）
+    // 灰态**不该整列解开**：按解锁规则该锁的那些还得锁着（清单从 isUnlocked 推，不抄 id——
+    // 抄 id 的那版在解锁节奏改过之后，红在了期望值上而不是行为上）
     expect(cells.filter((c) => !c.disabled).map((c) => c.dataset.food))
-      .toEqual(FOODS.filter((f) => f.level === 1).map((f) => f.id))
+      .toEqual(FOODS.filter((f) => isUnlocked(f, { level: 1 })).map((f) => f.id))
   })
 
   it('翻灰态不重建节点：滚动位置与用户手里的旧节点都得留着', () => {
@@ -354,7 +390,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, close: vi.fn(), identity: vi.fn() })
+      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setEating(true)
     panel.setView('foods')
@@ -450,11 +486,13 @@ describe('食物视图', () => {
     expect((panel.el.querySelector('.pet-food-strip') as HTMLElement).style.transform).toBe('translateX(0px)')
   })
 
-  it('喂食与状态都切视图，不直接播动画；带反应池的只剩小游戏和说话', () => {
+  it('喂食/小游戏/状态/调试都切视图，不直接播动画；默认已无带反应池的按钮', () => {
     const withPool = defaultActions().filter((a) => a.pool !== undefined)
-    expect(withPool.map((a) => a.id)).toEqual(['game', 'talk'])
+    expect(withPool.map((a) => a.id)).toEqual([])
     expect(defaultActions().find((a) => a.id === 'feed')?.view).toBe('foods')
+    expect(defaultActions().find((a) => a.id === 'game')?.view).toBe('games')
     expect(defaultActions().find((a) => a.id === 'status')?.view).toBe('stats')
+    expect(defaultActions().find((a) => a.id === 'debug')?.view).toBe('debug')
   })
 
   it('点喂食走 view 回调，不走 action 回调', () => {
@@ -462,11 +500,31 @@ describe('食物视图', () => {
     const view = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), close: vi.fn(), identity: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
     panel.show({ x: 0, y: 0 })
     ;(panel.el.querySelector('button[data-id="feed"]') as HTMLElement).click()
     expect(action).not.toHaveBeenCalled()
     expect(view).toHaveBeenCalledWith('foods')
+  })
+
+  it('点小游戏走 view 回调切到 games；列表里那一行「开始」回调 game', () => {
+    const action = vi.fn()
+    const view = vi.fn()
+    const game = vi.fn()
+    const root = document.createElement('div')
+    document.body.replaceChildren(root)
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), game, identity: vi.fn(), quit: vi.fn() })
+    panel.show({ x: 0, y: 0 })
+    ;(panel.el.querySelector('button[data-id="game"]') as HTMLElement).click()
+    expect(action).not.toHaveBeenCalled()
+    expect(view).toHaveBeenCalledWith('games')
+    // 切到 games 视图后，副板里应当出现「鲸鲸会飞」那一行和它的开始键。
+    panel.setView('games')
+    const start = panel.el.querySelector('button[data-id="start-fly"]') as HTMLButtonElement
+    expect(start, '游戏列表里没有鲸鲸会飞的开始键').not.toBeNull()
+    start.click()
+    expect(game).toHaveBeenCalledTimes(1)
+    expect(game.mock.calls[0]![0]).toMatchObject({ id: 'fly' })
   })
 })
 
@@ -515,12 +573,11 @@ describe('状态视图', () => {
     expect(row(LEVEL_CUM.at(-1)! + 500).querySelector('.pet-stat-value')?.textContent).toBe(`Lv.${MAX_LEVEL}`)
   })
 
-  it('经验条紧跟等级那一行：标签「经验值」，写的数是还差多少', () => {
+  it('经验条紧跟等级那一行：标签「经验」，写的是本级已攒/所需（2026-11-07 带总额）', () => {
     /**
-     * 用户 2026-11-07 两次调整这条：先要「状态栏下面加一条，显示当前升级还需要多少经验值」，
-     * 看过之后改成「标签叫经验值、放到等级下面」——「现在几级」和「到下一级还差多少」
-     * 是同一件事的两半，被四条读数隔开就读不连贯了。
-     * 另一件要钉住的：它**不挂 .pet-stat**（那个类专指四条会报警的读数，数条数的地方都靠它）。
+     * 用户 2026-11-07 多次调整这条：先要「显示还差多少」，后改标签与位置，
+     * 最后要求读数带总额 → 现在写「本级已攒 / 本级所需」，和那条 bar 同一口径；
+     * 悬停 title 已按用户要求撤掉（嫌罗嗦）。另一件要钉住的：它**不挂 .pet-stat**（那个类专指四条会报警的读数）。
      */
     const panel1 = open(snap(82, 0)).panel
     const kids = [...panel1.el.querySelectorAll('.pet-plate.is-stats > *')]
@@ -529,18 +586,29 @@ describe('状态视图', () => {
     expect(kids.indexOf(exp), '经验条没紧跟在等级下面').toBe(kids.indexOf(level) + 1)
     expect(exp.classList.contains('pet-stat'), '经验条不该冒充一条数值读数').toBe(false)
     expect(exp.querySelector('.pet-stat-label')?.textContent).toBe('经验：')
-    expect(exp.querySelector('.pet-exp-value')?.textContent).toBe(String(LEVEL_STEPS[0]))
+    expect(exp.querySelector('.pet-exp-value')?.textContent).toBe('0')
+    expect(exp.querySelector('.pet-exp-total')?.textContent).toBe(`/${LEVEL_STEPS[0]}`)
     expect(exp.querySelector('.pet-exp-bar > i')?.getAttribute('style')).toContain('width: 0%')
-    // 攒到本级一半：条跟着走一半，写的那个数是「门槛减已攒」
+    // 攒到本级一半：条跟着走一半，写的已攒数也是门槛的一半
     const half = LEVEL_CUM[1]! + LEVEL_STEPS[1]! / 2
     const panel2 = open(snap(82, half)).panel
     const bar2 = panel2.el.querySelector<HTMLElement>('.pet-exp-bar > i')!
     expect(bar2.getAttribute('style')).toContain('width: 50%')
-    expect(panel2.el.querySelector('.pet-exp-value')?.textContent).toBe(String(Math.round(LEVEL_STEPS[1]! / 2)))
-    // 满级：不写「还差 0」那种假读数
+    expect(panel2.el.querySelector('.pet-exp-value')?.textContent).toBe(String(Math.floor(LEVEL_STEPS[1]! / 2)))
+    expect(panel2.el.querySelector('.pet-exp-total')?.textContent).toBe(`/${LEVEL_STEPS[1]}`)
+    // 满级：不写「还差 0」那种假读数，也不挂总额后缀
     const panel3 = open(snap(82, LEVEL_CUM.at(-1)!)).panel
     expect(panel3.el.querySelector('.pet-exp-value')?.textContent).toBe('满级')
+    expect(panel3.el.querySelector('.pet-exp-total')?.textContent).toBe('')
     expect(panel3.el.querySelector('.pet-exp-bar > i')?.getAttribute('style')).toContain('width: 100%')
+  })
+
+  it('四条读数带 /100 总额后缀，数值本体仍是纯数字（右对齐与 e2e 解析靠它）', () => {
+    const { panel } = open()
+    for (const row of panel.el.querySelectorAll<HTMLElement>('.pet-stat')) {
+      expect(row.querySelector('.pet-stat-total')?.textContent, `${row.dataset.key} 缺 /100 后缀`).toBe('/100')
+      expect(row.querySelector('.pet-stat-value')?.textContent).toMatch(/^\d+$/)
+    }
   })
 
   it('颜色分档 >60 蓝、>20 黄、否则红：读数一眼能分好坏（等级不参与报警）', () => {
@@ -593,27 +661,20 @@ describe('状态视图', () => {
     }
   })
 
-  it('档案卡片有标题行：宠物档案 + 右上角 ×，× 点下去报 close', () => {
+  it('档案卡片有标题行：只有「宠物档案」，右上角不再有 ×（用户 2026-11-09 去掉）', () => {
     /**
-     * 用户 2026-11-07 三条一起要：横线、标题「宠物档案」、右边的 ×。
-     * 这条同时钉住**面板不自己收**：close 只是把点击递出去，
-     * 真正收起要连 hover 复位一起办，那是装配层的事（§5.12）。
+     * 用户 2026-11-07 要过横线 + 标题「宠物档案」+ 右边的 ×；2026-11-09 又把 × 去掉。
+     * 收起面板靠「再点一次状态键」/「离开满延时自动收」，不再有面板上的关闭按钮。
      */
-    const { panel, close } = open()
+    const { panel } = open()
     const head = panel.el.querySelector<HTMLElement>('.pet-plate-head')!
     expect(head, '标题行没画出来').not.toBeNull()
     expect(head.querySelector('.pet-plate-title')?.textContent).toBe('宠物档案')
     // 它是卡片的第一行：横线在它下沿，读起来才是「标题 —— 内容」而不是又一行读数
     const kids = [...panel.el.querySelectorAll('.pet-plate.is-stats > *')]
     expect(kids[0], '标题行不是第一行').toBe(head)
-    const x = head.querySelector<HTMLButtonElement>('.pet-plate-close')!
-    expect(x.textContent).toBe('×')
-    expect(x.getAttribute('aria-label'), '× 只有符号，读屏得念出「关闭」').toContain('关闭')
-    expect(close).not.toHaveBeenCalled()
-    x.click()
-    expect(close).toHaveBeenCalledTimes(1)
-    // 面板不自个儿收：点了 × 之后 DOM 还在（收起由装配层接手）
-    expect(panel.isOpen, '面板自己收了，等于把装配层那套 hover 复位绕过去').toBe(true)
+    // 右上角那颗 × 已去掉：标题行里不该再有关闭按钮
+    expect(head.querySelector('.pet-plate-close'), '× 没去掉').toBeNull()
   })
 
   it('昵称 / 性别 / 等级三行的值紧跟冒号；读数与「此刻」那几行仍右对齐', () => {
@@ -719,7 +780,7 @@ describe('状态视图', () => {
     const view = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), close: vi.fn(), identity: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.el.querySelector<HTMLButtonElement>('button[data-id="status"]')?.click()
     expect(action).not.toHaveBeenCalled()

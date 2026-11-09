@@ -43,6 +43,8 @@ export function registerIpc(
   onSettings: (patch: Partial<Settings>) => void,
   onStatEvent: (raw: unknown) => void,
   onIdentity: (raw: unknown) => void,
+  onQuit: () => void,
+  onStatsDebug: (raw: unknown) => void,
 ): void {
   ipcMain.on(IPC.clickThroughRequest, (_e, p: unknown) => {
     const grab = toBool((p as ClickThroughPayload | null | undefined)?.grab)
@@ -56,5 +58,9 @@ export function registerIpc(
   // 数值与身份的形状校验在持有存档的那一侧（main/stats.ts）做：
   // 它才知道哪些食物真的有效、哪些值写进存档才不会把状态栏弄坏。
   ipcMain.on(IPC.statsEvent, (_e, raw: unknown) => onStatEvent(raw))
+  // 调试面板直接设数值/经验：形状校验同样在持有存档的那一侧（main/stats.ts debugSet）做。
+  ipcMain.on(IPC.statsDebug, (_e, raw: unknown) => onStatsDebug(raw))
   ipcMain.on(IPC.identity, (_e, raw: unknown) => onIdentity(raw))
+  // 用户点了「退出桌宠」——渲染层已经先说过 bye，这条就是让它落盘并收窗。
+  ipcMain.on(IPC.quit, () => onQuit())
 }

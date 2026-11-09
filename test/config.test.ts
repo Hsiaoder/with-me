@@ -8,7 +8,7 @@ import {
   DEFAULT_BODY_BOX, REQUIRED_POOLS, PANEL_HIDE_MS, LEASE_TIMEOUT_MS,
   GRAB_HEARTBEAT_MS, BUBBLE_IMAGE, BUBBLE_W, BUBBLE_H, BUBBLE_INNER_BOTTOM,
   BUBBLE_RING_W,
-  FOOD_CELL, FOOD_ICON, FOOD_GAP, FOOD_VISIBLE, ONLINE_TICK_MS, VIEW_HIDE_MS,
+  FOOD_CELL, FOOD_ICON, FOOD_GAP, FOOD_VISIBLE, GAME_CELL, GAME_ICON, GAME_GAP, ONLINE_TICK_MS, VIEW_HIDE_MS,
   FLOAT_CHIP, FLOAT_MS, FLOAT_HEAD_OFFSET,
 } from '../src/shared/config.js'
 import { CLOUD, cloudCircles, cloudScale, fitsInsideCloud } from '../src/shared/bubble-shape.js'
@@ -100,6 +100,17 @@ describe('食物列表的尺寸', () => {
     expect(FOOD_ICON, '图标大到顶到描边了（格子 48 减两条 1px 描边 = 46）').toBeLessThan(FOOD_CELL - 2)
     const cell = css.match(/\.pet-panel \.pet-food \{([^}]*)\}/)?.[1] ?? ''
     expect(cell, '格子里还留着 font-size：名字已经退成 title/aria-label 了').not.toMatch(/font-size/)
+  })
+
+  it('游戏列表和食物列表同一套格子量级：CSS 字面量 = GAME_CELL / GAME_ICON', () => {
+    const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const cell = css.match(/\.pet-panel button\.pet-game \{([^}]*)\}/)?.[1] ?? ''
+    expect(cell, '游戏格子高 ≠ GAME_CELL，和食物格子就不是一套了').toContain(`height: ${GAME_CELL}px`)
+    expect(cell).toContain(`width: ${GAME_CELL}px`)
+    expect(GAME_GAP, '游戏格间距该和食物一致').toBe(FOOD_GAP)
+    const icon = css.match(/\.pet-panel \.pet-game \.pet-game-icon \{([^}]*)\}/)?.[1] ?? ''
+    expect(icon, '读不到 .pet-game-icon 那条').toContain(`width: ${GAME_ICON}px`)
+    expect(GAME_ICON, '图标大到顶到描边了').toBeLessThan(GAME_CELL - 2)
   })
 
   it('底板投影不许溢出到上沿外（负 spread 是唯一防线）', () => {
@@ -229,17 +240,14 @@ describe('飘字（属性涨了多少）的尺寸与时序', () => {
     expect(inks.weight).not.toBe('#3e5fad')
   })
 
-  it('字号分档：饥饿最大、心情其次，体重与亲密度走基类那档 12px', () => {
-    const size = (key: string): number | undefined => {
-      const raw = css.match(new RegExp(`\\.pet-float\\[data-key='${key}'\\] \\{[^}]*font-size: (\\d+)px`))?.[1]
-      return raw === undefined ? undefined : Number(raw)
+  it('飘字统一 Fredoka 14px：四条不再分档字号，只认颜色（2026-11-07 用户拍板「数字 Fredoka 14px」）', () => {
+    for (const key of STAT_KEYS) {
+      const rule = css.match(new RegExp(`\\.pet-float\\[data-key='${key}'\\] \\{([^}]*)\\}`))?.[1]
+      expect(rule, `.pet-float[data-key='${key}'] 这条规则不在了`).toBeDefined()
+      expect(rule, '分档字号已撤，per-key 不该再写 font-size').not.toMatch(/font-size/)
     }
-    expect(size('hunger'), '饥饿该是最大的一档').toBe(14)
-    expect(size('mood')).toBe(13)
-    expect(size('weight'), '体重不该单独加字号（它走基类 12px）').toBeUndefined()
-    expect(size('bond'), '亲密度不该单独加字号（它走基类 12px）').toBeUndefined()
-    expect(block('pet-float')).toMatch(/font: 600 12px\/1/)
-    // 14px 那一档撑不撑得下 84 的盒子，由 e2e 按 data-key 实测（jsdom 没有排版引擎）
+    expect(block('pet-float')).toMatch(/font: 400 14px\/1 var\(--font-num\)/)
+    // 14px 撑不撑得下 84 的盒子，由 e2e 按 data-key 实测（jsdom 没有排版引擎）
   })
 
   it('整层不吃鼠标，收起时真的移出布局（作者样式必须显式写 [hidden]）', () => {

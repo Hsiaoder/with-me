@@ -1,6 +1,25 @@
 /*
  * 覆盖层样式。整页透明，只画宠物本身。
  */
+
+/* 界面字体子集（2026-11-07 接入，npm run fonts 再生，随包附 OFL）。
+   思源走 Noto Sans SC 可变字重轴：一份文件覆盖 400/500，比两档静态省一半；
+   不用 Adobe 原版 OTF 因其内部名含 Reserved Font Name「Source」，子集属 Modified Version 会踩 OFL 第 3 条。
+   字体与页面同源（app://assets/renderer/fonts/），漏白名单会 404 落回雅黑——copy-static 与 protocol 两道都已加 .woff2。
+   font-display:block 避免先闪一下雅黑再换；本地同源加载是毫秒级。 */
+@font-face {
+  font-family: 'WithMe Sans';
+  src: url('fonts/with-me-sans-var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: block;
+}
+@font-face {
+  font-family: 'WithMe Num';
+  src: url('fonts/with-me-num-400.woff2') format('woff2');
+  font-weight: 400;
+  font-display: block;
+}
+
 html,
 body {
   margin: 0;
@@ -14,6 +33,7 @@ body {
      挂 html,body 这一层而不是只挂按钮：选区能跨元素，只禁按钮的话双击到状态栏文字上还会亮。 */
   user-select: none;
   -webkit-user-select: none;
+  font-family: var(--font-ui);
 }
 
 #root {
@@ -38,6 +58,10 @@ body {
 
 /* 交互区的光标只在这一处定义，用的地方只有 body.pet-over。 */
 :root {
+  /* 界面默认字体：思源（Noto Sans SC 子集）→ 雅黑兜底（子集缺字时逐字回退，实验④验证过）。
+     数字栈 Fredoka 在前：飘字的 +N 走它，中文标签逐字回退落到思源，不用拆 span。 */
+  --font-ui: 'WithMe Sans', 'Microsoft YaHei UI', sans-serif;
+  --font-num: 'WithMe Num', 'WithMe Sans', 'Microsoft YaHei UI', sans-serif;
   --pet-cursor: url("icons/hand_point.svg") 9 2, pointer;
   /* A 套「品牌蓝白」：所有表面色是同一条 OKLCH 阶梯上的四格，色相锁在 H=232
      （就是青内圈 #36BDF7 的色相，所以箭头、气泡阴影、蓝线全都同源，不引入第二个蓝）。
@@ -139,7 +163,7 @@ body.pet-over {
   border: 0;
   box-shadow: none;
   pointer-events: none;
-  font: 12px "Microsoft YaHei UI", sans-serif;
+  font: 12px var(--font-ui);
   opacity: 0;
   /* display 也在过渡里，且允许离散属性参与：这样收起时有淡出，
      淡出结束才真的移出布局（Chromium 117+ 的 transition-behavior）。 */
@@ -326,7 +350,7 @@ body.pet-over {
   align-items: center;
   justify-content: center;
   text-align: center;
-  font: 13px/1.5 "Microsoft YaHei UI", sans-serif;
+  font: 13px/1.5 var(--font-ui);
   color: #2b2f36;
   overflow: hidden;
   pointer-events: none;
@@ -355,7 +379,7 @@ body.pet-over {
   background: var(--reply-fill);
   box-shadow: 0 2px 0 #3e718c, 0 4px 8px rgba(0, 0, 0, 0.22);
   color: #2b2f36;
-  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+  font: 12px/1 var(--font-ui);
   pointer-events: auto;
   cursor: var(--pet-cursor);
 }
@@ -400,7 +424,7 @@ body.pet-over {
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.92);
   color: var(--gain-ink);
-  font: 600 12px/1 "Microsoft YaHei UI", sans-serif;
+  font: 400 14px/1 var(--font-num);
   white-space: nowrap;
   overflow: hidden;
   /* 上浮 + 淡出。时长是 --float-ms，和 config 的 FLOAT_MS 同一个数（测试钉住）：
@@ -409,17 +433,14 @@ body.pet-over {
   animation: pet-float-rise var(--float-ms, 1100ms) ease-out both;
 }
 
-/* 四条数值各有各的颜色与字号：颜色认「哪条」，字号认「多要紧」。
-   饥饿给最大（它最常飘、也最该被看见），亲密度压到和体重同一档——那条是长期账，不该抢镜。
-   盒子仍是 FLOAT_CHIP 那一格，换字号不改锚点算的宽度（更宽的标签由 e2e 那条实测顶着）。 */
+/* 四条只认颜色（「这是哪条」），字号不再分档：飘字统一 Fredoka 14px（2026-11-07 用户拍板）。
+   盒子仍是 FLOAT_CHIP 那一格，换字体不改锚点算的宽度（更宽的标签由 e2e 那条实测顶着）。 */
 .pet-float[data-key='hunger'] {
   color: var(--gain-hunger);
-  font-size: 14px;
 }
 
 .pet-float[data-key='mood'] {
   color: var(--gain-mood);
-  font-size: 13px;
 }
 
 .pet-float[data-key='weight'] {
@@ -507,15 +528,12 @@ body.pet-over {
   height: 20px;
 }
 
-/* 说话那枚是 Kenney Vector 32×38——**不是像素图**（实测 28 个颜色里有半透明过渡，是抗锯齿），
-   所以绝不能加 image-rendering: pixelated，加了反而阶梯化。
-   以前被塞进 26×26 的方框，横向凭空拉宽 18%，气泡看着矮胖；这里按原比例给 18×21。
-   投影也只留给它一个人：它是唯一的白色实心图，需要和浅色圆底分边；
-   另外四枚本来就是深墨，投影在 2× 远程桌面上只会把 1.6px 的细描边糊出一圈灰晕。 */
-.pet-panel button[data-id="talk"] .pet-icon {
-  width: 18px;
-  height: 21px;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.22));
+/* 调试那枚是 iconfont 的方形齿轮/虫图标（viewBox 1024，深墨实心），和 game/guess 同一类矢量图，
+   按方框给 22×22 压进青圈内半径；不加 image-rendering: pixelated（它不是像素图），也不单独加投影
+   （深墨图在 2× 远程桌面上加投影只会糊出一圈灰晕，同另外四枚的处理）。 */
+.pet-panel button[data-id="debug"] .pet-icon {
+  width: 22px;
+  height: 22px;
 }
 
 /* 悬停时整颗一起放大，不是只放大图标：只放大图标会戳出圆底外沿，看着像画歪了。
@@ -541,17 +559,14 @@ body.pet-over {
 
 /* 状态栏：竖一条，昵称在上、四条读数在中间、「此刻」两行在下面。宽度定死 150px——它站在宠物右侧，
    再宽就会在宠物贴右边缘时顶出屏幕，那时它只能翻到左边，反而压住宠物。
-   行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）→ 6 → 4 → 3（同一天连着长了两行：经验条、标题行）。
-   9px 那档确实比 5px 好读，但整张卡因此高到 206，比身体还高 41——居中就压按钮条、抬高就撞气泡。
-   6px 是两头都要的折中（卡高 182）。2026-11-07 一天里卡片又长了两次：经验条那一行（+20）、
-   标题行那一行（+27）——现在 201，只能收到 3px 才塞得进那条 209 的带。
-   **这已经是「再加一行就得先减一行」的地步**，真要疏朗得改布局（四条读数并成两列），不是调间距。
-   这条不是纯样式：**卡片高度就是那两条净空的总账**，改回 4 会让 e2e 的「状态栏底沿不许压按钮条」变红。
-   纵向变高由 statsAnchor 自己夹回屏幕内，不需要在这里防。 */
+   行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）→ 6 → 4 → 3（同一天连着长了两行：经验条、标题行）
+   → 6（2026-11-07 晚用户嫌 3px 太挤，「做成远一点」）。
+   卡片因此增高不再靠压间距塞进那条带：纵向由 statsAnchor 夹回（底沿让开按钮条 6px、顶夹屏幕内），
+   装不下时让路的是气泡不是按钮（气泡只活几秒）。改间距后跑 e2e「底沿不许压按钮条」复核。 */
 .pet-plate.is-stats {
   flex-direction: column;
   align-items: stretch;
-  gap: 3px;
+  gap: 6px;
   width: 150px;
 }
 
@@ -567,13 +582,152 @@ body.pet-over {
   border-radius: 6px;
   box-shadow: none;
   background: rgba(255, 255, 255, 0.9);
-  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+  font: 12px/1 var(--font-ui);
 }
 
 /* 悬停换底色。动作视图不画底色——那里没有底板，画了就成了悬浮的方片。 */
 .pet-plate.is-stats button:hover,
 .pet-plate.is-settings button:hover {
   background: var(--hover-fill);
+}
+
+/* 调试副板：竖排卡片，标签条 + 可滚内容 + 常驻数值区。它是测试台，信息密度优先，
+   复用状态/设置那套文字按钮口径（真边框 + 浅底 + 悬停换色），不垫圆底素材。 */
+.pet-plate.is-debug {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 300px;
+  max-height: 78vh;
+}
+
+.pet-debug {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  font: 12px/1.4 var(--font-ui);
+  color: #1c2733;
+}
+
+/* 压过基类 .pet-panel button 的 40×40 圆底口径：调试板里全是文字按钮。 */
+.pet-plate.is-debug button {
+  width: auto;
+  height: auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.9);
+  font: 12px/1.3 var(--font-ui);
+}
+
+.pet-debug-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.pet-debug-tab {
+  flex: 1 1 0;
+  padding: 4px 2px;
+  text-align: center;
+}
+
+.pet-plate.is-debug .pet-debug-tab.on {
+  border-color: #2b6cb0;
+  background: var(--hover-fill);
+  font-weight: 500;
+}
+
+.pet-debug-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pet-debug-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.pet-debug-rowlabel { flex: 1 1 auto; }
+.pet-debug-demo { flex: 0 0 auto; white-space: nowrap; }
+
+.pet-debug-section { display: flex; flex-direction: column; gap: 4px; }
+.pet-debug-sechead { font-weight: 500; opacity: 0.75; }
+.pet-debug-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.pet-debug-item { flex: 0 0 auto; }
+.pet-debug-line { display: block; width: 100%; text-align: left; }
+.pet-debug-hint { margin: 0; opacity: 0.7; font-size: 11px; }
+
+.pet-plate.is-debug button:hover { background: var(--hover-fill); }
+
+/* 常驻数值区：等级 + 四条滑条，和上方内容用一道分隔线隔开。滑条用鼠标拖，不需要键盘焦点。 */
+.pet-debug-values {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  padding-top: 6px;
+}
+
+.pet-debug-value-row { display: flex; align-items: center; gap: 6px; }
+.pet-debug-valuelabel { flex: 0 0 30px; }
+.pet-debug-range { flex: 1 1 auto; min-width: 0; cursor: var(--pet-cursor); }
+.pet-debug-num { flex: 0 0 42px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 游戏列表：和食物列表同一套「一排方形格子、格子里是图标」的 UI（用户 2026-11-07 拍板要一样）。
+   格子尺寸/图尺寸/间距各有一个 config 来源（GAME_CELL / GAME_ICON / GAME_GAP），CSS 里的字面量
+   由 test/config.test.ts 反查钉住，和游戏数据表走同一口径。点一格 = 开那个游戏。 */
+.pet-games {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pet-game-strip {
+  display: flex;
+  gap: 4px;
+  will-change: transform;
+}
+
+/* 视口/主列与食物列表同量级（4 格宽 204×48）：游戏列表复用同一套箭头+拖拽条 chrome。
+   3 个游戏装得下时箭头置灰、拖拽条不出现（和食物列表装得下时一致）。 */
+.pet-game-viewport {
+  width: 204px;
+  height: 48px;
+  overflow: hidden;
+}
+
+.pet-game-main {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 选择器带 button 一层凑到 (0,2,1)，压过 `.pet-panel button[data-id]` 那枚圆形 Kenney 底
+   （游戏格也带 data-id，会被那条铺上圆圈；食物格用 data-food 才躲开）。这里要的是白卡，不是圆底。 */
+.pet-panel button.pet-game {
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.pet-panel .pet-game .pet-game-icon {
+  display: block;
+  width: 40px;
+  height: 40px;
 }
 
 /* 性别就一枚符号，**卡片整个去掉**（用户 2026-11-06 拍的板：「只要符号，不要背景」）。
@@ -652,14 +806,14 @@ body.pet-over {
 .pet-stats-name {
   overflow: hidden;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .pet-stat-label {
   flex: 0 0 auto;
   min-width: 40px;
   color: rgba(0, 0, 0, 0.62);
-  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+  font: 12px/1 var(--font-ui);
 }
 
 .pet-stat-bar {
@@ -699,37 +853,18 @@ body.pet-over {
   border-bottom: 1px solid rgba(43, 47, 54, 0.28);
 }
 
+/* 设置视图底部的字体署名行（OFL 要求随包附协议，UI 里这一行是给人看的出处）。 */
+.pet-credit {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
 .pet-plate-title {
   color: rgba(0, 0, 0, 0.72);
-  font: 600 12px/1.2 "Microsoft YaHei UI", sans-serif;
-}
-
-/* × 是这栏里第二枚能点的按钮（第一枚是性别符号）。和性别那条同一套规矩：
-   平时不带底、悬停浮一圈细边——「不要背景」说的是静止状态那块假卡片，
-   悬停给边是「这里能点」，不是「这里有个档」。
-   选择器要写到 `button.pet-plate-close` 这一层：上面那条 `.pet-plate.is-stats button`
-   是「2 类 + 1 元素」，只写类名压不过它，× 会连卡片那套边框和内边距一起继承过来
-   （性别符号那行同理，见上面那条注释）。 */
-.pet-plate.is-stats button.pet-plate-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  min-height: 24px;
-  padding: 0;
-  border: none;
-  background: none;
-  box-shadow: none;
-  color: rgba(0, 0, 0, 0.55);
-  font: 14px/1 "Microsoft YaHei UI", sans-serif;
-  cursor: var(--pet-cursor);
-}
-
-.pet-plate.is-stats button.pet-plate-close:hover,
-.pet-plate.is-stats button.pet-plate-close:focus-visible {
-  box-shadow: 0 0 0 1.5px rgba(43, 47, 54, 0.35);
-  background: none;
-  color: rgba(0, 0, 0, 0.78);
+  font: 500 12px/1.2 var(--font-ui);
 }
 
 /* 经验条：紧跟在等级那一行下面（用户 2026-11-07 看过之后点的位——「现在几级」和「还差多少」
@@ -762,8 +897,276 @@ body.pet-over {
   flex: 0 0 auto;
   min-width: 20px;
   text-align: right;
-  font: 12px/1 "Microsoft YaHei UI", sans-serif;
+  font: 12px/1 var(--font-ui);
   color: #2b2f36;
+}
+
+/* 「值 + /总数」包成一格：行 gap 是 4px，直接并列会把 62 /100 拆开；wrapper 内部不留 gap。
+   数值本体仍是 .pet-stat-value（右对齐、e2e 按它解析），后缀淡一档表示「这是总额不是读数」。 */
+.pet-stat-out {
+  display: flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+}
+
+.pet-stat-total {
+  flex: 0 0 auto;
+  font: 12px/1 var(--font-ui);
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* 食物悬浮卡：鼠标停在某格时在格子旁弹出，写名字 + 吃了有什么收益。
+   附在整屏层 .pet-panel 上（不是副板里），所以不受视口 overflow:hidden 裁切；
+   pointer-events:none 免得卡片自己盖住格子把 hover 抢回去（鼠标一移到卡上格子就 mouseleave）。 */
+.pet-food-tip {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--plate-fill);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  font: 12px/1.35 var(--font-ui);
+  color: #2b2f36;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pet-food-tip[hidden] {
+  display: none;
+}
+
+.pet-food-tip-name {
+  font-weight: 500;
+}
+
+.pet-food-tip-stat {
+  color: rgba(0, 0, 0, 0.66);
+}
+
+/* 游戏悬停卡的玩法说明（一句话），和食物卡的收益行同一档灰。 */
+.pet-game-tip-desc {
+  color: rgba(0, 0, 0, 0.66);
+}
+
+/* 「鲸鲸会飞」HUD：屏幕顶部居中、带深色背景，显示高度/最高/速度 + 退出按钮。
+   附在整屏层，pointer-events:auto 才点得到退出（.pet-panel 本身 pointer-events:none）。 */
+.pet-fly-hud {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  background: rgba(20, 40, 60, 0.82);
+  color: #eaf3fb;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font: 14px/1.5 var(--font-ui);
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 170px;
+  pointer-events: auto;
+}
+
+.pet-fly-hud-big {
+  font-size: 26px;
+  font-weight: 500;
+}
+
+.pet-fly-hud-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.pet-fly-exit {
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: #e2607a;
+  color: #fff;
+  font: 14px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.pet-fly-exit:hover {
+  background: #cf4f69;
+}
+
+/* 「猜动作」浮层：和飞的 HUD 同一套深色顶居中卡片，里面是「答对 N」+ 一排动作选项 + 退出。
+   宠物在卡片下方做动作，玩家点选项猜它做的是哪个。pointer-events:auto 才点得到（整屏层默认穿透）。 */
+.pet-guess-hud {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  background: rgba(20, 40, 60, 0.82);
+  color: #eaf3fb;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font: 14px/1.5 var(--font-ui);
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  pointer-events: auto;
+}
+
+.pet-guess-score {
+  font-size: 14px;
+}
+
+.pet-guess-score b {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.pet-guess-options {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pet-guess-opt {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf3fb;
+  font: 14px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.pet-guess-opt:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.pet-guess-opt:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* 答完的对错反馈：对的绿、错的紅，正确那颗也亮绿（点错时告诉用户答案是哪个）。 */
+.pet-guess-opt.is-right {
+  background: #3fae6a;
+  border-color: #3fae6a;
+  color: #fff;
+  opacity: 1;
+}
+
+.pet-guess-opt.is-wrong {
+  background: #e2607a;
+  border-color: #e2607a;
+  color: #fff;
+  opacity: 1;
+}
+
+.pet-guess-exit {
+  margin-top: 10px;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: #e2607a;
+  color: #fff;
+  font: 14px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.pet-guess-exit:hover {
+  background: #cf4f69;
+}
+
+/* 「点破泡泡」：整屏一层泡泡（layer 本身不吃鼠标，泡泡自己吃），顶部 HUD 倒计时 + 已破 + 退出。
+   泡泡是内嵌 SVG 的按钮，绝对定位靠 transform 上浮（每帧写 transform，不触发布局）。
+   类名用 .pet-pop* 而非 .pet-bubble——后者是聊天气泡组件的类名，撞了会互相覆盖样式。 */
+.pet-pop-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pet-pop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  will-change: transform;
+  /* transform 过渡让上浮平滑；opacity 过渡管破裂淡出。放大别放这层——见下面 svg 那条的说明。 */
+  transition: transform 0.18s ease-out, opacity 0.18s ease-out;
+}
+
+.pet-pop svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  transition: scale 0.18s ease-out;
+}
+
+/* 破裂：原地放大 + 淡出，~180ms 后由控制器移除。
+   放大放在**内层 svg**而不是按钮上：按钮靠 transform:translate(x,y) 定位，若给按钮加独立 scale，
+   CSS 会先绕原点缩放再平移，把 translate 的偏移也乘大——泡泡就被踢向右下角（用户报的 bug）。
+   svg 没有 translate，绕自身中心缩放，原地鼓起再消失。 */
+.pet-pop.is-pop {
+  opacity: 0;
+}
+
+.pet-pop.is-pop svg {
+  scale: 1.6;
+}
+
+.pet-pop-hud {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  background: rgba(20, 40, 60, 0.82);
+  color: #eaf3fb;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font: 14px/1.5 var(--font-ui);
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 180px;
+  pointer-events: auto;
+}
+
+.pet-pop-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pet-pop-row b {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.pet-pop-exit {
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: #e2607a;
+  color: #fff;
+  font: 14px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.pet-pop-exit:hover {
+  background: #cf4f69;
 }
 
 /* 食物列表 */
@@ -826,7 +1229,7 @@ body.pet-over {
   padding: 1px 3px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.88);
-  font: 600 11px/1 "Microsoft YaHei UI", sans-serif;
+  font: 500 11px/1 var(--font-ui);
   color: #5a6472;
   pointer-events: none;
 }
@@ -941,7 +1344,7 @@ body.pet-over {
 .pet-plate button.on {
   background: var(--on-fill);
   border-color: rgba(0, 0, 0, 0.34);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* 圆底**没有视觉选中态**，这是拍板不是遗漏：`.on` 仍然挂在当前视图那颗上（状态语义与测试都靠它），

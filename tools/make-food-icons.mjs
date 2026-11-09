@@ -9,7 +9,7 @@
  * - 内容尺寸实测占格 84%~122%（糖葫芦出格、大闸蟹偏小），不归一化就是一排大小不齐的格子。
  *
  * 用法（在项目根）：
- *   node tools/make-food-icons.mjs "<总表 png 路径>" [id,id,...] [行数] [膨胀半径]
+ *   node tools/make-food-icons.mjs "<总表 png 路径>" [id,id,...] [行数] [膨胀半径] [底阈值]
  * 第二参数是**这张表里的出图顺序**（= 提示词里写的顺序，先上排从左到右、再下排），
  * 不给就用第一批六样（3 列 2 行）。
  * 产物：src/renderer/foods/<id>.png（128×128，四周留白，透明底）
@@ -32,13 +32,16 @@ import { fileURLToPath } from 'node:url'
 
 const src = process.argv[2]
 if (!src) {
-  console.error('用法：node tools/make-food-icons.mjs "<总表 png 路径>" [id,id,...] [行数] [膨胀半径]')
+  console.error('用法：node tools/make-food-icons.mjs "<总表 png 路径>" [id,id,...] [行数] [膨胀半径] [底阈值]')
   process.exit(1)
 }
 const IDS = (process.argv[3] ?? 'rice,tanghulu,crab,hotpot,dumpling,token').split(',')
 const ROWS = Number(process.argv[4] ?? 2)
 /** 膨胀半径：同一件东西的碎片（蟹腿、蒸汽、筷子）要能并成一个连通域。 */
 const DILATE = Number(process.argv[5] ?? 14)
+/** 近白底阈值：默认 242（老两批总表底是 #fafbfe）。个别生图底偏灰（实测 238,242,244）时调低，
+ *  否则整张底被当成墨迹、抠底失效。只影响「连到格边的近白」，食物内部的白（米粒/汤圆）够不着边，留得住。 */
+const BG = Number(process.argv[6] ?? 242)
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 const outDir = join(root, 'src', 'renderer', 'foods')
@@ -68,7 +71,7 @@ try {
     const ink = new Uint8Array(W * H)
     for (let p = 0; p < W * H; p++) {
       const i = p * 4
-      ink[p] = d[i] >= 242 && d[i + 1] >= 242 && d[i + 2] >= 238 ? 0 : 1
+      ink[p] = d[i] >= a.bg && d[i + 1] >= a.bg && d[i + 2] >= a.bg - 4 ? 0 : 1
     }
     // 右下角「AI生成」水印是烧进像素的，当成底丢掉
     for (let y = Math.floor(H * 0.895); y < H; y++) {
@@ -175,7 +178,7 @@ try {
         const cw2 = maxx - cx0 + 1, ch2 = maxy - cy0 + 1
         const cell = fg.getImageData(cx0, cy0, cw2, ch2)
         const cd = cell.data
-        const isBg = (i) => cd[i] >= 242 && cd[i + 1] >= 242 && cd[i + 2] >= 238
+        const isBg = (i) => cd[i] >= a.bg && cd[i + 1] >= a.bg && cd[i + 2] >= a.bg - 4
         // 从这一块的**包围盒四条边**洪水填充：连到边的近白才是底。
         // 这一步是整件事的关键——白饭的米粒、饺子的面皮、年糕的白块都是近白，
         // 按色全局抠会把食物本体抠成透明；它们被描边关在内部，够不着边，所以留得住。
@@ -215,7 +218,7 @@ try {
       }
     }
     return { outs, report, bands: { rowBands, colBands, rowCuts, colCuts } }
-  }, { data: b64, ids: IDS, rows: ROWS, out: OUT, fill: FILL, dilate: DILATE })
+  }, { data: b64, ids: IDS, rows: ROWS, out: OUT, fill: FILL, dilate: DILATE, bg: BG })
 
   mkdirSync(outDir, { recursive: true })
   console.log(`切点（位置与该行/列的墨迹数）：行 ${JSON.stringify(pngs.bands.rowCuts)} 列 ${JSON.stringify(pngs.bands.colCuts)}`)

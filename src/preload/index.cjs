@@ -20,8 +20,12 @@ contextBridge.exposeInMainWorld('petBridge', {
   onSettings: (cb) => ipcRenderer.on('pet:settings-loaded', (_e, s) => cb(s)),
   /** 上报一次养成动作（喂 / 玩 / 回应 / 开面板）。算多少由主进程说了算。 */
   statEvent: (e) => ipcRenderer.send('pet:stats-event', e),
+  /** 调试面板直接设数值 / 经验。主进程收敛校验后写进真存档并广播。 */
+  debugStats: (patch) => ipcRenderer.send('pet:stats-debug', patch),
   /** 改名与改性别。 */
   setIdentity: (patch) => ipcRenderer.send('pet:identity', patch),
   /** 开局推一次数值快照，之后每次 tick 或动作都会再推一次。 */
   onStats: (cb) => ipcRenderer.on('pet:stats-loaded', (_e, s) => cb(s)),
+  /** 用户点了「退出桌宠」：渲染层先说完 bye，再走这条让主进程落盘并退出。 */
+  quitApp: () => ipcRenderer.send('pet:quit'),
 })

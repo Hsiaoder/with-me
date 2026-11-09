@@ -31,27 +31,21 @@ export const STAT_TICK_MS = 60_000
 export const INITIAL_STATS: Stats = { hunger: 70, mood: 70, weight: 50, bond: 0 }
 
 /**
- * 每分钟自然变化。体重是 0——它不随时间掉，只能靠活动消耗，这正是它的效果来源
- * （喂胖了很难自己瘦回去）。亲密度按「每天 0.2」折算，是长期账，掉快了等于白养。
+ * 每分钟自然变化（**只在在线时结算**，关闭宠物期间数值冻结，见 main/stats.ts）。
+ * 节奏故意压得很慢，桌面陪伴不该催人 upkeep：饥饿满→空约 33 小时、心情约 42 小时（一天喂一两次就够）。
+ * 体重是 0——它不随时间掉，只能靠活动消耗，这正是它的效果来源（喂胖了很难自己瘦回去）。
+ * 亲密度按「每天 0.2」折算，是长期账，掉快了等于白养。
  */
 export const DECAY_PER_MIN: Record<StatKey, number> = {
-  hunger: 0.8,
-  mood: 0.5,
+  hunger: 0.05,
+  mood: 0.04,
   weight: 0,
   bond: 0.2 / 1440,
 }
 
 /** 连续没人理满这么久，心情掉得更快：它在乎你来没来。 */
 export const LONELY_AFTER_MS = 30 * 60_000
-export const MOOD_LONELY_PER_MIN = 1.2
-
-/**
- * 离线（关机/休眠）按在线速率的 30% 折算，并且每条最多损失这么多。
- * 全额补算会让「关电脑」变成惩罚，用户开始不敢关；完全不补又让数值失去意义。
- * 离线期间不叠加「没人理」加速，也不动体重——没人在这儿冷落它，只是它自己待着。
- */
-export const OFFLINE_RATE = 0.3
-export const OFFLINE_MAX_LOSS = 30
+export const MOOD_LONELY_PER_MIN = 0.12
 
 /** 同类动作在这个窗口内再做一次，收益减半。qqpet 缺这道闸，逗脸能连点刷满。 */
 export const DIMINISH_WINDOW_MS = 10 * 60_000
@@ -65,7 +59,7 @@ export const BLUE_BELOW = 30
 export const CHEER_ABOVE = 70
 export const CHUBBY_ABOVE = 75
 
-export type FoodEffect = { hunger: number; weight: number }
+export type FoodEffect = { hunger: number; mood: number; weight: number }
 /**
  * 饥饿按「顶饱程度」、体重按热量。名字是皮肤里的 clip slug，与 FOODS 对齐。
  *
@@ -87,43 +81,71 @@ export type FoodEffect = { hunger: number; weight: number }
  * `anim.name` 只管播哪条吃相，它和数值是两件事，不该共用一张表的键。
  */
 export const FOOD_EFFECT: Record<string, FoodEffect> = {
-  // 家常
-  token: { hunger: 6, weight: 0.6 },
-  rice: { hunger: 14, weight: 0.4 },
-  noodle: { hunger: 16, weight: 0.8 },       // 面条（一碗汤面扎实，但不厚）
-  youtiao: { hunger: 12, weight: 1.6 },      // 油条（顶饱一般、热量最高的一档之一）
-  // 街边零嘴与要动手的主食
-  tanghulu: { hunger: 8, weight: 0.9 },
-  dumpling: { hunger: 16, weight: 1.2 },
-  melon: { hunger: 10, weight: 0.3 },        // 西瓜：水分大，几乎不长肉
-  snack: { hunger: 7, weight: 1.4 },         // 零食：不顶饱，专管长肉
-  // 硬菜与稀罕口
-  crab: { hunger: 18, weight: 1.0 },
-  hotpot: { hunger: 22, weight: 1.5 },
-  niangao: { hunger: 18, weight: 1.8 },      // 年糕：糯米扎实，热量这版最高
-  icecream: { hunger: 8, weight: 1.3 },      // 冰淇淋：凉甜，不太顶饱
+  // 2026-11-07 数值重设计：开局几格饱食低（5–10），越高等级饱食通常越高；
+  // 零食/冰淇淋是「特殊口」——饱食加得少但心情加得多；火锅饱食与心情双高。
+  // 2026-11-09 体重列整体减半（用户要「体重变化不要太大」），饱食/心情不变，相对设计（顶饱≠热量）保留。
+  // 家常（开局）
+  token: { hunger: 5, mood: 2, weight: 0.2 },
+  rice: { hunger: 8, mood: 2, weight: 0.2 },
+  noodle: { hunger: 9, mood: 3, weight: 0.35 },
+  youtiao: { hunger: 7, mood: 4, weight: 0.6 },        // 油条：香但油，热量偏高
+  // 等级档：饱食大体随等级往上走
+  dinner: { hunger: 10, mood: 4, weight: 0.45 },       // 晚餐：家常正餐
+  tanghulu: { hunger: 6, mood: 8, weight: 0.4 },       // 糖葫芦：酸甜零嘴，不太顶饱
+  dumpling: { hunger: 11, mood: 5, weight: 0.55 },
+  melon: { hunger: 8, mood: 7, weight: 0.15 },         // 西瓜：水分大，几乎不长肉
+  snack: { hunger: 4, mood: 16, weight: 0.7 },         // 特殊口：不顶饱，专管哄开心
+  niangao: { hunger: 12, mood: 6, weight: 0.8 },       // 年糕：糯米扎实，热量最高档
+  tangyuan: { hunger: 11, mood: 9, weight: 0.65 },     // 汤圆：甜馅暖胃
+  qingtuan: { hunger: 10, mood: 8, weight: 0.55 },     // 青团：豆沙清甜
+  labaporridge: { hunger: 13, mood: 6, weight: 0.3 },  // 腊八粥：粥水顶饱、清淡
+  icecream: { hunger: 5, mood: 18, weight: 0.65 },     // 特殊口：凉甜，饱食少心情高
+  crab: { hunger: 16, mood: 10, weight: 0.5 },         // 大闸蟹：硬菜，顶饱
+  hotpot: { hunger: 20, mood: 18, weight: 0.9 },       // 火锅：饱食与心情双高，热量也最狠
 }
 
-export const FEED_MOOD = 2
-/** 正饿着时吃到东西额外开心一点。 */
+/** 正饿着时吃到东西额外开心一点（叠在该食物自己的 mood 上）。 */
 export const FEED_MOOD_HUNGRY_BONUS = 3
 export const PLAY_MOOD = 6
-export const PLAY_WEIGHT_COST = 0.5
-export const PLAY_BOND = 0.4
+export const PLAY_WEIGHT_COST = 0.25
+export const PLAY_BOND = 0.15
+/**
+ * 「鲸鲸会飞」落地一次的账：心情、亲密往上，饱食、体重往下——抛来抛去是一场运动，
+ * 玩累了会饿、会掉肉，陪它玩也涨亲密。逗玩只有 +6/-0.25/+0.15，游戏更费力气也更哄开心，
+ * 所以四项都比它高一档，但喂食仍是涨饱食的最大头（游戏是往下拉的，不冲突）。
+ * 亲密增益整体压到约 1/3、体重消耗减半（用户 2026-11-09：亲密别加太多、体重别变太大）。
+ */
+export const GAME_MOOD = 8
+export const GAME_BOND = 0.2
+export const GAME_HUNGER_COST = 6
+export const GAME_WEIGHT_COST = 0.6
+/**
+ * 一局游戏按「答对/抛成次数」结算时的封顶：猜动作答对越多给越多，但一场最多按 5 次算，
+ * 免得连对十几下把饱食/体重一次抽干。鲸鲸会飞固定 count=1，不受影响。
+ */
+export const GAME_COUNT_CAP = 5
 export const REPLY_MOOD = 2
-export const REPLY_BOND = 0.3
-export const DAILY_OPEN_BOND = 0.2
+export const REPLY_BOND = 0.1
+export const DAILY_OPEN_BOND = 0.1
 /** 「每天第一次」用 20 小时而不是日历日：跨时区与夏令时的日界不值得为一条数值去算。 */
 export const DAILY_OPEN_GAP_MS = 20 * 3600_000
 
 export type StatEvent =
   | { kind: 'feed'; food: string }
   | { kind: 'play' }
+  | { kind: 'game'; count?: number }
   | { kind: 'reply' }
   | { kind: 'daily-open' }
 
 /** 动作的归类键：递减按它算。所有食物共用一条闸，免得换着花样连点。 */
 export const eventKey = (e: StatEvent): string => e.kind
+
+/** 游戏这一局按几次结算：count 夹在 [1, GAME_COUNT_CAP]；非游戏动作恒为 1。 */
+export function gameCount(e: StatEvent): number {
+  if (e.kind !== 'game') return 1
+  const c = typeof e.count === 'number' && Number.isFinite(e.count) ? e.count : 1
+  return Math.max(1, Math.min(GAME_COUNT_CAP, Math.round(c)))
+}
 
 export type EventCtx = { now: number; lastEventAt: Record<string, number>; stats?: Stats }
 
@@ -147,13 +169,23 @@ export function eventDeltas(e: StatEvent, ctx: EventCtx): Partial<Stats> {
       const full = before !== undefined && before.hunger > FULL_ABOVE
       const hungry = before !== undefined && before.hunger < HUNGRY_BELOW
       return {
-        hunger: f.hunger * mult * (full ? DIMINISH_MULT : 1),
+        // 已经吃撑了（>FULL_ABOVE）饥饿**不再涨**——这是「食物能一直点」的收口，比原来的减半更硬。
+        hunger: full ? 0 : f.hunger * mult,
         weight: f.weight * mult,
-        mood: (FEED_MOOD + (hungry ? FEED_MOOD_HUNGRY_BONUS : 0)) * mult,
+        mood: (f.mood + (hungry ? FEED_MOOD_HUNGRY_BONUS : 0)) * mult,
       }
     }
     case 'play':
       return { mood: PLAY_MOOD * mult, weight: -PLAY_WEIGHT_COST * mult, bond: PLAY_BOND * mult }
+    case 'game': {
+      const n = gameCount(e)
+      return {
+        mood: GAME_MOOD * mult * n,
+        bond: GAME_BOND * mult * n,
+        hunger: -GAME_HUNGER_COST * mult * n,
+        weight: -GAME_WEIGHT_COST * mult * n,
+      }
+    }
     case 'reply':
       return { mood: REPLY_MOOD * mult, bond: REPLY_BOND * mult }
     case 'daily-open': {
@@ -220,6 +252,7 @@ export const addExp = (prev: number, gain: number): number => Math.round((prev +
 export const EXP_GAIN: Record<StatEvent['kind'], number> = {
   feed: 2,
   play: 3,
+  game: 3,
   reply: 1,
   'daily-open': 2,
 }
@@ -229,7 +262,7 @@ export function expGain(e: StatEvent, ctx: EventCtx): number {
   // 「这条此刻到底给不给得出东西」已经由 eventDeltas 判掉了（认不出的食物、跨不过 20 小时的日开
   // 都返回空对象）。这里跟着它的结论走，别自己再写一份日界判断——那才是两份真相。
   if (Object.keys(eventDeltas(e, ctx)).length === 0) return 0
-  return EXP_GAIN[e.kind] * diminish(eventKey(e), ctx)
+  return EXP_GAIN[e.kind] * diminish(eventKey(e), ctx) * gameCount(e)
 }
 
 /**
@@ -259,11 +292,15 @@ export const expToNext = (exp: number): number => {
 }
 
 /** 涨了多少写成人话：整数值不带小数点，其余一位；四舍五入成 0 的干脆不写。 */
-export function gainText(label: string, delta: number): string | null {
+export function gainText(label: string, delta: number, signed = false): string | null {
   const rounded = Math.round(delta * 10) / 10
-  if (rounded <= 0) return null
-  const num = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
-  return `${label} +${num}`
+  if (rounded === 0) return null
+  // 默认只飘涨的：自然衰减每分钟都在动，跟着飘负数就刷屏。
+  // `signed` 是给「一次明确动作」用的（如小游戏落地：饱食/体重是往下掉的，那也得让用户看见）。
+  if (rounded < 0 && !signed) return null
+  const mag = Math.abs(rounded)
+  const num = Number.isInteger(mag) ? String(mag) : mag.toFixed(1)
+  return `${label} ${rounded > 0 ? '+' : '−'}${num}`
 }
 
 /** 一条飘字：挂在哪个数值上（CSS 按它上色上色）+ 写出来的人话。 */
@@ -281,15 +318,47 @@ export type FloatGain = { key: StatKey; text: string }
  * 纯函数、不碰 DOM：渲染层只管把拿到的每条贴上去，「该飘什么」这件事由这里说。
  * 带 `key` 出去是为了让样式认得出「这是哪条」——颜色按数值分，不按涨了多少分。
  */
-export function gainsToFloat(prev: Stats, next: Stats): FloatGain[] {
+export function gainsToFloat(prev: Stats, next: Stats, signed = false): FloatGain[] {
   const out: FloatGain[] = []
   for (const key of STAT_KEYS) {
-    const text = gainText(STAT_LABELS[key], next[key] - prev[key])
+    const text = gainText(STAT_LABELS[key], next[key] - prev[key], signed)
     if (text !== null) out.push({ key, text })
   }
   return out
 }
 
+
+// ---- 调试面板：直接改数值/经验 ----
+/** 调试 patch 的形状：只认四条数值键的部分 + exp。渲染层送来、主进程收敛后写进存档。 */
+export type DebugStatsPatch = { stats?: Partial<Stats>; exp?: number }
+
+/**
+ * 把 IPC 送来的 debug patch 收敛成合法形状：只认 `STAT_KEYS` 里的数值键（有限数、夹到 [0,STAT_MAX]）
+ * 和 `exp`（有限、≥0）。一个都不认得就返回 null——这条路的另一端是外部输入，不是自家函数。
+ */
+export function sanitizeDebugPatch(raw: unknown): DebugStatsPatch | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  const out: DebugStatsPatch = {}
+  if (r.stats !== null && typeof r.stats === 'object' && !Array.isArray(r.stats)) {
+    const s = r.stats as Record<string, unknown>
+    const partial: Partial<Stats> = {}
+    for (const k of STAT_KEYS) {
+      const v = s[k]
+      if (typeof v === 'number' && Number.isFinite(v)) partial[k] = clamp(v)
+    }
+    if (Object.keys(partial).length > 0) out.stats = partial
+  }
+  if (typeof r.exp === 'number' && Number.isFinite(r.exp) && r.exp >= 0) out.exp = r.exp
+  return out.stats !== undefined || out.exp !== undefined ? out : null
+}
+
+/** 把收敛过的 patch 应用到当前数值/经验上：只覆盖给出的键，其余原样。 */
+export function applyDebugPatch(cur: { stats: Stats; exp: number }, p: DebugStatsPatch): { stats: Stats; exp: number } {
+  const stats = { ...cur.stats }
+  if (p.stats) for (const k of STAT_KEYS) if (p.stats[k] !== undefined) stats[k] = p.stats[k]!
+  return { stats, exp: p.exp !== undefined ? p.exp : cur.exp }
+}
 
 export function applyEvent(
   stats: Stats,
@@ -305,22 +374,20 @@ export function applyEvent(
   return { stats: next, lastEventAt: { ...ctx.lastEventAt, [eventKey(e)]: ctx.now } }
 }
 
-export type TickCtx = { minutes: number; idleMs: number; offline?: boolean }
+export type TickCtx = { minutes: number; idleMs: number }
 
-/** 按分钟结算自然变化。`minutes ≤ 0` 原样返回：时钟回拨不该掉两次。 */
+/**
+ * 按分钟结算自然变化（**只在线调用**；关闭宠物期间不结算，数值冻结）。
+ * `minutes ≤ 0` 原样返回：时钟回拨不该掉两次。
+ */
 export function tickStats(s: Stats, ctx: TickCtx): Stats {
   if (!(ctx.minutes > 0)) return s
-  const rate = ctx.offline ? OFFLINE_RATE : 1
-  const moodRate = !ctx.offline && ctx.idleMs > LONELY_AFTER_MS ? MOOD_LONELY_PER_MIN : DECAY_PER_MIN.mood
-  const floor = (key: StatKey, value: number): number =>
-    ctx.offline ? Math.max(value, s[key] - OFFLINE_MAX_LOSS) : value
-
+  const moodRate = ctx.idleMs > LONELY_AFTER_MS ? MOOD_LONELY_PER_MIN : DECAY_PER_MIN.mood
   return {
-    hunger: clamp(floor('hunger', s.hunger - DECAY_PER_MIN.hunger * rate * ctx.minutes)),
-    mood: clamp(floor('mood', s.mood - moodRate * rate * ctx.minutes)),
-    // 体重离线不掉：睡觉不会瘦。
-    weight: clamp(s.weight - (ctx.offline ? 0 : DECAY_PER_MIN.weight * ctx.minutes)),
-    bond: clamp(floor('bond', s.bond - DECAY_PER_MIN.bond * rate * ctx.minutes)),
+    hunger: clamp(s.hunger - DECAY_PER_MIN.hunger * ctx.minutes),
+    mood: clamp(s.mood - moodRate * ctx.minutes),
+    weight: clamp(s.weight - DECAY_PER_MIN.weight * ctx.minutes),
+    bond: clamp(s.bond - DECAY_PER_MIN.bond * ctx.minutes),
   }
 }
 

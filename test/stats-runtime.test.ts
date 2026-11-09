@@ -10,9 +10,8 @@ import {
   INITIAL_STATS,
   LEVEL_CUM,
   LEVEL_STEPS,
+  levelOf,
   MAX_LEVEL,
-  OFFLINE_MAX_LOSS,
-  OFFLINE_RATE,
   STAT_TICK_MS,
 } from '../src/shared/stats.js'
 import type { SaveData } from '../src/shared/save.js'
@@ -37,34 +36,16 @@ const harness = (save: SaveData = defaultSave(T0)) => {
 beforeEach(() => { vi.useFakeTimers() })
 afterEach(() => { vi.useRealTimers() })
 
-describe('开局离线补算', () => {
-  it('离开一小时：按在线速率的 30% 折算，不是全额', () => {
-    const save = { ...defaultSave(T0 - 60 * MIN) }
-    const { rt } = harness(save)
-    expect(rt.snapshot().stats.hunger).toBeCloseTo(70 - 60 * DECAY_PER_MIN.hunger * OFFLINE_RATE, 6)
-  })
-
-  it('离开一整夜：每条最多损失上限那么多，回来不会看到一只饿到底的宠物', () => {
-    const save = { ...defaultSave(T0 - 12 * 60 * MIN) }
-    const { rt } = harness(save)
-    expect(70 - rt.snapshot().stats.hunger).toBeCloseTo(OFFLINE_MAX_LOSS, 6)
-    expect(70 - rt.snapshot().stats.mood).toBeCloseTo(OFFLINE_MAX_LOSS, 6)
-  })
-
-  it('体重离线不掉：睡觉不会瘦', () => {
-    const save = { ...defaultSave(T0 - 12 * 60 * MIN) }
-    expect(startStats({ save, persist: () => {}, broadcast: () => {}, now: () => T0 }).snapshot().stats.weight)
-      .toBe(INITIAL_STATS.weight)
-  })
-
-  it('刚关掉就重开（不足一分钟）什么都不补，也不落盘', () => {
-    const save = { ...defaultSave(T0 - 30_000) }
+describe('开局不补算：关闭宠物期间数值冻结', () => {
+  it('离开三天重开，四条数值原样——不在线就不掉', () => {
+    const stats = { hunger: 60, mood: 55, weight: 52, bond: 7 }
+    const save = { ...defaultSave(T0 - 3 * 24 * 60 * MIN), stats }
     const h = harness(save)
-    expect(h.rt.snapshot().stats).toEqual(INITIAL_STATS)
-    expect(h.persisted).toHaveLength(0)
+    expect(h.rt.snapshot().stats).toEqual(stats)
+    expect(h.persisted, '开局不该因补算落盘').toHaveLength(0)
   })
 
-  it('lastSeenAt 是垃圾值时不炸也不补（时钟回拨不能把宠物饿死）', () => {
+  it('lastSeenAt 是垃圾值也不炸（已不再读它补算）', () => {
     for (const bad of [Number.NaN, Infinity, 'x', undefined]) {
       const save = { ...defaultSave(T0), lastSeenAt: bad as unknown as number }
       expect(() => startStats({ save, persist: () => {}, broadcast: () => {}, now: () => T0 })).not.toThrow()
@@ -234,7 +215,7 @@ describe('经验与等级', () => {
 
   /**
    * 在线挂机的经验（用户 2026-11-07：「挂机的时候也会增加等级」，并确认「进程在跑就算」）。
-   * 这条同时钉住另一半：**离线那段一格都不给**——开局补算只补会掉的饱食/心情，
+   * 这条同时钉住另一半：**离线那段什么都不给**——关闭宠物期间数值与经验都冻结（用户 2026-11-09），
    * 否则「关掉应用三天回来直接 Lv.20」，陪伴这件事就变成放置游戏了。
    */
   it('进程在跑就按分钟给经验；关掉应用那段不算', () => {
@@ -259,11 +240,11 @@ describe('经验与等级', () => {
     // 攒满一级就真升级（这条同时是 addExp 收口的现场验证：0.2 × 100 分钟 = 20，不多不少）
     runMin(90)
     expect(h.rt.snapshot().exp, '挂机 100 分钟该正好攒满第一级').toBe(LEVEL_STEPS[0])
-    // 离线补算那条路：lastSeenAt 是三小时前，重开只补数值、不补经验
+    // 离线冻结那条路：lastSeenAt 是三小时前，重开数值与经验都原样（不在线就不变）
     const away = { ...defaultSave(T0 - 180 * MIN) }
     const b = harness(away)
     expect(b.rt.snapshot().exp ?? 0, '关机期间不该涨经验').toBe(0)
-    expect(b.rt.snapshot().stats.hunger).toBeLessThan(INITIAL_STATS.hunger)  // 那边照旧会饿
+    expect(b.rt.snapshot().stats.hunger, '关机期间不该掉饥饿').toBe(INITIAL_STATS.hunger)
   })
 
   it('v2 的档迁移到 v3：等级一格不动，经验条正好空着', () => {
@@ -300,5 +281,41 @@ describe('经验与等级', () => {
       expect('exp' in save, `垃圾值 ${String(bad)} 没被丢掉`).toBe(false)
       expect(save.exp, '没键就该从 0 攒').toBeUndefined()
     }
+  })
+})
+
+describe('debugSet：调试面板直接改数值/经验，落盘并广播', () => {
+  it('设 mood=10 后快照读到 10，且多落盘一次、多广播一次', () => {
+    const { rt, persisted, sent } = harness()
+    const before = persisted.length
+    rt.debugSet({ stats: { mood: 10 } })
+    expect(rt.snapshot().stats.mood).toBe(10)
+    expect(persisted.length).toBe(before + 1)
+    expect(sent.at(-1)?.stats.mood).toBe(10)
+  })
+
+  it('设 exp 到某级阈值，等级随之变（levelOf 查表，不另存等级）', () => {
+    const { rt } = harness()
+    rt.debugSet({ exp: LEVEL_CUM[9] })   // Lv.10
+    expect(rt.snapshot().exp).toBe(LEVEL_CUM[9])
+    expect(levelOf(rt.snapshot().exp)).toBe(10)
+  })
+
+  it('越界值夹到合法区间后照样落盘', () => {
+    const { rt } = harness()
+    rt.debugSet({ stats: { hunger: 999, mood: -20 } })
+    expect(rt.snapshot().stats.hunger).toBe(100)
+    expect(rt.snapshot().stats.mood).toBe(0)
+  })
+
+  it('畸形输入整包忽略：不落盘、不改值', () => {
+    const { rt, persisted } = harness()
+    const before = persisted.length
+    const snap = rt.snapshot().stats
+    rt.debugSet({ stats: { mood: 'x' }, exp: -5 })
+    rt.debugSet(null)
+    rt.debugSet({ bogus: 1 })
+    expect(rt.snapshot().stats).toEqual(snap)
+    expect(persisted.length).toBe(before)
   })
 })

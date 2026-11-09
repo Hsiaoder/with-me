@@ -25,14 +25,21 @@ const pngs = (dir) => {
   }
 }
 
-/** 拷进输出目录，返回相对路径；同时记下原生宽度，页面按真实尺寸显示。 */
+/** 拷进输出目录，返回相对路径 + 真实像素尺寸（这个包里素材不是方的）。 */
 let copied = 0
-const asset = (relOut, src, w) => {
+const natSize = (src) => {
+  const b = readFileSync(src)
+  return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) }
+}
+/** 单格显示宽上限：192×64 的按钮底板按原宽排会把整行撑爆。 */
+const MAXW = 110
+const asset = (relOut, src) => {
   const to = join(IMG, relOut)
   mkdirSync(join(to, '..'), { recursive: true })
   copyFileSync(src, to)
   copied++
-  return { src: 'img/' + relOut.replace(/\\/g, '/'), w }
+  const { w, h } = natSize(src)
+  return { src: 'img/' + relOut.replace(/\\/g, '/'), w: Math.min(w, MAXW), nat: w + '×' + h }
 }
 
 /**
@@ -45,14 +52,14 @@ const SECTIONS = []
 {
   const pack = join(UI, 'kenney_emotes-pack')
   const cols = []
-  for (let i = 1; i <= 8; i++) cols.push({ label: `P${i}`, full: `pixel Style ${i}`, dir: join(pack, 'PNG', 'Pixel', `Style ${i}`), w: 16 })
-  for (let i = 1; i <= 8; i++) cols.push({ label: `V${i}`, full: `vector Style ${i}`, dir: join(pack, 'PNG', 'Vector', `Style ${i}`), w: 32 })
+  for (let i = 1; i <= 8; i++) cols.push({ label: `P${i}`, full: `pixel Style ${i}`, dir: join(pack, 'PNG', 'Pixel', `Style ${i}`),})
+  for (let i = 1; i <= 8; i++) cols.push({ label: `V${i}`, full: `vector Style ${i}`, dir: join(pack, 'PNG', 'Vector', `Style ${i}`),})
   const common = pngs(cols[0].dir).filter((nm) => cols.every((c) => pngs(c.dir).includes(nm)))
   SECTIONS.push({
     tab: 'emotes', title: '表情包 Emotes · 30 个表情 × 16 种风格',
     note: 'P = Pixel（原生 16×16，硬边）｜V = Vector（原生 32×38）。同一行横扫挑风格，选定后把行名和列标一起告诉我。',
     rows: common, cols,
-    cell: (nm, c) => asset(`emotes/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`), c.w),
+    cell: (nm, c) => asset(`emotes/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`)),
     overview: existsSync(join(pack, 'Preview.png')) ? asset('emotes/_preview.png', join(pack, 'Preview.png')) : null,
   })
 }
@@ -61,21 +68,21 @@ const SECTIONS = []
 {
   const pack = join(UI, 'kenney_ui-pack')
   const colors = ['Blue', 'Green', 'Grey', 'Red', 'Yellow']
-  const cols = colors.map((c) => ({ label: c, full: `PNG/${c}/Default 32×32`, dir: join(pack, 'PNG', c, 'Default'), w: 32 }))
+  const cols = colors.map((c) => ({ label: c, full: `PNG/${c}/Default 32×32`, dir: join(pack, 'PNG', c, 'Default'),}))
   const main = pngs(cols[0].dir)
   SECTIONS.push({
     tab: 'ui', title: 'UI 包 · 82 个控件 × 5 色',
     note: '每格是 PNG/颜色/Default（32×32）。同美术还有 Double（64×64）和 Vector/（SVG）两套，路径就在旁边目录，放大到 3× 觉得糊就换那两套。',
     rows: main, cols,
-    cell: (nm, c) => asset(`ui/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`), c.w),
+    cell: (nm, c) => asset(`ui/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`)),
     overview: existsSync(join(pack, 'Sample.png')) ? asset('ui/_sample.png', join(pack, 'Sample.png')) : null,
   })
   const extraDir = join(pack, 'PNG', 'Extra', 'Default')
   SECTIONS.push({
     tab: 'ui', title: `UI 包 Extra · ${pngs(extraDir).length} 个（不分色）`,
     note: 'Extra 里是 line 描边按钮、分隔线、上下箭头、播放/循环、输入框这些，只有单色一套。',
-    rows: pngs(extraDir), cols: [{ label: 'Extra', full: 'PNG/Extra/Default 32×32', dir: extraDir, w: 32 }],
-    cell: (nm, c) => asset(`ui/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`), c.w),
+    rows: pngs(extraDir), cols: [{ label: 'Extra', full: 'PNG/Extra/Default 32×32', dir: extraDir,}],
+    cell: (nm, c) => asset(`ui/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`)),
   })
 }
 
@@ -83,27 +90,49 @@ const SECTIONS = []
 {
   const pack = join(UI, 'kenney_ui-pack-pixel-adventure')
   const sets = [
-    { key: 'large', title: 'Adventure 大瓦片 · 91 块 32×32', w: 32, sheet: join(pack, 'Tilesheets', 'Large tiles', 'Thick outline', 'tilemap_packed.png') },
-    { key: 'small', title: 'Adventure 小瓦片 · 161 块 16×16', w: 16, sheet: join(pack, 'Tilesheets', 'Small tiles', 'Thick outline', 'tilemap_packed.png') },
+    { key: 'large', title: 'Adventure 大瓦片 · 91 块 32×32', sheet: join(pack, 'Tilesheets', 'Large tiles', 'Thick outline', 'tilemap_packed.png') },
+    { key: 'small', title: 'Adventure 小瓦片 · 161 块 16×16', sheet: join(pack, 'Tilesheets', 'Small tiles', 'Thick outline', 'tilemap_packed.png') },
   ]
   for (const s of sets) {
     const thick = join(pack, 'Tiles', s.key === 'large' ? 'Large tiles' : 'Small tiles', 'Thick outline')
     const thin = join(pack, 'Tiles', s.key === 'large' ? 'Large tiles' : 'Small tiles', 'Thin outline')
-    const cols = [{ label: '粗边', full: 'Thick outline', dir: thick, w: s.w }, { label: '细边', full: 'Thin outline', dir: thin, w: s.w }]
+    const cols = [{ label: '粗边', full: 'Thick outline', dir: thick,}, { label: '细边', full: 'Thin outline', dir: thin,}]
     SECTIONS.push({
       tab: 'adventure', title: s.title,
       note: '编号无语义，先扫一眼下面的总览图定位，再回表里按编号选。两列是描边粗细，桌宠浮在任意桌面上时粗边更稳。',
       rows: pngs(thick), cols,
-      cell: (nm, c) => asset(`adv/${s.key}/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`), c.w),
+      cell: (nm, c) => asset(`adv/${s.key}/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`)),
       overview: existsSync(s.sheet) ? asset(`adv/${s.key}/_sheet.png`, s.sheet) : null,
     })
   }
+}
+
+/* ---------- 4. 空间扩展包：60 个控件 × 5 色 + Extra 70 ---------- */
+{
+  const pack = join(UI, 'kenney_ui-pack-space-expansion')
+  const colors = ['Blue', 'Green', 'Grey', 'Red', 'Yellow']
+  const cols = colors.map((c) => ({ label: c, full: `PNG/${c}/Default`, dir: join(pack, 'PNG', c, 'Default') }))
+  SECTIONS.push({
+    tab: 'space', title: `空间扩展包 · ${pngs(cols[0].dir).length} 个控件 × 5 色`,
+    note: '是 UI 包的扩展，与基础包**零重名**：进度条（bar_*）、带标题栏的按钮（button_square_header_*）、准星（crosshair_*）。尺寸不方，最长 192×64，表里按真实比例显示（超过 110px 宽会等比缩到 110）。',
+    rows: pngs(cols[0].dir), cols,
+    cell: (nm, c) => asset(`space/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`)),
+    overview: existsSync(join(pack, 'Sample.png')) ? asset('space/_sample.png', join(pack, 'Sample.png')) : null,
+  })
+  const extraDir = join(pack, 'PNG', 'Extra', 'Default')
+  SECTIONS.push({
+    tab: 'space', title: `空间扩展包 Extra · ${pngs(extraDir).length} 个（不分色）`,
+    note: 'Extra 里是玻璃面板（panel_glass_*）、带阴影的进度条（bar_shadow_*）、光标（cursor_*）、准星和通用按钮底板。同样有 Double 高清版和 Vector/SVG。',
+    rows: pngs(extraDir), cols: [{ label: 'Extra', full: 'PNG/Extra/Default', dir: extraDir }],
+    cell: (nm, c) => asset(`space/${c.label}/${nm}.png`, join(c.dir, `${nm}.png`)),
+  })
 }
 
 /* ---------- 渲染 ---------- */
 const TABS = [
   { id: 'emotes', label: '表情包' },
   { id: 'ui', label: 'UI 包' },
+  { id: 'space', label: '空间扩展包' },
   { id: 'adventure', label: 'Pixel Adventure' },
 ]
 
@@ -111,12 +140,13 @@ const rowId = (si, nm) => `s${si}-${nm}`
 
 const renderSection = (sec, si) => {
   const head = sec.cols.map((c) =>
-    `<th><button class="solo" data-col="${esc(c.label)}" data-sec="${si}" title="只看这一列">${c.label}</button><span class="native">${c.w}</span></th>`).join('')
+    `<th><button class="solo" data-col="${esc(c.label)}" data-sec="${si}" title="只看这一列">${c.label}</button></th>`).join('')
   const body = sec.rows.map((nm) => {
     const tds = sec.cols.map((c, ci) => {
       const a = sec.cell(nm, c)
       return `<td><div class="cell" style="--w:${a.w}px" data-name="${esc(nm)}" data-col="${esc(c.label)}" ` +
-        `data-pack="${esc(sec.tab)}" data-sec="${si}" data-row="${esc(rowId(si, nm))}" title="${esc(nm)} · ${esc(c.full)}">` +
+        `data-pack="${esc(sec.tab)}" data-sec="${si}" data-row="${esc(rowId(si, nm))}" ` +
+        `title="${esc(nm)} · ${esc(c.full)} · 原生 ${esc(a.nat)}">` +
         `<img src="${a.src}" alt=""></div></td>`
     }).join('')
     return `<tr data-row="${esc(rowId(si, nm))}" data-nm="${esc(nm.toLowerCase())}"><th class="rowhead"><code>${esc(nm)}</code>` +
@@ -173,7 +203,6 @@ const html = `<!doctype html><meta charset="utf-8"><title>Kenney 素材包 · �
   thead th:first-child{left:0;z-index:5;text-align:left;padding-left:9px;min-width:180px}
   .solo{border:0;background:transparent;font:inherit;font-weight:600;color:#3c4650;cursor:pointer;padding:2px 5px}
   .solo:hover,.solo.on{color:#2f6fd0}
-  .native{display:block;font-size:9px;color:#9aa4ae;text-align:center;margin-top:-2px}
   tbody th.rowhead{position:sticky;left:0;z-index:4;background:#fff;text-align:left;padding:3px 8px;
        border-bottom:1px solid #eef1f4;white-space:nowrap;min-width:180px}
   tbody tr:nth-child(even) th.rowhead{background:#fafbfc}
@@ -183,9 +212,8 @@ const html = `<!doctype html><meta charset="utf-8"><title>Kenney 素材包 · �
   .rowpick.on,.rowpick.part{background:#2f6fd0;border-color:#2f6fd0;color:#fff}
   .rowpick.part{opacity:.6}
   td{border-left:1px solid #f0f2f5;border-bottom:1px solid #eef1f4;text-align:center;padding:0}
-  .cell{display:flex;align-items:center;justify-content:center;cursor:pointer;
-        padding:calc(var(--w) * var(--k) * .18)}
-  .cell img{display:block;image-rendering:pixelated;width:calc(var(--w) * var(--k));height:auto}
+  .cell{display:flex;align-items:center;justify-content:center;cursor:pointer;padding:5px}
+  .cell img{display:block;image-rendering:pixelated;width:min(calc(var(--w) * var(--k)),300px);height:auto}
   .cell.sel{outline:2px solid #2f6fd0;outline-offset:-2px;background:#dbe8fb}
   .cell:hover{outline:2px solid #9dbdf0;outline-offset:-2px}
   body[data-bg="mid"] .cell{background:#8b939c}
@@ -244,7 +272,7 @@ function paint(){
   for(var b=0;b<badges.length;b++){var id=badges[b].dataset.tcnt,v=tabs[id]||0;
     badges[b].textContent=v;badges[b].classList.toggle('zero',v===0)}
 }
-function packName(id){return id==='emotes'?'表情包':id==='ui'?'UI包':'Adventure'}
+function packName(id){return id==='emotes'?'表情包':id==='ui'?'UI包':id==='space'?'空间扩展包':'Adventure'}
 document.addEventListener('click',function(ev){
   var t=ev.target;
   var cell=up(t,'cell');
@@ -300,5 +328,5 @@ paint();
 writeFileSync(join(OUT, 'index.html'), html, 'utf8')
 
 console.log(`标签 ${TABS.length} 个 / 矩阵 ${SECTIONS.length} 张，拷入素材 ${copied} 个文件`)
-console.log(`许可证：表情包 ${licOf(join(UI, 'kenney_emotes-pack'))} ｜ UI包 ${licOf(join(UI, 'kenney_ui-pack'))} ｜ Adventure ${licOf(join(UI, 'kenney_ui-pack-pixel-adventure'))}`)
+console.log(`许可证：表情包 ${licOf(join(UI, 'kenney_emotes-pack'))} ｜ UI包 ${licOf(join(UI, 'kenney_ui-pack'))} ｜ 空间扩展 ${licOf(join(UI, 'kenney_ui-pack-space-expansion'))} ｜ Adventure ${licOf(join(UI, 'kenney_ui-pack-pixel-adventure'))}`)
 console.log(`→ ${join(OUT, 'index.html')}`)

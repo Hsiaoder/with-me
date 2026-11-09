@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { FOODS, FOOD_LABEL_WIDTH, FOOD_TIERS, unlockLevelAt } from '../src/shared/food.js'
+import { FOODS, FOOD_LABEL_WIDTH, FOOD_TIERS, isUnlocked } from '../src/shared/food.js'
 import { labelWidth } from '../src/shared/text.js'
 import { CLIP_NAME, POOL_NAME } from '../src/shared/skin.js'
-import { FOOD_EFFECT, LEVEL_CUM, levelOf, type FoodEffect } from '../src/shared/stats.js'
+import { FOOD_EFFECT, LEVEL_CUM, levelOf } from '../src/shared/stats.js'
 
 /**
  * 喂食列表的契约。
@@ -21,27 +21,30 @@ const CLIP_OF: Record<string, string> = {
   // 面条走「吃午餐」、油条走「吃早餐」是用户 2026-11-06 拍的板（素材里没有吃面/吃油条那两条）
   noodle: 'lunch', youtiao: 'breakfast', melon: 'watermelon', snack: 'snack',
   niangao: 'ricecake', icecream: 'icecream',
+  dinner: 'dinner', tangyuan: 'tangyuan', qingtuan: 'qingtuan', labaporridge: 'labaporridge',
 }
 
 describe('食物表', () => {
-  it('十二条，id 唯一，解锁级由序号推（前 3 格 Lv.1，往后每两级放一格）', () => {
+  it('十六条，id 唯一，两档解锁：开局4 / 等级12（Lv.5 起每两级一格）', () => {
     expect(FOODS.map((f) => f.id)).toEqual([
       'token', 'rice', 'noodle', 'youtiao',
-      'tanghulu', 'dumpling', 'melon', 'snack',
-      'crab', 'hotpot', 'niangao', 'icecream',
+      'dinner', 'tanghulu', 'dumpling', 'melon', 'snack', 'niangao', 'tangyuan', 'qingtuan', 'labaporridge',
+      'icecream', 'crab', 'hotpot',
     ])
     expect(new Set(FOODS.map((f) => f.id)).size).toBe(FOODS.length)
-    // 这条是 2026-11-07 用户改的规则：「一开始只能选前 3 个，后面每升两级解锁一个，直到全部解锁」。
-    // 期望值不抄数字，直接从 unlockLevelAt 推——插一行菜时这里会跟着动，而不是变成一份过期的清单。
-    expect(FOODS.map((f) => f.level)).toEqual(FOODS.map((_, i) => unlockLevelAt(i)))
-    expect(FOODS.slice(0, 3).every((f) => f.level === 1), '前三个开局就该能点').toBe(true)
-    expect(FOOD_TIERS).toEqual([1, 3, 5, 7, 9, 11, 13, 15, 17, 19])
-    // 表必须**按解锁级有序**：面板一屏只放四格，顺序乱了用户就会看到「Lv.17 排在 Lv.1 前面」
-    const levels = FOODS.map((f) => f.level)
-    expect(levels.slice().sort((a, b) => a - b)).toEqual(levels)
-    // 每两级一格，所以相邻两档之间不许跳级
-    for (let i = 4; i < levels.length; i++) {
-      expect(levels[i]! - levels[i - 1]!, `第 ${i + 1} 格跳了 ${levels[i]! - levels[i - 1]!} 级`).toBe(2)
+    // 2026-11-07 用户再改：只放开前 4 格，其余按等级从 Lv.5 起每两级一格。期望从 unlock.kind 数，不抄清单。
+    const kinds = FOODS.map((f) => f.unlock.kind)
+    expect(kinds.filter((k) => k === 'start')).toHaveLength(4)
+    expect(kinds.filter((k) => k === 'level')).toHaveLength(12)
+    for (const f of FOODS.filter((x) => x.unlock.kind === 'start')) {
+      expect(isUnlocked(f, { level: 1 }), `${f.id} 开局就该能点`).toBe(true)
+    }
+    expect(FOOD_TIERS).toEqual([5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27])
+    // 等级档从 Lv.5 起、每两级一格、有序
+    const levels = FOODS.flatMap((f) => (f.unlock.kind === 'level' ? [f.unlock.level] : []))
+    expect(levels[0], '第一格等级解锁该从 Lv.5 起').toBe(5)
+    for (let i = 1; i < levels.length; i++) {
+      expect(levels[i]! - levels[i - 1]!, `等级档第 ${i + 1} 格跳了级`).toBe(2)
     }
   })
 
@@ -96,40 +99,35 @@ describe('食物表', () => {
     for (const f of renamed) expect(FOOD_EFFECT[f.anim!.name], `${f.id} 的 slug ${f.anim!.name} 还在表里`).toBeUndefined()
   })
 
-  it('越往后越厚味（热量阶梯上升），但「顶饱」故意不单调——每段内部两个方向都要有', () => {
+  it('数值取向：开局清淡、越往后越顶饱，特殊口用心情补', () => {
     /**
-     * 这条钉的是设计意图，不是某个数。
-     * 一开始我想钉「越后面越顶饱」，写完发现它是假的：第 3 格的面条 16 就比第 7 格的西瓜 10 顶饱。
-     * 真实的关系是**往后解锁的是「好吃但更容易长胖」的那一头**——零嘴那几格本来就不顶饱，
-     * 这才是「喂零食要当心体重」这件事在游戏里有意义的理由。
-     * 2026-11-07 解锁改成「每两级放一格」之后，档位不再是分组依据，所以这里按**序号三等分**：
-     * 家常（0-3）/ 零嘴与主食（4-7）/ 硬菜稀罕口（8-11），正是表里那三段注释。
-     * 每段内部都要同时有「顶饱但清淡」和「不顶饱但厚味」各一，否则选择退化成比大小，玩家只会点最高的那格。
+     * 2026-11-07 数值重设计的意图（不是某个数）：
+     * 前四格饱食低（5–10，别一上来喂顶）；等级段大体越往后越顶饱（解锁有盼头）；
+     * 零食/冰淇淋是「特殊口」——饱食少但心情高；火锅双高。
      */
-    const of = (from: number, to: number): FoodEffect[] =>
-      FOODS.slice(from, to).map((f) => FOOD_EFFECT[f.id]!)
-    const avgW = (from: number, to: number): number => {
-      const list = of(from, to)
-      return list.reduce((a, e) => a + e.weight, 0) / list.length
+    const hunger = (id: string): number => FOOD_EFFECT[id]!.hunger
+    const mood = (id: string): number => FOOD_EFFECT[id]!.mood
+    for (const f of FOODS.filter((x) => x.unlock.kind === 'start')) {
+      expect(hunger(f.id), `${f.name} 开局格该清淡`).toBeLessThanOrEqual(10)
     }
-    expect(avgW(4, 8), `中段平均热量没超过家常（${avgW(0, 4)}）`).toBeGreaterThan(avgW(0, 4))
-    expect(avgW(8, 12), `硬菜段平均热量没超过中段（${avgW(4, 8)}）`).toBeGreaterThan(avgW(4, 8))
-    for (const [from, to] of [[0, 4], [4, 8], [8, 12]] as const) {
-      const list = of(from, to)
-      expect(list.filter((e) => e.hunger >= 14).length, `第 ${from + 1}~${to} 格没有「顶饱但清淡」的代表`).toBeGreaterThan(0)
-      expect(list.filter((e) => e.weight >= 1.2).length, `第 ${from + 1}~${to} 格没有「不顶饱但厚味」的代表`).toBeGreaterThan(0)
+    const levelFoods = FOODS.filter((f) => f.unlock.kind === 'level')
+    expect(hunger(levelFoods.at(-1)!.id), '最末格该比等级段第一格顶饱')
+      .toBeGreaterThan(hunger(levelFoods[0]!.id))
+    for (const id of ['snack', 'icecream']) {
+      expect(hunger(id), `${id} 特殊口饱食该低`).toBeLessThan(8)
+      expect(mood(id), `${id} 特殊口心情该高`).toBeGreaterThanOrEqual(15)
     }
-    // 全场最顶饱的那一口，得在最后一组里（解锁要有盼头）
-    const best = FOODS.slice().sort((a, b) =>
-      FOOD_EFFECT[b.id]!.hunger - FOOD_EFFECT[a.id]!.hunger)[0]!
-    expect(best.level, `最顶饱的是 Lv.${best.level} 的${best.name}，不在最后四格`).toBeGreaterThanOrEqual(FOODS[8]!.level)
+    // 全场最顶饱的那一口在等级段靠后
+    const best = FOODS.slice().sort((a, b) => hunger(b.id) - hunger(a.id))[0]!
+    expect(FOODS.indexOf(best), `最顶饱的是${best.name}，不在等级段`).toBeGreaterThanOrEqual(FOODS.findIndex((f) => f.unlock.kind === 'level'))
   })
 
-  it('最后一格不是开局就能点：Lv.1 时它要够得着但够不到', () => {
-    // 门槛用经验说一遍，README 里那句「约第 8~9 天全解锁」要对得上这张表。
+  it('最后一格开局点不到：Lv.1 够不着、Lv.60 够得着', () => {
+    const last = FOODS[FOODS.length - 1]!
+    expect(FOODS[0]!.unlock.kind, '第一格不该锁着').toBe('start')
+    expect(isUnlocked(last, { level: 1 }), '开局就能吃最后一格，解锁这条等于没有').toBe(false)
+    expect(isUnlocked(last, { level: 60 }), '满级还吃不到最后一格').toBe(true)
     const top = Math.max(...FOOD_TIERS)
-    expect(FOODS[0]!.level, '第一格不该锁着').toBe(1)
-    expect(levelOf(0), 'Lv.1 就能吃到最高那格，解锁这条等于没有').toBeLessThan(top)
     expect(levelOf(LEVEL_CUM[top - 1]!), `攒到 Lv.${top} 的经验查出来不是 ${top}`).toBe(top)
   })
 

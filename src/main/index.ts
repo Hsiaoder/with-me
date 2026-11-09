@@ -93,7 +93,7 @@ void app.whenReady().then(() => {
     save.settings = applySettings(save, patch).settings
     watch.setSettings(save.settings)
     if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
-  }, (raw) => stats.event(raw), (raw) => stats.identity(raw))
+  }, (raw) => stats.event(raw), (raw) => stats.identity(raw), () => app.quit(), (raw) => stats.debugSet(raw))
   platform.createWindow()
   statsSink = (snapshot) => platform.send(IPC.statsLoaded, snapshot)
 
@@ -111,8 +111,20 @@ void app.whenReady().then(() => {
   // 只能排在建窗之后：句柄要问窗口要，而 createWindow 之前 up() 会抛。
   const watch = startVisibilityWatch(platform, save.settings)
 
-  // 覆盖层与主屏工作区重合且永不移动，所以原点取一次即可。
-  const { x: originX, y: originY } = screen.getPrimaryDisplay().workArea
+  // 覆盖层与主屏工作区重合。工作区在运行中会变（改分辨率 / 系统缩放 / 旋转 / 任务栏自动隐藏），
+  // 所以原点不再"取一次"：refit 重读 workArea，同一件事里既改窗口尺寸又换光标原点，跟着显示器事件走。
+  let origin = { x: 0, y: 0 }
+  const refit = (): void => {
+    const wa = screen.getPrimaryDisplay().workArea
+    origin = { x: wa.x, y: wa.y }
+    platform.setOverlayBounds({ x: wa.x, y: wa.y, width: wa.width, height: wa.height })
+  }
+  // 建窗时已按同一个 workArea 摆好，这一次 refit 的 setBounds 会被 windows 层守卫夹成 no-op；
+  // 之后任何一次显示器变化才真的重摆。非主屏变化也会触发 metrics 事件，但 refit 读主屏，无害。
+  refit()
+  screen.on('display-metrics-changed', refit)
+  screen.on('display-added', refit)
+  screen.on('display-removed', refit)
   // e2e 可以冻住操作系统光标的影响：只要有人在动鼠标，注入给渲染层的坐标下一拍就被顶掉，
   // 「光标静止满 400ms 自动弹面板」这类检查实际上是在赌这台机器没人碰鼠标。
   // 冻住的只是数据来源，`__petDebug.cursor` 走的还是同一个 handleCursor，逻辑一点没绕开。
@@ -120,7 +132,7 @@ void app.whenReady().then(() => {
     ? () => {}
     : startCursorPolling(() => {
       const c = screen.getCursorScreenPoint()
-      return { x: c.x - originX, y: c.y - originY }
+      return { x: c.x - origin.x, y: c.y - origin.y }
     }, (p) => platform.sendCursor(p))
 
   // 兜底心跳：渲染层卡死时由主进程把穿透放开。

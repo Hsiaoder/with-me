@@ -5,7 +5,7 @@ import type { Point } from '../shared/types.js'
  * ——将来加 macOS 时，差异只落在这一层的另一个实现里。
  */
 export interface Platform {
-  /** 建窗。整屏覆盖层尺寸 = 主屏工作区，之后永不移动、永不改大小。 */
+  /** 建窗。整屏覆盖层尺寸 = 主屏工作区，之后永不移动；只在显示器工作区变化时由 setOverlayBounds 重摆。 */
   createWindow(): void
   /** true = 接住鼠标（关闭穿透）。 */
   setInteractive(on: boolean): void
@@ -19,4 +19,9 @@ export interface Platform {
   send(channel: string, payload: unknown): void
   show(): void
   hide(): void
+  /**
+   * 显示器工作区在运行中变了：把覆盖层重摆到新尺寸。
+   * 只在真的变了时调（调用方自己比对，别让 Electron 无谓 setBounds——改尺寸是这个品类最容易抖的动作）。
+   */
+  setOverlayBounds(b: { x: number; y: number; width: number; height: number }): void
 }

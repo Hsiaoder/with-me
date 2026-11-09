@@ -1,0 +1,50 @@
+import { readFileSync, existsSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
+
+const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+const copyStatic = readFileSync('tools/copy-static.mjs', 'utf8')
+const panel = readFileSync('src/renderer/panel.ts', 'utf8')
+
+describe('界面字体接入（2026-11-07）', () => {
+  it('两道白名单都放行 woff2 与 txt：漏一个字体就 404 落回雅黑', () => {
+    const exts = copyStatic.match(/const STATIC_EXT = \[([^\]]*)\]/)?.[1] ?? ''
+    expect(exts).toContain('.woff2')
+    expect(exts).toContain('.txt')
+  })
+
+  it('@font-face 声明两支子集，思源走可变字重轴（一份覆盖 400/500）', () => {
+    expect(css).toMatch(/@font-face \{[^}]*font-family: 'WithMe Sans';[^}]*url\('fonts\/with-me-sans-var\.woff2'\)[^}]*font-weight: 100 900/)
+    expect(css).toMatch(/@font-face \{[^}]*font-family: 'WithMe Num';[^}]*url\('fonts\/with-me-num-400\.woff2'\)/)
+  })
+
+  it('默认与数字两条 token：思源在前雅黑兜底；数字栈 Fredoka 在前', () => {
+    expect(css).toMatch(/--font-ui: 'WithMe Sans', 'Microsoft YaHei UI', sans-serif/)
+    expect(css).toMatch(/--font-num: 'WithMe Num', 'WithMe Sans', 'Microsoft YaHei UI', sans-serif/)
+    expect(css).toMatch(/html,\s*body \{[^}]*font-family: var\(--font-ui\)/)
+  })
+
+  it('不再有把雅黑当主字体的简写（兜底只留在 token 里）', () => {
+    expect(css).not.toContain('"Microsoft YaHei UI", sans-serif')
+  })
+
+  it('加粗处映射到真 500，不留 600 合成加粗（12px 合成会发糊）', () => {
+    expect(css).not.toMatch(/font-weight: 600/)
+    expect(css).not.toMatch(/font: 600 /)
+    expect(css).toMatch(/font-weight: 500/)
+    expect(css).toMatch(/font: 500 12px\/1\.2 var\(--font-ui\)/)
+  })
+
+  it('子集与两份 OFL 真的在源里，且 woff2 魔数对（不是改后缀的空文件）', () => {
+    for (const f of ['with-me-sans-var.woff2', 'with-me-num-400.woff2', 'OFL-noto-sans-sc.txt', 'OFL-fredoka.txt']) {
+      expect(existsSync(`src/renderer/fonts/${f}`), `缺 src/renderer/fonts/${f}`).toBe(true)
+    }
+    for (const f of ['with-me-sans-var.woff2', 'with-me-num-400.woff2']) {
+      expect(readFileSync(`src/renderer/fonts/${f}`).subarray(0, 4).toString('latin1')).toBe('wOF2')
+    }
+  })
+
+  it('设置视图有署名行（OFL 随包附协议，UI 给人看的出处）', () => {
+    expect(panel).toContain('SIL OFL 1.1')
+    expect(css).toMatch(/\.pet-credit \{/)
+  })
+})

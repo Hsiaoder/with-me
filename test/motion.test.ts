@@ -82,6 +82,20 @@ describe('拖拽落点夹取', () => {
   })
 })
 
+describe('不夹取的落点（setPositionUnclamped）', () => {
+  /**
+   * 「鲸鲸会飞」要的正是能抛出屏幕：这条存在的意义就是和上面「拖拽落点夹取」对照——
+   * 同一个 y，setPosition 夹回 0，setPositionUnclamped 原样交出去。哪天有人手滑让游戏改走
+   * setPosition，宠物就被夹在顶边飞不出去（真出过的 bug），这条会先红。
+   */
+  it('y 越屏幕上沿时原样交出，不像 setPosition 那样夹回 0', () => {
+    const m = make()
+    expect(m.setPosition({ x: 100, y: -5000 }).y).toBe(0)            // 拖拽那条：夹住
+    expect(m.setPositionUnclamped({ x: 100, y: -5000 }).y).toBe(-5000)  // 游戏那条：放行
+    expect(m.pos().y).toBe(-5000)
+  })
+})
+
 describe('按身体框夹取（bodyInset）', () => {
   /**
    * 画布 640 宽里角色只占中间一段，左右各有大片空白。以前夹的是舞台矩形，
@@ -119,6 +133,38 @@ describe('按身体框夹取（bodyInset）', () => {
     for (let i = 0; i < 10; i++) m.step(100)
     expect(m.pos().x).toBe(-inset.left)
     expect(m.facing()).toBe('right')
+  })
+})
+
+describe('工作区变化时重算夹取（setBounds）', () => {
+  /**
+   * 屏幕工作区在运行中会变（改分辨率/缩放/旋转/任务栏自动隐藏），主进程会把覆盖层重摆，
+   * 渲染层收到 resize 后必须把走动/拖拽的夹取边界一起重算——否则屏幕缩小后宠物留在旧坐标，
+   * 跑到已经消失的下半屏里，看不也点不着。这一组钉的就是"跟屏幕变"这件事。
+   */
+  it('屏幕变矮后当前身体被夹回新地面，宠物不会留在已经消失的下半屏', () => {
+    const m = make({ start: { x: 100, y: bottomY } })   // 站在 600 高屏的地面
+    expect(m.pos().y).toBe(bottomY)
+    const p = m.setBounds({ x: 0, y: 0, w: 1000, h: 300 })
+    const newBottom = 300 - (STAGE_H_CSS - feetOffset)
+    expect(p.y).toBe(newBottom)
+    expect(m.pos().y).toBe(newBottom)
+    // 之后的落点也按新范围夹
+    expect(m.setPosition({ x: 100, y: 99999 }).y).toBe(newBottom)
+  })
+
+  it('屏幕变宽后能走进新出现的区域', () => {
+    const m = make({ start: { x: bounds.w - STAGE_W_CSS, y: bottomY }, facing: 'right' as const })
+    m.setBounds({ x: 0, y: 0, w: 2000, h: 600 })   // 右限从 680 抬到 1680
+    m.step(500)                                     // 100px/s × 500ms = +50，旧范围会夹住、新范围放行
+    expect(m.pos().x).toBe(bounds.w - STAGE_W_CSS + 50)
+  })
+
+  it('bodyInset 场景下 setBounds 后身体仍贴住新的右边缘', () => {
+    const inset = { left: 95, right: 92, top: 10 }
+    const m = createMotion({ bounds, speedPxPerSec: 100, feetOffsetCss: feetOffset, bodyInset: inset, start: { x: 0, y: bottomY } })
+    m.setBounds({ x: 0, y: 0, w: 800, h: 600 })
+    expect(m.setPosition({ x: 99999, y: 100 }).x).toBe(800 - STAGE_W_CSS + inset.right)
   })
 })
 

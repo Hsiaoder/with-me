@@ -25,8 +25,14 @@ import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
-import { clamp, nextTalkIndex, pickLine, pickTalk, TALK_FLOW, TALK_LINES, type TalkReason } from '../shared/talk.js'
-import { gainsToFloat, isBlue, isHungry, levelOf, type FloatGain } from '../shared/stats.js'
+import { clamp, pickLine, pickTalk, TALK_LINES, type TalkReason } from '../shared/talk.js'
+import { gainsToFloat, isBlue, isHungry, levelOf, INITIAL_STATS, LEVEL_CUM, MAX_LEVEL, type FloatGain, type Stats } from '../shared/stats.js'
+import type { Food } from '../shared/food.js'
+import type { Game } from '../shared/games.js'
+import type { DebugContext } from './debug.js'
+import {
+  LEVELUP_CLIP, SLEEPY, pickAmbient, pickForSpeech, pickInteract, type Situation,
+} from '../shared/animation.js'
 import { formatOnline } from '../shared/text.js'
 import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
@@ -35,6 +41,9 @@ import { createBubble, type BubbleContent } from './bubble.js'
 import { createFloatLayer } from './float.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
+import { createFlyGame } from './game.js'
+import { createGuessGame } from './guess.js'
+import { createBubbleGame } from './bubble-game.js'
 import { createVideoPlayer } from './player/video-backend.js'
 
 /**
@@ -80,6 +89,13 @@ function bootstrap(skin: SkinPayload): void {
     start: { x: (window.innerWidth - STAGE_W_CSS) / 2, y: 0 },
   })
   motion.snapToBottom()
+
+  // 屏幕工作区在运行中会变（改分辨率 / 系统缩放 / 旋转 / 任务栏自动隐藏）。主进程已把覆盖层重摆，
+  // 这里跟着把走动/拖拽的夹取边界按新视口重算并把宠物夹回可见区。面板与气泡不用管：
+  // 它们每帧用 live 的 innerWidth/innerHeight 摆位，下一拍自然跟上。
+  window.addEventListener('resize', () => {
+    motion.setBounds({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight })
+  })
 
   let current: ClipRef = picker.pickFrom(source, 'idle', null) ?? { pool: 'idle', name: '' }
   let dragging = false
@@ -132,11 +148,30 @@ function bootstrap(skin: SkinPayload): void {
           console.error('[pet] 行为链停住：播放未开始', ref)
           return
         }
+        // 「猜动作」正在考某动作、还没被答：在它**真播完**这一拍无缝续挂同一条，别掉回 idle
+        // （用户 2026-11-08 要「播完直接重复、不要 idle 那一下」）。续挂走的就是下面 loop 那条后台槽预热，接缝看不出。
+        const gloop = guessGame.loopRef()
+        if (gloop && gloop.pool === ref.pool && gloop.name === ref.name) {
+          player.prepare(ref)
+          continue
+        }
         const nxt = nextClip({ rules, picker, source, loops: loopsOf, ref })
         if (nxt.kind === 'loop') {
           // 循环 = 再点一次同一条。播放器不碰 video.loop，所以这里立刻把这条塞进后台槽，
           // 下一轮 play 直接拿到已解码的首帧，接缝看不出来。
           player.prepare(nxt.ref)
+        } else if (nxt.ambient) {
+          // 日常动画机制（docs/动画.txt）：交出决策权那一拍按情境选具名片段；
+          // 皮肤里没有这条（如占位皮肤没 daily 池）就回落到原来的池选，保证不会卡在同一条上。
+          const daily = pickAmbient(situation(), talkRng)
+          // 播成功时 requestClip 已换 current、syncEating/Runtime 并起了新链，本迭代随 chainToken 失效自然退出。
+          if (daily && requestClip(daily.pool, daily.name)) {
+            lastWasSleepy = SLEEPY.some((s) => s.pool === daily.pool && s.name === daily.name)
+          } else {
+            lastWasSleepy = false
+            current = nxt.ref
+            syncEating(); syncRuntime(); flushGains()
+          }
         } else {
           current = nxt.ref
           syncEating()
@@ -220,18 +255,105 @@ function bootstrap(skin: SkinPayload): void {
    */
   let settings: Settings = { ...DEFAULT_SETTINGS }
 
+  // 「鲸鲸会飞」控制器：游戏激活时它接管宠物位置与指针，index 的常规拖拽/点击在下面全部让路。
+  // 游戏整个活在**命中框(hitBox)坐标系**里：抓住的是看得见的身子，落点/高度也都按身子算。
+  // 而 motion 吃的是舞台坐标（= hitBox 减掉 bodyBox 那截内缩偏移），所以 setPos 负责把
+  // 「身子该去哪」换算回「舞台该去哪」——不换算的话一抓住宠物就会横跳 100px、命中判定还全落空。
+  const flyGame = createFlyGame({
+    root,
+    getPos: () => { const b = hitBox(); return { x: b.x, y: b.y } },
+    // setPos 负责把「身子该去哪」换算回「舞台该去哪」（减掉 bodyBox 那截内缩偏移）。
+    // 走**不夹取**那条：这游戏要的就是把宠物抛出屏幕上沿并继续计数，普通拖拽才需要夹回来。
+    setPos: (x, y) => { const s = stagePos(), b = hitBox(); motion.setPositionUnclamped({ x: x - (b.x - s.x), y: y - (b.y - s.y) }) },
+    petSize: () => { const b = hitBox(); return { w: b.w, h: b.h } },
+    // 质量 = 体重读数。快照还没到就当初始体重（50 = 参考质量，此时手感与不建模时一致）。
+    weight: () => snap?.stats.weight ?? INITIAL_STATS.weight,
+    playClip: () => requestClip('drag'),
+    reward: () => { signedGainsOnce = true; window.petBridge?.statEvent({ kind: 'game' }) },
+    onExit: () => requestClip('idle'),
+  })
+
+  // 「猜动作」控制器：不接管拖拽，只让宠物做动作 + 浮出选项按钮。退出按答对数结算（count 在 stats 封顶）。
+  const guessGame = createGuessGame({
+    root,
+    playClip: (a) => requestClip(a.pool, a.name),
+    reward: (count) => { signedGainsOnce = true; window.petBridge?.statEvent({ kind: 'game', count }) },
+    onExit: () => requestClip('idle'),
+  })
+
+  // 「点破泡泡」控制器：限时点破上浮的泡泡，退出/时间到按破掉数结算。hudRect 返回整屏（限时点击游戏整屏接鼠标）。
+  const bubbleGame = createBubbleGame({
+    root,
+    reward: (count) => { signedGainsOnce = true; window.petBridge?.statEvent({ kind: 'game', count }) },
+    onExit: () => requestClip('idle'),
+  })
+
+  /** 当前激活的游戏（同一时刻只会有一个）；没有就是 null。所有「游戏态」闸门都问它。 */
+  const activeGame = () => (flyGame.active() ? flyGame : guessGame.active() ? guessGame : bubbleGame.active() ? bubbleGame : null)
+
+  /**
+   * 喂一口：点哪格播哪条吃相（缺这一口回落 click，绝不播池里随便一条假装吃的是别的）+ 说一句 feed + 报养成数值。
+   * 面板食物格与调试板共用。**选完不收面板**：手还停在这块区域上，收掉会让按钮消失、那块像素不再归宠物、
+   * 光标当场变回系统箭头；收起交给「离开满延时」和「再点一次喂食/点宠物」。这一口没吃完时整列格子是灰的（syncEating）。
+   */
+  function doFeed(f: Food): void {
+    // 吃饭闸门放在**逻辑层**而不只是 UI：正常食物列表吃饭时整列 disabled，但调试板的食物按钮直接调这里，
+    // 绕过那层禁用。少了这道闸，吃着一口时再点第二口——requestClip 拒换动画（吃相没断），statEvent 却照报，
+    // 于是两口数值都攒进 heldGains，等第一口演完一起冒出来「加两次」（真出过的 bug）。吃饭期间再喂一律拒。
+    if (current.pool === 'eat') return
+    lastInteractionAt = Date.now()
+    rules.feed('interacted')
+    if (f.anim !== undefined && !requestActionClip(f.anim.pool, f.anim.name)) requestActionClip('click')
+    else if (f.anim === undefined) requestActionClip('click')
+    sayFor('feed')
+    window.petBridge?.statEvent({ kind: 'feed', food: f.id })
+  }
+
+  /** 开一局：进游戏态并收掉脚下按钮条（游戏态里弹不回来）。面板游戏格与调试板共用。 */
+  function doStartGame(g: Game): void {
+    lastInteractionAt = Date.now()
+    rules.feed('interacted')
+    if (g.id === 'fly') { flyGame.start(); closePanel() }
+    else if (g.id === 'guess') { guessGame.start(); closePanel() }
+    else if (g.id === 'bubble') { bubbleGame.start(); closePanel() }
+  }
+
+  /**
+   * 调试板入口：动画/台词/喂食/开局全部接到现成链路；等级与数值走 debugStats 落盘。
+   * 等级滑条给的是「第几级」，这里换算成该级的经验阈值（LEVEL_CUM[level-1]）再写——等级本身不入库。
+   */
+  const debugCtx: DebugContext = {
+    pools: skin.pools,
+    api: {
+      playClip: (pool, name) => { requestClip(pool, name) },
+      sayLine: (reason, index) => {
+        const line = TALK_LINES[reason][index]
+        if (!line) return
+        say({ text: line.say, reply: line.reply })
+        pairSpeech(reason)
+        lastTalkAt = Date.now()
+      },
+      feed: doFeed,
+      startGame: doStartGame,
+      setLevel: (lv) => { window.petBridge?.debugStats({ exp: LEVEL_CUM[Math.max(1, Math.min(MAX_LEVEL, lv)) - 1] ?? 0 }) },
+      setStat: (key, value) => { window.petBridge?.debugStats({ stats: { [key]: value } }) },
+    },
+  }
+
   const panel = createPanel(root, defaultActions(), settings, {
     action: (a) => {
       lastInteractionAt = Date.now()
       rules.feed('interacted')
-      // 小游戏会报一次养成数值 → 走带挂起的那条；说话/其它按钮不报数值，不必挂
-      if (a.pool !== undefined && a.id === 'game') requestActionClip(a.pool)
+      if (a.pool !== undefined) requestActionClip(a.pool)
       else requestClip(a.pool)
-      if (a.id === 'talk') sayNextDebugLine()
-      else sayFor(a.id === 'game' ? 'game' : 'status')
-      // 逗玩算一次养成动作。给多少由主进程算，这里只报「发生了什么」。
-      if (a.id === 'game') window.petBridge?.statEvent({ kind: 'play' })
+      sayFor('status')
     },
+    /**
+     * 点了游戏列表里的「开始」。面板只管报「选了哪个游戏」，怎么接管整屏是这里的事：
+     * 开鲸鲸会飞 → 进游戏态 → **收掉脚下按钮条**（游戏态里 openPanel 也被闸门挡住，弹不回来）。
+     * 这里不 sayFor：用户要的是「玩的时候别弹聊天气泡」，HUD 就是这次的反馈（见 say 里的游戏态闸门）。
+     */
+    game: (g) => doStartGame(g),
     /**
      * 点了一格食物：**点哪格就播哪条**（`f.anim.name`）。降级链是两级——
      * 皮肤里没有这一口（自带的 block 皮肤就只做 rice / hotpot 两口）就回落到 click 池。
@@ -240,36 +362,13 @@ function bootstrap(skin: SkinPayload): void {
      * 为什么宁可播 click 也不播「池里随便一条」：播错的那口会假装它吃的是别的，
      * 而点了没反应 / 反应不对，都比假装更值得防。
      */
-    pick: (f) => {
-      lastInteractionAt = Date.now()
-      rules.feed('interacted')
-      // 这一口报养成数值 → 走带挂起的 requestActionClip，数字等吃相演完再冒
-      if (f.anim !== undefined && !requestActionClip(f.anim.pool, f.anim.name)) requestActionClip('click')
-      else if (f.anim === undefined) requestActionClip('click')
-      sayFor('feed')
-      window.petBridge?.statEvent({ kind: 'feed', food: f.id })
-      // 选完**不收**（2026-11-05 改，先前是 closePanel）：用户的手就停在这块区域上，
-      // 整块收掉带出两条同一根因的观感 bug——按钮没了，且那块像素不再归宠物，
-      // 光标当场变回系统箭头（交互区只算「看得见的那几块」，见 recomputeInteraction）。
-      // 「列表压住宠物看不到它吃」这个老理由在两块拆分之后已经失效：副板永远长在按钮条**外侧**，
-      // e2e 钉着它不许压到身体框。收起改由「离开满一段延时」和「再点一次喂食 / 点宠物」负责。
-      // 列表留着不等于能连喂：这一口没吃完时整列格子是灰的，见 syncEating。
-    },
+    pick: (f) => doFeed(f),
     /**
      * 状态栏里点性别。本地不预置反馈：它要写进存档，回灌一下也就是一帧的事，
      * 而先改本地就会出现「主进程拒收但界面已经改了」的假成功。
      */
     identity: (patch) => {
       window.petBridge?.setIdentity(patch)
-    },
-    /**
-     * 档案卡片右上角那颗 ×。走 closePanel 而不是 panel.hide：
-     * 后者只把 DOM 收掉，前者才把 hover 状态机、延时定时器、交互区一起复位
-     * ——少了 hover.reset()，鼠标停在原地就再也弹不出面板（problem/05 §5.12）。
-     */
-    close: () => {
-      lastInteractionAt = Date.now()
-      closePanel()
     },
     setting: (patch) => {
       settings = { ...settings, ...patch }
@@ -289,7 +388,13 @@ function bootstrap(skin: SkinPayload): void {
         if (bubble.isOpen) placeBubble()
       }
     },
-  })
+    // 退出桌宠：先说一句再见 + 播女仆屈膝礼仪，停一会儿让气泡显示出来，再让主进程落盘退出。
+    quit: () => {
+      const line = pickLine('bye', talkRng)
+      if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech('bye') }
+      setTimeout(() => window.petBridge?.quitApp(), 1500)
+    },
+  }, debugCtx)
 
   window.petBridge?.onSettings((s) => {
     settings = s
@@ -317,8 +422,19 @@ function bootstrap(skin: SkinPayload): void {
      * 走冷却的话跨级这句永远说不出口——而它几十口才一次，比「这是吃的」重要，该盖掉前一句。
      */
     if (prev !== null && levelOf(s.exp) > levelOf(prev.exp)) {
+      // 跨级先播一段蓝鲸现世（游戏态里别抢，否则把玩法动画顶掉），随后那句跨级台词盖过前一句。
+      if (!activeGame()) requestClip(LEVELUP_CLIP.pool, LEVELUP_CLIP.name)
       const line = pickLine('levelup', talkRng)
       if (line !== null) say({ text: line.say, reply: line.reply })
+    }
+    // 上线问候（docs/动画.txt 的 greet）：开机第一份快照到、且此刻没在放气泡/没进游戏，就说一次。
+    // 每日首开真正的跨天信号在 main（20h 去重），这里先只接「开机一次」这条稳定的触发点。
+    if (prev === null && !greeted) {
+      greeted = true
+      if (!activeGame() && !bubble.isOpen) {
+        const line = pickLine('greet', talkRng)
+        if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech('greet') }
+      }
     }
   })
 
@@ -396,6 +512,12 @@ function bootstrap(skin: SkinPayload): void {
    * 压着不放就变成「理了它却没反应」。
    */
   let holdGainsForClip = false
+  /**
+   * 下一次飘字要不要连「往下掉」的一起写出来。默认只飘涨的（自然衰减每分钟都动，飘负数会刷屏）。
+   * 但小游戏落地是**一次明确动作**，饱食/体重是往下掉的——用户要「退出时看到心情和饱食的变化」，
+   * 所以这条动作触发的这次广播走带符号。放一次即用完，不影响后面每一分钟的衰减 tick。
+   */
+  let signedGainsOnce = false
 
   function showGains(gains: FloatGain[]): void {
     floats.show(gains)
@@ -420,7 +542,9 @@ function bootstrap(skin: SkinPayload): void {
 
   /** 两份快照之间涨了的那些写成「饥饿 +12」贴到宠物旁边；一条都不涨就什么都不做。 */
   function floatGains(prev: StatsSnapshot, next: StatsSnapshot): void {
-    const gains = gainsToFloat(prev.stats, next.stats)
+    const signed = signedGainsOnce
+    signedGainsOnce = false
+    const gains = gainsToFloat(prev.stats, next.stats, signed)
     if (gains.length === 0) return
     if (holdGainsForClip) {
       heldGains.push(...gains)
@@ -454,12 +578,43 @@ function bootstrap(skin: SkinPayload): void {
   /** 随机源。e2e 换成定值，概率这条才测得准。 */
   let talkRng = Math.random
 
+  // ---- 日常动画选择器的情境输入 ----
+  /** 上一条 ambient 是不是犯困片：决定「被点时是普通反应还是打瞌睡被惊醒」。 */
+  let lastWasSleepy = false
+  /** 开机问候只说一次（第一份快照到达那一拍判）。 */
+  let greeted = false
+  /** 连点计数与最近一次点击时刻；超过 CLICK_STREAK_MS 没再点就当清零。 */
+  const CLICK_STREAK_MS = 1200
+  let clickStreak = 0
+  let lastClickAt = 0
+  /** 装配层每次点身体时喂一下：够密的连点才会被 pickInteract 判成「连续点击」。 */
+  function registerClick(): void {
+    const now = Date.now()
+    clickStreak = now - lastClickAt > CLICK_STREAK_MS ? 1 : clickStreak + 1
+    lastClickAt = now
+  }
+  /** 把散在装配层的时间/数值拼成选择器要的情境快照。 */
+  function situation(): Situation {
+    const h = new Date().getHours()
+    const idleMs = Date.now() - lastInteractionAt
+    return {
+      mood: snap?.stats.mood ?? INITIAL_STATS.mood,
+      idleMs,
+      lateNightWorking: h < 5 && idleMs < 60000,       // 过凌晨、且主人这阵子还在动
+      lastWasSleepy,
+      clickStreak: Date.now() - lastClickAt > CLICK_STREAK_MS ? 0 : clickStreak,
+    }
+  }
+
   /**
    * 开口说一句。文本在这里 clamp，调用方不必各自记得截断。
    * 空文本（clamp 之后变空串）直接不显示——挂一个空气泡比不说话更怪。
    * 传字符串就没有按钮；传 Line（台词表给的）会带上主人那句短回应。
    */
   function say(content: BubbleContent | string, ms: number = BUBBLE_SHOW_MS): boolean {
+    // 游戏态不弹聊天气泡（用户 2026-11-07 要「开始后宠物不该弹气泡」）：把这一个总出口堵住，
+    // 比在每个调用点各判一次强——idle / 事件 / 升级 / 调试台词全从这儿过，漏判的机会为零。
+    if (activeGame()) return false
     const line = typeof content === 'string' ? { text: content } : content
     const clean = clamp(line.text)
     if (clean === '') return false
@@ -469,6 +624,15 @@ function bootstrap(skin: SkinPayload): void {
     // 气泡出现也是「可见区域变大」，光标停在它该覆盖的位置时得立刻接住鼠标
     recomputeInteraction()
     return bubble.isOpen
+  }
+
+  /**
+   * 说话配动画：这句是哪个 reason 说的，就顺手播它对应的一组日常片段里的一条（docs/动画.txt 的「其他状态」）。
+   * feed 不在表里 → 不配（喂那一口的吃相由喂食流程自己播）；吃饭时 requestClip 也会拒换，双保险。
+   */
+  function pairSpeech(reason: TalkReason): void {
+    const clip = pickForSpeech(reason, talkRng)
+    if (clip) requestClip(clip.pool, clip.name)
   }
 
   /**
@@ -487,32 +651,13 @@ function bootstrap(skin: SkinPayload): void {
         ? 'blue'
         : 'idle'
     const line = pickTalk(reason, { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng)
-    if (line !== null) say({ text: line.say, reply: line.reply })
+    if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech(reason) }
   }
 
   /** 事件驱动的台词：用户做了动作就必说（只受冷却约束），不看概率。 */
   function sayFor(reason: TalkReason): void {
     const line = pickTalk(reason, { now: Date.now(), idleMs: 0, lastTalkAt }, talkRng)
-    if (line !== null) say({ text: line.say, reply: line.reply })
-  }
-
-  /** 调试台词的游标。-1 = 还没放过，第一次点给第一条。 */
-  let talkCursor = -1
-
-  /**
-   * 面板「说话」按钮：按顺序放下一条台词，**绕开冷却与概率**。
-   * 这颗按钮的用途是把台词表逐条搬到气泡上看（装不装得下、按钮压不压边），
-   * 「点了必出」是它的第一要求——走 `pickTalk` 会被 25 秒冷却吞掉，看着像按钮坏了。
-   * 调完删这颗按钮，这段跟着删。
-   */
-  function sayNextDebugLine(): void {
-    talkCursor = nextTalkIndex(talkCursor)
-    const line = TALK_FLOW[talkCursor]
-    // 下标由 nextTalkIndex 取模保证在范围内，这句只是 TS 对口径的要求（同 pickTalk 的 ?? null）
-    if (!line) return
-    say({ text: line.say, reply: line.reply })
-    // 记成「刚说过」：免得刚放完这条，idle 那一拍又压一句上去把画面搅了。
-    lastTalkAt = Date.now()
+    if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech(reason) }
   }
 
   /** 身体、面板、气泡、拖拽四者之一成立就要接住鼠标。 */
@@ -541,11 +686,14 @@ function bootstrap(skin: SkinPayload): void {
     // 副板各走各的锚点，而且和主块在同一次同步任务里摆完——中间不是一帧，不会闪错位。
     const ps = panel.plateSize()
     if (ps === null) return
-    if (panel.view === 'foods') {
+    if (panel.view === 'foods' || panel.view === 'games') {
       // 挂在按钮条**外侧**：主块在脚下时往下长，翻到头顶时往上长，中间那段留给宠物本体。
+      // 游戏列表和食物列表同一种「长在按钮条外侧的一排选择」，共用这条锚点。
       panel.showPlate(stackAnchor({ x: at.x, y: at.y, w: size.w, h: size.h }, ps, screen, PLATE_GAP, at.side))
-    } else if (panel.view === 'stats') {
+    } else if (panel.view === 'stats' || panel.view === 'debug') {
       // 读数竖挂宠物**右侧**：脚下那一横条已经是按钮条的地盘，挤在一起两边都读不到。
+      // 调试板和状态栏同一种「竖在宠物旁边的高卡片」，共用这条侧挂锚点——否则调试副板没有自己的
+      // 定位分支，会沿用上一个视图的旧 plateAt，跑到屏幕角落而不是宠物身边（真出过的 bug）。
       // 锚的是**看得见的身子**（`inkRect`），不是命中框：dshtry 的命中框比墨迹左右各宽 37~40px，
       // 按命中框摆的话 `PANEL_GAP=10` 在屏幕上会再多出那圈透明区域——用户说的「状态栏里角色太远了」
       // 以前就是 16 + 37 = 53px。
@@ -570,6 +718,9 @@ function bootstrap(skin: SkinPayload): void {
    * 「我要动手了才该有按钮」这个直觉本来就不一致。
    */
   function openPanel(): void {
+    // 游戏态：脚下按钮条不出现（用户 2026-11-07 要「开始后按钮消失」）。点身体那一下已被
+    // pointerdown 的 activeGame() 闸门挡在拖拽逻辑外，这里再堵一次，防住任何别的路径把菜单叫回来。
+    if (activeGame()) return
     placePanel()
     // 面板一占位就把气泡重贴一次：按钮条现在常驻，气泡原来只躲身体，重贴后才会躲到按钮条外侧。
     // 话说到一半面板打开，气泡压在按钮上是这次改动带出来的新堆法。
@@ -710,7 +861,7 @@ function bootstrap(skin: SkinPayload): void {
      * 才放大，而"算不算有人在使用"仍然只问 DOM 命中——停在看不见的空隙里不算活动，
      * 收起延时照旧跑，所以这段吞点击的时间有上界。
      */
-    const zone = unionRect(hitBox(), panelBox(), bubble.rect())
+    const zone = unionRect(hitBox(), panelBox(), bubble.rect(), activeGame()?.hudRect() ?? null)
     const inZone = rectContains(zone, lastCursor)
     setOverClass(inZone || dragging)
     wantGrab = inZone || dragging
@@ -743,6 +894,7 @@ function bootstrap(skin: SkinPayload): void {
 
   // 穿透关掉时页面才收得到指针事件，所以这里的 down 一定发生在身体上
   window.addEventListener('pointerdown', (e) => {
+    if (activeGame()) return          // 游戏态：指针由游戏控制器接管，常规拖拽/点击让路
     const p = { x: e.clientX, y: e.clientY }
     if (!overBody(p)) return
     // 命中区可视化用 Ctrl+Shift+点 切换，而不是 F9：这扇窗故意 focusable:false，
@@ -761,7 +913,7 @@ function bootstrap(skin: SkinPayload): void {
     // 真的拖起来了再收（见下面 pointermove 的阈值分支）。
   })
   window.addEventListener('pointermove', (e) => {
-    if (!dragging) return
+    if (activeGame() || !dragging) return
     const p = { x: e.clientX, y: e.clientY }
     motion.setPosition({ x: p.x - dragOffset.x, y: p.y - dragOffset.y })
     // 动画挂在「真的拖起来」那一刻，不是挂在松手：原来 pointerup 才 requestClip('drag')，
@@ -784,19 +936,24 @@ function bootstrap(skin: SkinPayload): void {
     // 用户 2026-11-05 选了后者，所以台词一起去掉，不留一条走不到的路径。
   })
   window.addEventListener('pointerup', () => {
-    if (!dragging) return
+    if (activeGame() || !dragging) return
     dragging = false
     lastInteractionAt = Date.now()
     // 停在松手的地方。这里原来调了 snapToBottom()，把高度强行拉回地面，
     // 于是把宠物拖到右上角松手后它会"跳回原位"。setPosition 已经把 y 夹在
     // 屏幕内了，不需要再吸附。（启动时落地仍由 bootstrap 里的 snapToBottom 负责）
     if (!dragStarted) {
-      // 没过阈值就是「点了一下」：给它 click 动画（点了必须有反应），并开关按钮面板。
-      // **正在吃饭时不抢播**：click 会把嘴边那口饭换掉，用户看到的就是「一口没吃完就改动作」。
+      // 没过阈值就是「点了一下」：给它反应动画（点了必须有反应），并开关按钮面板。
+      // **正在吃饭时不抢播**：反应会把嘴边那口饭换掉，用户看到的就是「一口没吃完就改动作」。
       // 面板照旧弹出——他要的是别打断动画，不是别理我；而且面板本身就是反馈。
-      // 判据用 `current.pool` 而不是「播放中」标志：链子播完下一条会把 current 换成 idle，
-      // 再自己加一个状态就等于有两本账。
-      if (current.pool !== 'eat') requestClip('click')
+      // 判据用 `current.pool` 而不是「播放中」标志：链子播完下一条会把 current 换成 idle，再自己加状态就是两本账。
+      registerClick()
+      if (current.pool !== 'eat') {
+        // 日常动画机制：连续点击够数 / 刚犯困被点 走具名反应片，其余回落到原来的 click 池。
+        const react = pickInteract(situation())
+        if (react) requestClip(react.pool, react.name)
+        else requestClip('click')
+      }
       togglePanel()
       return
     }
@@ -860,6 +1017,15 @@ function bootstrap(skin: SkinPayload): void {
     /** 直接走一次「闲下来那一拍」的接缝，不改行为链的正常运行。 */
     tickAmbientForTalk: (): boolean => {
       maybeSayIdle()
+      return bubble.isOpen
+    },
+    /**
+     * 事件驱动那一档台词的接缝（和 `tickAmbientForTalk` 对称）：走真实 `sayFor` 通道，
+     * 冷却与「不看概率」都由 pickTalk 判定，e2e 用它单独测台词契约——
+     * 不借某个按钮的副作用（那颗按钮如今是切视图/开游戏，语义早变了）。
+     */
+    sayEvent: (reason: TalkReason): boolean => {
+      sayFor(reason)
       return bubble.isOpen
     },
     /** 立刻收掉气泡。e2e 用它收尾，免得残留的气泡影响后面几条检查的命中判定。 */
@@ -933,12 +1099,48 @@ function bootstrap(skin: SkinPayload): void {
     get current(): ClipRef {
       return current
     },
+    /** 主进程最近广播回来的数值。调试板滑条改完走 IPC→main 落盘→广播，e2e 读它验整条回路真的通了。 */
+    get stats(): Stats | null {
+      return snap?.stats ?? null
+    },
     get panelOpen(): boolean {
       return panel.isOpen
     },
     /** 现在显示的是哪个视图。喂食/设置都改成切视图，光看 open 分不出是哪个。 */
     get panelView(): string {
       return panel.view
+    },
+    /** 「鲸鲸会飞」开着没。e2e 用它自证前置/收尾，别把游戏态漏给后面每条检查。 */
+    get flyActive(): boolean {
+      return flyGame.active()
+    },
+    /** 「猜动作」开着没。同上，e2e 自证前置/收尾用。 */
+    get guessActive(): boolean {
+      return guessGame.active()
+    },
+    /** 猜动作当前这轮真做的动作 name。e2e 用它点对的那颗，确定性验「点对加分」。 */
+    get guessTarget(): string | null {
+      return guessGame.targetName()
+    },
+    /** 强制收摊回普通态。e2e 的 finally 用它兜底：断言中途挂了也不会把整屏留在游戏态里。 */
+    stopFly: (): boolean => {
+      flyGame.stop()
+      return !flyGame.active()
+    },
+    stopGuess: (): boolean => {
+      guessGame.stop()
+      return !guessGame.active()
+    },
+    /** 「点泡泡」开着没 / 已破几个 / 强制收摊。e2e 自证前置、验点破计数、finally 兜底用。 */
+    get bubbleActive(): boolean {
+      return bubbleGame.active()
+    },
+    get bubblePopped(): number {
+      return bubbleGame.poppedCount()
+    },
+    stopBubble: (): boolean => {
+      bubbleGame.stop()
+      return !bubbleGame.active()
     },
     /**
      * 某一档台词的正文清单。e2e 拿它对照「这一刻气泡里说的是不是这一档」，

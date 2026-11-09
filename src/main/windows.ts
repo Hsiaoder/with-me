@@ -9,8 +9,9 @@ import type { Platform } from './platform.js'
 const here = dirname(fileURLToPath(import.meta.url))   // 运行时是 dist/main
 
 /**
- * Windows 实现。整屏覆盖窗：透明 + 置顶 + 穿透，尺寸取一次主屏工作区后永不改变。
- * 「永不改大小」是这套架构的关键——窗口改尺寸是这个品类里故障最多的一件事。
+ * Windows 实现。整屏覆盖窗：透明 + 置顶 + 穿透，尺寸跟主屏工作区走。
+ * 平时**从不改大小**（窗口改尺寸是这个品类里故障最多的一件事），只有显示器工作区真的变了
+ * （改分辨率 / 缩放 / 旋转 / 任务栏自动隐藏）才由 `setOverlayBounds` 重摆一次，且带守卫防抖。
  */
 export function createWindowsPlatform(): Platform {
   let win: BrowserWindow | null = null
@@ -79,6 +80,16 @@ export function createWindowsPlatform(): Platform {
     },
     hide() {
       up().hide()
+    },
+    setOverlayBounds(b) {
+      const w = up()
+      // 守卫：display-metrics-changed 会为同一个显示器连发多次，且非主屏变化也会触发回调。
+      // 尺寸没真的变就直接返回——无脑 setBounds 正是这套架构最怕的"改尺寸抖动"。
+      const cur = w.getBounds()
+      if (cur.x === b.x && cur.y === b.y && cur.width === b.width && cur.height === b.height) return
+      w.setBounds(b)
+      // setBounds 会把窗口重新插回 z 序（和 hide→show 同一个坑，见 show()），重新声明一次置顶，幂等。
+      w.setAlwaysOnTop(true, 'screen-saver')
     },
   }
 }

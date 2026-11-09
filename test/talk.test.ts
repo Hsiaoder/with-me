@@ -21,7 +21,9 @@ const REASONS = Object.keys(TALK_LINES) as TalkReason[]
 
 describe('台词表', () => {
   it('reason 就是表里这些：drag 不许被加回来，levelup 是这一轮新加的', () => {
-    expect(REASONS.slice().sort()).toEqual(['blue', 'feed', 'game', 'hungry', 'idle', 'levelup', 'status'])
+    expect(REASONS.slice().sort()).toEqual(
+      ['blue', 'bye', 'feed', 'game', 'greet', 'hungry', 'idle', 'levelup', 'puzzle', 'status', 'thanks', 'unlock'],
+    )
   })
 
   for (const r of REASONS) {
@@ -106,12 +108,13 @@ describe('调试台词流（面板「说话」按钮按顺序放）', () => {
   const total = Object.values(TALK_LINES).reduce((n, l) => n + l.length, 0)
 
   it('摊平覆盖每条台词、不重不漏，顺序就是 reason 表的顺序', () => {
-    // 现在是 17 条。这里钉「覆盖全部」而不是钉死数字，加一句台词不该把这条测试弄红。
+    // 钉「覆盖全部 + 表序」而不是钉死条数——加一句台词/一档 reason 不该把这条弄红。
     expect(TALK_FLOW.length).toBe(total)
     expect(new Set(TALK_FLOW.map((l) => l.say)).size).toBe(total)
     expect(TALK_FLOW[0]).toEqual(TALK_LINES.idle[0])
-    // 流的末尾跟着 TALK_LINES 里最后一个 reason——现在是 levelup（跨级那一句）
-    expect(TALK_FLOW.at(-1)).toEqual(TALK_LINES.levelup.at(-1))
+    // 流的末尾跟着 TALK_LINES 里最后一个 reason（不写死是谁，跟着表尾走）。
+    const lastReason = (Object.keys(TALK_LINES) as TalkReason[]).at(-1) as TalkReason
+    expect(TALK_FLOW.at(-1)).toEqual(TALK_LINES[lastReason].at(-1))
   })
 
   it('pickLine 绕开冷却：跨级那句不被刚才那句喂食挡掉', () => {

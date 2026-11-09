@@ -59,6 +59,8 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.cjs': 'text/javascript; charset=utf-8',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
 }
 
 /** 不给未知后缀猜 text/plain，宁可 404，避免把源码当页面渲染出去。 */

@@ -83,7 +83,10 @@ describe('mapAppPath', () => {
   it('mimeOf 只认白名单后缀', () => {
     expect(mimeOf('a/b.webm')).toBe('video/webm')
     expect(mimeOf('a/B.WEBM')).toBe('video/webm')
-    expect(mimeOf('a/b.txt')).toBeNull()
+    // 字体子集与随包 OFL（2026-11-07 接入）：漏一个字体就 404 落回雅黑
+    expect(mimeOf('a/b.woff2')).toBe('font/woff2')
+    expect(mimeOf('a/b.txt')).toBe('text/plain; charset=utf-8')
+    expect(mimeOf('a/b.exe')).toBeNull()
     expect(mimeOf('a/b')).toBeNull()
   })
 

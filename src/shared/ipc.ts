@@ -14,8 +14,10 @@ export const IPC = {
   settings: 'pet:settings',              // renderer → main，Partial<Settings>（改完立刻落盘）
   settingsLoaded: 'pet:settings-loaded', // main → renderer，Settings（开局把存档里的值推过去）
   statsEvent: 'pet:stats-event',         // renderer → main，一次动作（喂/玩/回应/开面板），主进程算完再广播
+  statsDebug: 'pet:stats-debug',         // renderer → main，调试面板直接设数值/经验 { stats?, exp? }，收敛后落盘广播
   identity: 'pet:identity',              // renderer → main，{ name?, gender? }，改名与性别
   statsLoaded: 'pet:stats-loaded',       // main → renderer，StatsSnapshot（开局推一次，之后每次变化推）
+  quit: 'pet:quit',                       // renderer → main，用户点了「退出桌宠」，先说完 bye 再走这条
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

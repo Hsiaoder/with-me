@@ -20,8 +20,9 @@ const EBML = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
 
 /**
  * 五个必需池各自挑一段：动作类型要和池的语义对得上，不然只是换个皮。
- * eat 是扩展池（喂食列表用），名字与 src/shared/food.ts 的 id 一一对应。
- * 「火锅」在素材源里叫「涮火锅」，没有「吃火锅」。
+ * eat 是扩展池（喂食列表用），名字与 src/shared/food.ts 的 anim.name 一一对应（16 条全列，
+ * 少一条 manifest 就会漏声明、那一格点下去没吃相）。
+ * 「火锅」在素材源里叫「涮火锅」，没有「吃火锅」；「零食」用「大口吃零食」。
  */
 const picks = [
   { pool: 'idle', name: 'breath', src: 'assets/webm/待机呼吸休闲.webm' },
@@ -35,6 +36,68 @@ const picks = [
   { pool: 'eat', name: 'crab', src: 'assets/webm/吃大闸蟹.webm' },
   { pool: 'eat', name: 'hotpot', src: 'assets/webm/涮火锅.webm' },
   { pool: 'eat', name: 'dumpling', src: 'assets/webm/吃饺子.webm' },
+  { pool: 'eat', name: 'lunch', src: 'assets/webm/吃午餐.webm' },
+  { pool: 'eat', name: 'breakfast', src: 'assets/webm/吃早餐.webm' },
+  { pool: 'eat', name: 'dinner', src: 'assets/webm/吃晚餐.webm' },
+  { pool: 'eat', name: 'watermelon', src: 'assets/webm/吃西瓜.webm' },
+  { pool: 'eat', name: 'snack', src: 'assets/webm/大口吃零食.webm' },
+  { pool: 'eat', name: 'ricecake', src: 'assets/webm/吃年糕.webm' },
+  { pool: 'eat', name: 'tangyuan', src: 'assets/webm/吃汤圆.webm' },
+  { pool: 'eat', name: 'qingtuan', src: 'assets/webm/吃青团.webm' },
+  { pool: 'eat', name: 'labaporridge', src: 'assets/webm/吃腊八粥.webm' },
+  { pool: 'eat', name: 'icecream', src: 'assets/webm/吃冰淇淋融化.webm' },
+  // 「猜动作」专用池（20 条，5 类，无「吃东西」）：src/shared/guess.ts 按 name 逐条寻址播放。
+  // 这些只是被游戏点播的特效片，不参与宠物日常姿态，也不计进 bodyBox（见下面装配段的 pool!=='guess' 分支）。
+  { pool: 'guess', name: 'tsundere', src: 'assets/webm/点击回应-傲娇生气.webm' },
+  { pool: 'guess', name: 'shocked', src: 'assets/webm/点击回应-害羞惊讶.webm' },
+  { pool: 'guess', name: 'cheerful', src: 'assets/webm/点击回应-开心跃动.webm' },
+  { pool: 'guess', name: 'ticklish', src: 'assets/webm/点击回应-挠痒咯咯笑.webm' },
+  { pool: 'guess', name: 'dove', src: 'assets/webm/变鸽子.webm' },
+  { pool: 'guess', name: 'whalebubbles', src: 'assets/webm/鲸鱼吐泡泡特效.webm' },
+  { pool: 'guess', name: 'flowers', src: 'assets/webm/凭空生花.webm' },
+  { pool: 'guess', name: 'bluewhale', src: 'assets/webm/蓝鲸现世.webm' },
+  { pool: 'guess', name: 'maid', src: 'assets/webm/优雅女仆舞.webm' },
+  { pool: 'guess', name: 'flute', src: 'assets/webm/吹笛子.webm' },
+  { pool: 'guess', name: 'violin', src: 'assets/webm/小提琴演奏.webm' },
+  { pool: 'guess', name: 'swing', src: 'assets/webm/轻快摇摆舞.webm' },
+  { pool: 'guess', name: 'otaku', src: 'assets/webm/可爱宅舞.webm' },
+  { pool: 'guess', name: 'liondance', src: 'assets/webm/舞狮头.webm' },
+  { pool: 'guess', name: 'skylantern', src: 'assets/webm/放孔明灯.webm' },
+  { pool: 'guess', name: 'fireworks', src: 'assets/webm/放烟花.webm' },
+  { pool: 'guess', name: 'riverlamp', src: 'assets/webm/放河灯.webm' },
+  { pool: 'guess', name: 'juggling', src: 'assets/webm/三球抛接.webm' },
+  { pool: 'guess', name: 'balloon', src: 'assets/webm/吹气球.webm' },
+  { pool: 'guess', name: 'spinningtop', src: 'assets/webm/抽陀螺.webm' },
+  // 「日常动画」选择器（src/shared/animation.ts）要的具名片段，全进 daily 池：按条件/说话档点播。
+  // 这些只是被点播的日常/反应/配话片，不参与宠物日常姿态、也不计进 bodyBox（大伸展/荡秋千那种张开框会撑歪锚点）。
+  { pool: 'daily', name: 'toycar', src: 'assets/webm/原地蹲下玩玩具汽车.webm' },
+  { pool: 'daily', name: 'horse', src: 'assets/webm/骑木马.webm' },
+  { pool: 'daily', name: 'swingset', src: 'assets/webm/荡秋千.webm' },
+  { pool: 'daily', name: 'gift', src: 'assets/webm/拆礼物.webm' },
+  { pool: 'daily', name: 'mirror', src: 'assets/webm/照镜子.webm' },
+  { pool: 'daily', name: 'spin', src: 'assets/webm/小幅度原地360度旋转展示.webm' },
+  { pool: 'daily', name: 'code', src: 'assets/webm/写代码.webm' },
+  { pool: 'daily', name: 'cat', src: 'assets/webm/撸猫.webm' },
+  { pool: 'daily', name: 'shuttlecock', src: 'assets/webm/踢毽子.webm' },
+  { pool: 'daily', name: 'purseempty', src: 'assets/webm/余额-袋空如洗.webm' },
+  { pool: 'daily', name: 'busytype', src: 'assets/webm/工作状态-忙碌点按.webm' },
+  { pool: 'daily', name: 'siesta', src: 'assets/webm/原地小憩沉眠.webm' },
+  { pool: 'daily', name: 'yawn', src: 'assets/webm/哈欠连天.webm' },
+  { pool: 'daily', name: 'squat', src: 'assets/webm/原地重力下蹲压缩.webm' },
+  { pool: 'daily', name: 'hum', src: 'assets/webm/悠闲哼歌.webm' },
+  { pool: 'daily', name: 'tailslap', src: 'assets/webm/用鲸鱼尾巴拍打地面.webm' },
+  { pool: 'daily', name: 'dozewake', src: 'assets/webm/打瞌睡被惊醒.webm' },
+  { pool: 'daily', name: 'musedaze', src: 'assets/webm/碎碎念-发呆碎碎念.webm' },
+  { pool: 'daily', name: 'musescreen', src: 'assets/webm/碎碎念-对屏碎碎念.webm' },
+  { pool: 'daily', name: 'musewipe', src: 'assets/webm/碎碎念-擦桌碎碎念.webm' },
+  { pool: 'daily', name: 'desktap', src: 'assets/webm/原地敲击桌面互动.webm' },
+  { pool: 'daily', name: 'stretch', src: 'assets/webm/超大伸懒腰.webm' },
+  { pool: 'daily', name: 'whateat', src: 'assets/webm/是啊，吃什么.webm' },
+  { pool: 'daily', name: 'butterfly', src: 'assets/webm/蝴蝶蜜蜂环绕头顶开花.webm' },
+  { pool: 'daily', name: 'animals', src: 'assets/webm/动物环绕.webm' },
+  { pool: 'daily', name: 'ghost', src: 'assets/webm/萌化小幽灵.webm' },
+  { pool: 'daily', name: 'curtsy', src: 'assets/webm/女仆屈膝礼仪.webm' },
+  { pool: 'daily', name: 'jumpcatch', src: 'assets/webm/原地跳跃抓碎头顶物品.webm' },
 ];
 
 /* ---------- asar 读取 ---------- */
@@ -123,6 +186,12 @@ for (const p of picks) {
   mkdirSync(dir, { recursive: true });
   const dest = join(dir, `${p.name}.webm`);
   const bytes = extract(p.src, dest);
+  // guess/daily 池只是被「猜动作」「日常动画」点播的特效/反应片：切出来供按名播即可，不量包围盒、不进 bodyBox——
+  // 否则那些张开双臂/大伸展/放烟花的大框会把宠物全局锚点撑歪，日常姿态跟着跑偏。
+  if (p.pool === 'guess' || p.pool === 'daily') {
+    console.log(`${p.pool}/${p.name}  ← ${p.src.split('/').pop()}  ${(bytes / 1024).toFixed(0)} KB  （不计 bodyBox）`);
+    continue;
+  }
   const b = unionBox(dest);
   boxes.push(b);
   console.log(`${p.pool}/${p.name}  ← ${p.src.split('/').pop()}  ${(bytes / 1024).toFixed(0)} KB  ` +
@@ -165,9 +234,12 @@ console.log(`userData：${userData}`);
 /* ---------- 直接跑一遍透明通道体检（manifest 已落盘，bodyBox 按皮肤读） ---------- */
 
 const { analyzeFile, listClips } = await import('../tools/alpha-report.mjs');
+// 只体检核心姿态片：guess 特效片不参与 bodyBox，逐一 ffmpeg 解码 20 条既慢又只产噪音。
 for (const f of listClips(skinDir)) {
+  const rel = f.slice(skinDir.length + 1);
+  if (rel.split(/[\\/]/).includes('guess') || rel.split(/[\\/]/).includes('daily')) continue;
   const r = analyzeFile(f, bodyBox);
-  console.log(`体检 ${f.slice(skinDir.length + 1)}：${JSON.stringify(r)}`);
+  console.log(`体检 ${rel}：${JSON.stringify(r)}`);
 }
 
 console.log(`启动：PET_USER_DATA="${userData}" npx electron .`);
