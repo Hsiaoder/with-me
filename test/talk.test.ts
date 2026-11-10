@@ -20,9 +20,9 @@ const ctx = (over: Partial<{ now: number; idleMs: number; lastTalkAt: number }> 
 const REASONS = Object.keys(TALK_LINES) as TalkReason[]
 
 describe('台词表', () => {
-  it('reason 就是表里这些：drag 不许被加回来，levelup 是这一轮新加的', () => {
+  it('reason 就是表里这些：drag 不许被加回来，comfort/timeGreet 是迁移新增的', () => {
     expect(REASONS.slice().sort()).toEqual(
-      ['blue', 'bye', 'feed', 'game', 'greet', 'hungry', 'idle', 'levelup', 'puzzle', 'status', 'thanks', 'unlock'],
+      ['blue', 'bye', 'comfort', 'feed', 'game', 'greet', 'hungry', 'idle', 'levelup', 'puzzle', 'status', 'thanks', 'timeGreet', 'unlock'],
     )
   })
 

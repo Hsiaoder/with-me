@@ -128,8 +128,8 @@ export const BUBBLE_SHOW_MS = 5000
 export const TALK_COOLDOWN_MS = 25000
 /** 「闲到交出决策权」那一拍里开口的概率。事件驱动的台词不受它约束。 */
 export const TALK_IDLE_PROB = 0.35
-/** 文字区实测 120×74（下面还有回应按钮那一行），13px 字号一行约 9 字、放得下 3 行；24 字留了余量。 */
-export const TALK_MAX_CHARS = 24
+/** 台词迁移后最长 40 字；气泡靠缩字号容纳长句、不压缩原话，上限放宽到 50 留余量（见 style.css 气泡正文）。 */
+export const TALK_MAX_CHARS = 50
 /**
  * 气泡底图，相对渲染层页面解析。**矢量**（`src/renderer/emotes/bubble.svg`），形状是**云朵**：
  * 一块圆角身子 + 顶上三朵云包 + 底下三颗渐小的云团当尾巴（尾巴指着宠物，这条从上一版保留）。

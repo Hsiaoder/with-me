@@ -81,12 +81,12 @@ describe('动画全集：按集合列出每个池的 clip', () => {
   })
 })
 
-describe('台词全表：只列会自动说的 9 档', () => {
+describe('台词全表：只列会自动说的 11 档', () => {
   it('不含未接的 puzzle/unlock/thanks；点一句调 sayLine(reason,index)', () => {
     const { api } = mount()
     tabBtn(2).click()
     const heads = [...document.querySelectorAll('.pet-debug-sechead')].map((h) => h.textContent ?? '')
-    expect(heads.length).toBe(9)
+    expect(heads.length).toBe(11)
     const firstIdle = TALK_LINES.idle[0]!.say
     const b = [...document.querySelectorAll<HTMLButtonElement>('.pet-debug-line')].find((x) => x.textContent === firstIdle)!
     b.click()

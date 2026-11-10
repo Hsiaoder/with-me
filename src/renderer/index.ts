@@ -25,7 +25,7 @@ import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
 import { createRuleEngine } from '../shared/rules.js'
-import { clamp, pickLine, pickTalk, TALK_LINES, type TalkReason } from '../shared/talk.js'
+import { clamp, greetLineForHour, pickLine, pickTalk, TALK_LINES, type TalkReason } from '../shared/talk.js'
 import { gainsToFloat, isBlue, isHungry, levelOf, INITIAL_STATS, LEVEL_CUM, MAX_LEVEL, type FloatGain, type Stats } from '../shared/stats.js'
 import type { Food } from '../shared/food.js'
 import type { Game } from '../shared/games.js'
@@ -427,13 +427,13 @@ function bootstrap(skin: SkinPayload): void {
       const line = pickLine('levelup', talkRng)
       if (line !== null) say({ text: line.say, reply: line.reply })
     }
-    // 上线问候（docs/动画.txt 的 greet）：开机第一份快照到、且此刻没在放气泡/没进游戏，就说一次。
-    // 每日首开真正的跨天信号在 main（20h 去重），这里先只接「开机一次」这条稳定的触发点。
+    // 上线问候：开机第一份快照到、且此刻没在放气泡/没进游戏，就说一次。
+    // 按当前小时从时段问候表取一句（清晨/早上/中午…深夜各有话），比固定一句更有陪伴感。
     if (prev === null && !greeted) {
       greeted = true
       if (!activeGame() && !bubble.isOpen) {
-        const line = pickLine('greet', talkRng)
-        if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech('greet') }
+        const line = greetLineForHour(new Date().getHours(), talkRng)
+        say({ text: line.say, reply: line.reply }); pairSpeech('greet')
       }
     }
   })
@@ -642,14 +642,15 @@ function bootstrap(skin: SkinPayload): void {
    * Line 是 {say, reply}，气泡要的是 {text, reply}——在这儿换名，别把两套叫法漏进组件里。
    */
   function maybeSayIdle(): void {
-    // 数值决定它这一拍说哪一档的话：饿了就讨食，蔫了就蔫着，否则才是闲得慌。
-    // 三档共用同一道门（闲够 + 概率，见 talk.ts 的 SELF_TALK_REASONS），
-    // 所以饿与蔫不会让它变成复读机，只是把内容换掉。
+    // 数值决定它这一拍说哪一档的话：饿了就讨食，蔫了就蔫着，否则闲时偶尔说句贴心话（comfort）、其余闲聊。
+    // 各档共用同一道门（闲够 + 概率，见 talk.ts 的 SELF_TALK_REASONS），所以不会变成复读机，只是把内容换掉。
     const reason: TalkReason = snap !== null && isHungry(snap.stats)
       ? 'hungry'
       : snap !== null && isBlue(snap.stats)
         ? 'blue'
-        : 'idle'
+        : talkRng() < 0.25
+          ? 'comfort'
+          : 'idle'
     const line = pickTalk(reason, { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng)
     if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech(reason) }
   }

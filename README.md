@@ -162,15 +162,16 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
   而游戏把饱食/体重往下拉，那两条也得让用户看见。所以游戏这一次广播走 `gainsToFloat(..., signed)`：
   渲染层在触发这次 reward 时挂一个 `signedGainsOnce`，只放开**这一条**带符号，用完即清，不影响后面的衰减 tick。
   经验走 `EXP_GAIN.game = 3`，数值与带符号飘字都由 `test/stats.test.ts` 钉。
-- **台词表来源**：`shared/talk.ts` 的 `TALK_LINES` 按 `docs/台词表.md`（2026-11-09，全原创）定稿。
-  表里标「这一版不加」的 `win`/`lose`/`expire`/`medicine` 未纳入；新档 `puzzle`/`unlock`/`greet`/`bye`/`thanks` 文案已入，
-  但**这版没有干净的触发点**，暂不会自发说出（`thanks` 撞上「回应后放开鼠标」、`greet` 缺主进程跨天信号、`puzzle` 撞「游戏态不弹气泡」、
-  `unlock` 无「刚解锁」回调、`bye` 退出前来不及显示气泡）——要接哪个得先改对应的既有行为，另行拍板。
+- **台词表来源**：`shared/talk.ts` 的 `TALK_LINES`（2026-11-10 迁移自 qqpet，**GPL-3.0**，过滤暴露企鹅身份的句子、`[host]`→主人、保留原话不压缩；对外发行须守 GPL）。
+  共 14 档：feed/greet/bye/levelup/idle/hungry/game 用 qqpet 对应分类替换；blue/status/puzzle/unlock/thanks 无贴切对应保留原创；
+  新增 **comfort 贴心话**（闲时偶发，宠物反过来关心主人）与 **timeGreet 时段问候**（开机按当前小时取句，`greetLineForHour`）。
+  气泡正文上限放宽到 `TALK_MAX_CHARS=50`、字号缩到 12px 容纳长句（最长 40 字），回应按钮加宽到 140px/11px 容纳长回应。
+  `puzzle`/`unlock`/`thanks` 仍无干净触发点，暂不自发说出。
 - **「调试」是测试台**（2026-11-09 替换旧的「说话」按钮）：点它切到 `debug` 视图，副板由 `src/renderer/debug.ts` 构造，
   四个一级标签 + 常驻数值区。**条件触发**逐条列出会自动触发的条件（心情高/低、深夜、久未互动、连点、瞌睡被点、跨级、挂机），
   每行「▶ 演示」按该条件合成一个 `Situation` 跑**真选择器**（`pickAmbient/pickInteract`）并播它选中的那条；
-  **动画全集**按 `skin.pools` 列出每个池的 clip，点一条走 `requestClip` 按名播放；**台词全表**只列会自动说的 9 档
-  （idle/hungry/blue/feed/game/status/levelup/greet/bye，排除未接的 puzzle/unlock/thanks），点一句直接 `say`（绕冷却）+ 配动画；
+  **动画全集**按 `skin.pools` 列出每个池的 clip，点一条走 `requestClip` 按名播放；**台词全表**只列会自动说的 11 档
+  （idle/hungry/blue/feed/game/status/levelup/greet/bye/comfort/timeGreet，排除未接的 puzzle/unlock/thanks），点一句直接 `say`（绕冷却）+ 配动画；
   **游戏食物**每个游戏「开始」、每格食物「喂」，走和面板同一条链路（`doStartGame/doFeed`）。
   常驻数值区：等级滑条（1–60，换算成 `LEVEL_CUM[level-1]` 经验）+ 饥饿/心情/体重/亲密四条滑条（0–100），
   拖动走新增的 `pet:stats-debug` 通道 → 主进程 `stats.debugSet` 收敛校验后**写进真存档并广播**（落盘持久）。

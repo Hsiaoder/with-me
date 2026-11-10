@@ -47,11 +47,11 @@ export interface DebugContext {
 
 export type DebugSnapshot = { stats: Stats; exp: number } | null
 
-/** 会自动说的 9 档（puzzle/unlock/thanks 未接触发点，不进台词全表）。 */
-const FIRES_REASONS: readonly TalkReason[] = ['idle', 'hungry', 'blue', 'feed', 'game', 'status', 'levelup', 'greet', 'bye']
+/** 会自动说的 11 档（puzzle/unlock/thanks 未接触发点，不进台词全表）。 */
+const FIRES_REASONS: readonly TalkReason[] = ['idle', 'hungry', 'blue', 'feed', 'game', 'status', 'levelup', 'greet', 'bye', 'comfort', 'timeGreet']
 const REASON_LABEL: Record<string, string> = {
   idle: '闲', hungry: '饿', blue: '蔫', feed: '喂食', game: '开局',
-  status: '状态', levelup: '升级', greet: '上线', bye: '退出',
+  status: '状态', levelup: '升级', greet: '上线', bye: '退出', comfort: '贴心', timeGreet: '时段',
 }
 
 const TABS = ['条件触发', '动画全集', '台词全表', '游戏食物'] as const

@@ -329,12 +329,12 @@ check('气泡：显示、覆盖、到点收起、悬停续命、跟着宠物走�
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pet-bubble')).display), 'none',
     '收起的气泡还在布局里，会照样吃点击')
 
-  // 超长按码点截断加省略号（24 字上限）
+  // 超长按码点截断加省略号（50 字上限，迁移台词后放宽）
   const long = await page.evaluate(() => {
-    window.__petDebug.say('一'.repeat(40), 300)
+    window.__petDebug.say('一'.repeat(60), 300)
     return window.__petDebug.bubbleText
   })
-  assert.equal([...long].length, 25, `该截到 24 字 + 省略号，实际 ${long}`)
+  assert.equal([...long].length, 51, `该截到 50 字 + 省略号，实际 ${long}`)
   assert.ok(long.endsWith('…'), `没加省略号：${long}`)
 
   // 空文本等于不显示
