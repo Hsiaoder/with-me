@@ -1,0 +1,58 @@
+# 推 v* tag 就出包并建 Release。
+# 签名与自动更新在 v1 明确不做（spec 非目标）：产物不带签名，也不再产出 latest.yml。
+# e2e 不在这个流水线里跑——它要真机窗口和 Win32 z 序/光标读数，runner 上的结果不可信；
+# 打 tag 之前由本地跑一次，见 README「发布流程」。
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # 闸门顺序与本地一致：类型 → 单测 → 编译 → 许可。许可放在打包之前，
+      # 素材混进包里就不该只是「发出去之后被人发现」。
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: node tools/check-licenses.mjs
+
+      # 这里**不带** `--config.electronDist=...`：那是本机 github 不通时的绕法，
+      # runner 能正常下载 Electron 预编译包，带着反而会指向一个不存在的相对路径。
+      - run: npx electron-builder --win
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/with-me-*-setup.exe
+            release/with-me-*-portable.zip
+          # GPLv3 §6 要求「在同一处、以同样的方式、不再收费」提供对应源码，
+          # 并且要「在对象代码旁边写清源码在哪」——所以这段话是义务，不是客套，别删。
+          body: |
+            ## 源码
+            与本次安装包对应的完整机器可读源码就在本仓库的这个 tag：`${{ github.ref_name }}`。
+            `setup.exe` 与免压 `portable.zip` 内容一致，任选其一。
+
+            ## 许可
+            代码与台词：**GPL-3.0-only**（全文见仓库 `LICENSE`，逐项出处见 `NOTICE.md`）。
+
+            ## 皮肤
+            默认皮肤是内置的「色块」。想要大肥鱼，下载 `with-me-skin-dafeiyu-*.zip`
+            （**CC BY-NC-SA 4.0，禁止商用**），按包内 `INSTALL.txt` 三步装上。
+
+            ## 署名
+            大肥鱼形象与动画原片来自 https://github.com/PC2005-cloud/dsh-pet
