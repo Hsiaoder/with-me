@@ -42,13 +42,15 @@ export type Flight = { y: number; vy: number; minY: number; startY: number; maxM
 /**
  * 松手那一刻的初速。把甩速 `vyRaw`（px/s，向上为负）先 ×POWER 折成「参考体重下的初速」，再按真实
  * 质量换算：一份固定能量喂给质量 m 的宠物，`v = 参考速 × √(M_REF/m)`——越重越慢、飞得越低。
- * 合速不到 MIN 返回 null（不算真抛）。`mass` 省略时按参考体重（= 不改变旧行为）。
+ * **只认向上够快这一头**（`v <= -MIN`）：向下甩或慢松手返回 null（不算真抛）——否则往下甩会进
+ * flight 又立刻落地，白记一次"有效飞行 + 奖励"（用户 2026-11-11 review 指出的 bug）。
+ * `mass` 省略时按参考体重（= 不改变旧行为）。
  */
 export function throwVelocity(vyRaw: number, mass: number = FLY.M_REF): number | null {
   const m = Math.max(FLY.M_MIN, mass)
   const scaled = vyRaw * FLY.POWER * Math.sqrt(FLY.M_REF / m)
   const v = Math.max(-FLY.THROW_CAP, Math.min(FLY.THROW_CAP, scaled))
-  return Math.abs(v) < FLY.MIN ? null : v
+  return v <= -FLY.MIN ? v : null
 }
 
 export function launchFlight(vy0: number, startY: number): Flight {

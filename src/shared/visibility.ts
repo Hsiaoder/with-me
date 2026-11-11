@@ -12,10 +12,8 @@ export type Scenario = 'none' | 'fullscreen' | 'presentation'
 export type Visibility = 'show' | 'hide'
 
 export type Settings = {
-  /** 有程序占满整块屏时（视频/网页/无边框游戏全屏）。 */
+  /** 前台占满整块屏时——含独占/无边框全屏（视频、游戏）与放映/演示模式（放映统称全屏）。 */
   onFullscreen: Visibility
-  /** 放映、演示模式时。 */
-  onPresentation: Visibility
   /** 开发者模式：开启后才显示调试按钮（默认关）。 */
   developerMode: boolean
   /** 静音：开启后关掉所有音效（语音播放受它闸，默认关）。 */
@@ -23,7 +21,7 @@ export type Settings = {
 }
 
 /** 用户拍定的默认值：任何时候都陪着；调试按钮默认藏、声音默认开。 */
-export const DEFAULT_SETTINGS: Settings = { onFullscreen: 'show', onPresentation: 'show', developerMode: false, muted: false }
+export const DEFAULT_SETTINGS: Settings = { onFullscreen: 'show', developerMode: false, muted: false }
 
 const VISIBILITIES: readonly Visibility[] = ['show', 'hide']
 
@@ -50,7 +48,7 @@ export function mapScenario(state: number, coversMonitor: boolean): Scenario {
 
 /** @returns true = 显示宠物 */
 export function decideVisibility(scenario: Scenario, s: Settings): boolean {
-  if (scenario === 'fullscreen') return s.onFullscreen === 'show'
-  if (scenario === 'presentation') return s.onPresentation === 'show'
-  return true
+  // 放映与全屏统称「全屏」，共用一个开关：只要前台占满屏（含演示/放映），都走 onFullscreen。
+  if (scenario === 'none') return true
+  return s.onFullscreen === 'show'
 }

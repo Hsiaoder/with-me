@@ -8,9 +8,8 @@ import type { ClickThroughBridge } from './clickthrough.js'
  * 注册主进程侧的监听。必须在建窗之前调用：渲染层在首帧就会发消息，
  * 挂晚了那条消息直接丢且不报错（spike 实测踩过，见 spike/README.md）。
  *
- * 只注册真正有行为的两条。命中区可视化由渲染层本地切换（Ctrl+Shift+点），
- * 点歌由渲染层直接调播放器——它们都不需要过 IPC，所以对应的通道没有加：
- * 留一条没人发的通道，比少一条通道更糟。
+ * 每条通道都先验 sender 是不是宠物那扇窗（见 Platform.ownsSender），再按各自形状收敛入参。
+ * 命中区可视化、点歌仍由渲染层本地做，不过 IPC。
  */
 /**
  * 渲染层送来的值当外部输入看：只认真布尔 `true`，其余一律算关。
@@ -31,9 +30,7 @@ export function toSettings(raw: unknown): Partial<Settings> | null {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
   const r = raw as Record<string, unknown>
   const out: Partial<Settings> = {}
-  for (const key of ['onFullscreen', 'onPresentation'] as const) {
-    if (isVisibility(r[key])) out[key] = r[key]
-  }
+  if (isVisibility(r.onFullscreen)) out.onFullscreen = r.onFullscreen
   for (const key of ['developerMode', 'muted'] as const) {
     if (typeof r[key] === 'boolean') out[key] = r[key]
   }
@@ -49,21 +46,36 @@ export function registerIpc(
   onQuit: () => void,
   onStatsDebug: (raw: unknown) => void,
 ): void {
-  ipcMain.on(IPC.clickThroughRequest, (_e, p: unknown) => {
+  // 每条 renderer→main 消息都先验来源是不是宠物那扇窗，再走业务。见 Platform.ownsSender。
+  const fromPet = (senderId: number): boolean => platform.ownsSender(senderId)
+  ipcMain.on(IPC.clickThroughRequest, (e, p: unknown) => {
+    if (!fromPet(e.sender.id)) return
     const grab = toBool((p as ClickThroughPayload | null | undefined)?.grab)
     bridge.request(grab)
   })
-  ipcMain.on(IPC.focusable, (_e, on: unknown) => platform.setFocusable(toBool(on)))
-  ipcMain.on(IPC.settings, (_e, s: unknown) => {
+  ipcMain.on(IPC.settings, (e, s: unknown) => {
+    if (!fromPet(e.sender.id)) return
     const next = toSettings(s)
     if (next !== null) onSettings(next)
   })
   // 数值与身份的形状校验在持有存档的那一侧（main/stats.ts）做：
   // 它才知道哪些食物真的有效、哪些值写进存档才不会把状态栏弄坏。
-  ipcMain.on(IPC.statsEvent, (_e, raw: unknown) => onStatEvent(raw))
-  // 调试面板直接设数值/经验：形状校验同样在持有存档的那一侧（main/stats.ts debugSet）做。
-  ipcMain.on(IPC.statsDebug, (_e, raw: unknown) => onStatsDebug(raw))
-  ipcMain.on(IPC.identity, (_e, raw: unknown) => onIdentity(raw))
+  ipcMain.on(IPC.statsEvent, (e, raw: unknown) => {
+    if (!fromPet(e.sender.id)) return
+    onStatEvent(raw)
+  })
+  // 调试面板直接设数值/经验：来源验过，权限（开发者模式）在 onStatsDebug 那一侧按存档判。
+  ipcMain.on(IPC.statsDebug, (e, raw: unknown) => {
+    if (!fromPet(e.sender.id)) return
+    onStatsDebug(raw)
+  })
+  ipcMain.on(IPC.identity, (e, raw: unknown) => {
+    if (!fromPet(e.sender.id)) return
+    onIdentity(raw)
+  })
   // 用户点了「退出桌宠」——渲染层已经先说过 bye，这条就是让它落盘并收窗。
-  ipcMain.on(IPC.quit, () => onQuit())
+  ipcMain.on(IPC.quit, (e) => {
+    if (!fromPet(e.sender.id)) return
+    onQuit()
+  })
 }

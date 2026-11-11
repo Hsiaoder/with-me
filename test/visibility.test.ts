@@ -46,23 +46,23 @@ describe('mapScenario', () => {
 })
 
 describe('decideVisibility', () => {
-  const at = (onFullscreen: 'show' | 'hide', onPresentation: 'show' | 'hide'): Settings =>
-    ({ onFullscreen, onPresentation, developerMode: false, muted: false })
+  const at = (onFullscreen: 'show' | 'hide'): Settings =>
+    ({ onFullscreen, developerMode: false, muted: false })
 
   it('没有全屏时永远显示，设置管不着', () => {
-    for (const s of [at('show', 'show'), at('hide', 'hide'), at('hide', 'show')]) {
+    for (const s of [at('show'), at('hide')]) {
       expect(decideVisibility('none', s)).toBe(true)
     }
   })
 
   it('全屏场景只看 onFullscreen', () => {
-    expect(decideVisibility('fullscreen', at('show', 'hide'))).toBe(true)
-    expect(decideVisibility('fullscreen', at('hide', 'show'))).toBe(false)
+    expect(decideVisibility('fullscreen', at('show'))).toBe(true)
+    expect(decideVisibility('fullscreen', at('hide'))).toBe(false)
   })
 
-  it('放映场景只看 onPresentation', () => {
-    expect(decideVisibility('presentation', at('hide', 'show'))).toBe(true)
-    expect(decideVisibility('presentation', at('show', 'hide'))).toBe(false)
+  it('放映与全屏统称全屏：放映也走 onFullscreen', () => {
+    expect(decideVisibility('presentation', at('show'))).toBe(true)
+    expect(decideVisibility('presentation', at('hide'))).toBe(false)
   })
 
   it('默认设置下任何场景都显示（用户拍定的默认值）', () => {

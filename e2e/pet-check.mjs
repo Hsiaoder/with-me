@@ -756,11 +756,22 @@ check('点泡泡：进游戏冒泡泡→点破计数→退出按破掉数结算'
     await page.waitForTimeout(120)
     assert.equal(await page.evaluate(() => window.__petDebug.bubblePopped), 1, '点破没计数')
 
+    // 把光标喂到屏幕角落：泡泡 HUD 占整屏，此刻即便光标不在宠物上，也必须仍接住鼠标。
+    await feed({ x: 4, y: 4 })
+    await page.waitForTimeout(120)
+    assert.equal(await page.evaluate(() => window.__petDebug.grabRequested), true,
+      '泡泡游戏整屏 HUD 期间，光标在角落也该接住鼠标')
+
     // 退出 → 按破掉数(1)结算，飘出带符号数字。
     await page.click('.pet-pop-exit')
     await page.waitForTimeout(120)
     assert.equal(await bubbleActive(), false, '退出后还在游戏态')
     assert.equal(await page.evaluate(() => !!document.querySelector('.pet-pop-hud')), false, '退出后 HUD 还在')
+    // 交互修复回归（codex #5 P1）：HUD 占整屏时 grab=true；退出后**光标一动不动**（还停在角落 4,4），
+    // 也必须放开整屏捕获——onExit 现在直接调 recomputeInteraction()，不再等下一次光标移动纠正过期的 wantGrab。
+    await page.waitForTimeout(150)
+    assert.equal(await page.evaluate(() => window.__petDebug.grabRequested), false,
+      '退出点泡泡后没移动光标，整屏鼠标捕获仍没放开')
     await page.waitForFunction(() => window.__petDebug.floatTexts.some((t) => t.includes('−')), null, { timeout: 2000 })
     assert.ok(await openOnBody(), '退出后身体叫不出面板，没回普通态')
     await feed({ x: 4, y: 4 })
@@ -1673,17 +1684,16 @@ check('设置视图：切视图、改一项、当场落盘、收起延时更宽�
   const selected = () => page.locator('.pet-setting').evaluateAll((rows) =>
     rows.map((r) => r.querySelector('button.on')?.dataset.value))
 
-  assert.equal(await page.locator('.pet-setting').count(), 4, '四行开关：开发者模式/全屏/放映/静音')
-  // 行序固定：0 开发者模式、1 全屏、2 放映、3 静音。开发者模式可能已被前面那条检查开启，
-  // 所以只钉全屏/放映两档默认「都陪我」，不钉死整排（免得依赖前序状态）。
+  assert.equal(await page.locator('.pet-setting').count(), 3, '三行开关：开发者模式/全屏/静音')
+  // 行序固定：0 开发者模式、1 全屏、2 静音。开发者模式可能已被前面那条检查开启，
+  // 所以只钉全屏那档默认「陪我」，不钉死整排（免得依赖前序状态）。
   const sel0 = await selected()
   assert.equal(sel0[1], 'show', '全屏时默认陪我')
-  assert.equal(sel0[2], 'show', '放映时默认陪我')
 
   await page.click('.pet-panel button[data-key="onFullscreen"][data-value="hide"]')
   const sel1 = await selected()
   assert.equal(sel1[1], 'hide', '只该被点的那一项变选中态')
-  assert.equal(sel1[2], 'show', '没点的那一项不许跟着变')
+  assert.equal(sel1[2], sel0[2], '没点的那一项不许跟着变')
 
   // 立刻落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查。
   // 轮询而不是睡一下：IPC 到写盘是异步的，读早了会误报成「没落盘」。
@@ -1692,13 +1702,13 @@ check('设置视图：切视图、改一项、当场落盘、收起延时更宽�
   for (let i = 0; i < 30; i++) {
     try {
       saved = JSON.parse(readFileSync(file, 'utf8')).settings
-      if (saved && saved.onFullscreen === 'hide' && saved.onPresentation === 'show') break
+      if (saved && saved.onFullscreen === 'hide') break
     } catch {
       /* 还没写出来 */
     }
     await page.waitForTimeout(100)
   }
-  assert.ok(saved && saved.onFullscreen === 'hide' && saved.onPresentation === 'show',
+  assert.ok(saved && saved.onFullscreen === 'hide',
     `设置没在 3 秒内落盘：${JSON.stringify(saved)}`)
 
   // 设置视图里挑选项要的时间更长：过了动作视图的 1500ms 还不能收

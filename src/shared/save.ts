@@ -119,10 +119,7 @@ export function applyIdentity(
 /** 设置写入的唯一入口：可见性只认 'show'/'hide'，布尔项只认真布尔，其余静默丢弃。 */
 export function applySettings(save: SaveData, patch: Partial<Settings>): SaveData {
   const settings: Settings = { ...save.settings }
-  for (const key of ['onFullscreen', 'onPresentation'] as const) {
-    const v = patch[key]
-    if (isVisibility(v)) settings[key] = v
-  }
+  if (isVisibility(patch.onFullscreen)) settings.onFullscreen = patch.onFullscreen
   for (const key of ['developerMode', 'muted'] as const) {
     const v = patch[key]
     if (typeof v === 'boolean') settings[key] = v
@@ -139,13 +136,13 @@ function migrateSettings(r: Record<string, unknown>, warnings: string[]): Settin
     return settings
   }
   const s = r.settings as Record<string, unknown>
-  for (const key of ['onFullscreen', 'onPresentation'] as const) {
-    const v = s[key]
-    if (v === undefined) continue
-    if (isVisibility(v)) settings[key] = v
+  // 可见性只留一挡「全屏时」（放映已并入全屏）；旧档里的 onPresentation 直接忽略，不再报错。
+  const of = s.onFullscreen
+  if (of !== undefined) {
+    if (isVisibility(of)) settings.onFullscreen = of
     else {
-      settings[key] = DEFAULT_SETTINGS[key]
-      warnings.push(`settings.${key}「${String(v)}」不认识，已用默认值`)
+      settings.onFullscreen = DEFAULT_SETTINGS.onFullscreen
+      warnings.push(`settings.onFullscreen「${String(of)}」不认识，已用默认值`)
     }
   }
   for (const key of ['developerMode', 'muted'] as const) {

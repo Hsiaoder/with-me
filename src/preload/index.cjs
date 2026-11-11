@@ -12,8 +12,6 @@ contextBridge.exposeInMainWorld('petBridge', {
   onSkin: (cb) => ipcRenderer.on('pet:skin-loaded', (_e, s) => cb(s)),
   /** 请求接住鼠标（true）或恢复穿透（false）。调用方必须每帧续期，否则主进程超时自动放开。 */
   requestGrab: (grab) => ipcRenderer.send('pet:click-through', { grab }),
-  /** 面板里有输入框时才临时打开可聚焦，用完关掉。默认窗口不抢键盘焦点。 */
-  setFocusable: (on) => ipcRenderer.send('pet:focusable', on),
   /** 可见性设置。主进程收到后立刻落盘并按新值重新判断该不该显示。 */
   setSettings: (s) => ipcRenderer.send('pet:settings', s),
   /** 开局把存档里的可见性设置推过来，面板的选中态要用它。 */

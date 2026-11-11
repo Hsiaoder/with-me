@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createVoicePlayer, voiceBubbleMs, type VoiceEntry } from '../src/renderer/audio.js'
+import { createVoicePlayer, type VoiceEntry } from '../src/renderer/audio.js'
 
 /**
  * 语音播放器的契约。jsdom 没有真正的音频解码，所以用一颗假 `Audio` 记下 src 与 play/pause
@@ -89,22 +89,5 @@ describe('语音播放器', () => {
     expect(a.paused).toBe(1)
     p.stop()
     expect(a.paused).toBe(1)
-  })
-})
-
-describe('气泡停留时长（voiceBubbleMs）', () => {
-  it('有时长：语音 + 1 秒', () => {
-    expect(voiceBubbleMs(3, 5000)).toBe(4000)
-  })
-
-  it('再短也不短于 2.5 秒', () => {
-    expect(voiceBubbleMs(0.5, 5000)).toBe(2500)
-    expect(voiceBubbleMs(1, 5000)).toBe(2500)
-  })
-
-  it('量不到时长就用默认值：NaN / Infinity / 0 / 负数', () => {
-    for (const d of [NaN, Infinity, 0, -1]) {
-      expect(voiceBubbleMs(d, 5000)).toBe(5000)
-    }
   })
 })

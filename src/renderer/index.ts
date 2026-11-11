@@ -6,6 +6,7 @@ import {
   BUBBLE_SHOW_MS,
   BUBBLE_W,
   DRAG_START_PX,
+  EXIT_VOICE_MAX_MS,
   FLOAT_CHIP,
   FLOAT_GAP,
   FLOAT_HEAD_OFFSET,
@@ -17,6 +18,7 @@ import {
   PLATE_GAP,
   VIEW_HIDE_MS,
   STAGE_W_CSS,
+  VOICE_BUBBLE_PAD_MS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
@@ -38,7 +40,7 @@ import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createBubble, type BubbleContent } from './bubble.js'
-import { createVoicePlayer, voiceBubbleMs, type VoiceEntry, type VoicePlayer } from './audio.js'
+import { createVoicePlayer, type VoiceEntry, type VoicePlayer } from './audio.js'
 import { createFloatLayer } from './float.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
@@ -303,7 +305,7 @@ function bootstrap(skin: SkinPayload): void {
     weight: () => snap?.stats.weight ?? INITIAL_STATS.weight,
     playClip: () => requestClip('drag'),
     reward: () => { signedGainsOnce = true; window.petBridge?.statEvent({ kind: 'game' }) },
-    onExit: () => requestClip('idle'),
+    onExit: () => { requestClip('idle'); recomputeInteraction() },
   })
 
   // 「猜动作」控制器：不接管拖拽，只让宠物做动作 + 浮出选项按钮。退出按答对数结算（count 在 stats 封顶）。
@@ -311,14 +313,14 @@ function bootstrap(skin: SkinPayload): void {
     root,
     playClip: (a) => requestClip(a.pool, a.name),
     reward: (count) => { signedGainsOnce = true; window.petBridge?.statEvent({ kind: 'game', count }) },
-    onExit: () => requestClip('idle'),
+    onExit: () => { requestClip('idle'); recomputeInteraction() },
   })
 
   // 「点破泡泡」控制器：限时点破上浮的泡泡，退出/时间到按破掉数结算。hudRect 返回整屏（限时点击游戏整屏接鼠标）。
   const bubbleGame = createBubbleGame({
     root,
     reward: (count) => { signedGainsOnce = true; window.petBridge?.statEvent({ kind: 'game', count }) },
-    onExit: () => requestClip('idle'),
+    onExit: () => { requestClip('idle'); recomputeInteraction() },
   })
 
   /** 当前激活的游戏（同一时刻只会有一个）；没有就是 null。所有「游戏态」闸门都问它。 */
@@ -407,6 +409,8 @@ function bootstrap(skin: SkinPayload): void {
     setting: (patch) => {
       settings = { ...settings, ...patch }
       panel.setSettings(settings)
+      // 静音现问现生效，勾上就把正在播的那句掐掉（不静音等它自己念完）。
+      if (settings.muted) voice.stop()
       window.petBridge?.setSettings(settings)
       // 选中态换了类，面板高度可能变，重新夹一次位置免得溢出屏幕
       if (panel.isOpen) placePanel()
@@ -441,7 +445,12 @@ function bootstrap(skin: SkinPayload): void {
       if (a === null || a.ended) {
         exitVoiceDone = true
       } else {
-        a.addEventListener('ended', () => { exitVoiceDone = true; maybeFinishExit() }, { once: true })
+        // 播完（ended）、出错（error）、或语音单独兜底超时，都算"语音这条演完了"——
+        // 否则 autoplay 被拒 / 素材坏 / 中途静音会一直不触发 ended，把退出拖到总兜底那 10 秒。
+        const voiceDone = (): void => { exitVoiceDone = true; maybeFinishExit() }
+        a.addEventListener('ended', voiceDone, { once: true })
+        a.addEventListener('error', voiceDone, { once: true })
+        setTimeout(voiceDone, EXIT_VOICE_MAX_MS)
       }
       // 动画那条由行为链演完那一拍标记 exitAnimDone；两边都齐才 quit。
       maybeFinishExit()
@@ -453,6 +462,8 @@ function bootstrap(skin: SkinPayload): void {
   window.petBridge?.onSettings((s) => {
     settings = s
     panel.setSettings(s)
+    // 主进程回灌也可能是「刚被设成静音」（比如另一个入口/开机存档就是静音）：同样掐掉正在播的语音。
+    if (settings.muted) voice.stop()
   })
 
   /** 主进程推来的数值快照。状态视图直接吃它，台词档也要看它。 */
@@ -681,18 +692,19 @@ function bootstrap(skin: SkinPayload): void {
     lastTalkAt = Date.now()
     const token = ++bubbleSayToken
     armBubble(ms)
-    // 弹气泡同时播这句的语音；拿到时长后把停留改成「语音 + 1 秒」（不短于 2.5 秒）。
-    // 元数据异步到，用 token 守住「还是这一句」：下一句已开口时，旧音频的回调不许再重挂定时器。
+    // 弹气泡同时播这句的语音；停留时长按语音真实事件走（下面 keep/done），默认 ms 只是没语音时的兜底。
     const a = voice.play(clean)
     lastVoiceAudio = a
     if (a !== null) {
-      const sync = (): void => {
-        if (token !== bubbleSayToken || !bubble.isOpen) return
-        if (!Number.isFinite(a.duration) || a.duration <= 0) return
-        armBubble(voiceBubbleMs(a.duration, ms))
-      }
-      if (Number.isFinite(a.duration) && a.duration > 0) sync()
-      else a.addEventListener('loadedmetadata', sync, { once: true })
+      // 有语音：气泡必须活过语音，不能靠 duration 算（本地 mp3 也可能报 Infinity / 还没解码完，
+      // 一算少就提前收——用户 2026-11-11 报「气泡在语音播完前就消失」）。改成吃真实事件：
+      // 播放期间 timeupdate 每跳一下就把收起定时器往后推，绝不让默认 ms 先于语音收；
+      // 语音真播完（ended）再多停 PAD 那一秒才收。token 守住「还是这一句」：下一句开口时旧回调作废。
+      const keep = (): void => { if (token === bubbleSayToken && bubble.isOpen) armBubble(Math.max(ms, 1200)) }
+      const done = (): void => { if (token === bubbleSayToken) armBubble(VOICE_BUBBLE_PAD_MS) }
+      a.addEventListener('timeupdate', keep)
+      a.addEventListener('ended', done, { once: true })
+      a.addEventListener('error', done, { once: true })
     }
     // 气泡出现也是「可见区域变大」，光标停在它该覆盖的位置时得立刻接住鼠标
     recomputeInteraction()

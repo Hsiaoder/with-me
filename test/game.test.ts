@@ -8,11 +8,13 @@ describe('鲸鲸会飞 · 纯物理', () => {
   it('throwVelocity：拖太慢不算抛，够快才给初速（×POWER 并夹上限）', () => {
     expect(throwVelocity(-100)).toBeNull()                       // 合速不到 MIN
     expect(throwVelocity(0)).toBeNull()
-    expect(throwVelocity(-FLY.MIN / FLY.POWER)).toBeCloseTo(-FLY.MIN, 6)  // 刚好过线
+    expect(throwVelocity(-FLY.MIN / FLY.POWER)).toBeCloseTo(-FLY.MIN, 6)  // 刚好过线（向上）
     // 超过「上限对应的原始速」才该被夹：raw×POWER 越过 THROW_CAP 才封顶，用常量推、别写死 5000。
     const overCap = FLY.THROW_CAP / FLY.POWER + 500
-    expect(throwVelocity(-overCap)).toBe(-FLY.THROW_CAP)           // 夹到上限
-    expect(throwVelocity(overCap)).toBe(FLY.THROW_CAP)             // 往下也夹（防误抛）
+    expect(throwVelocity(-overCap)).toBe(-FLY.THROW_CAP)           // 向上猛抛，夹到上限
+    // 向下甩不算真抛（否则往下抛会进 flight 又立刻落地，白记一次有效飞行 + 奖励）。
+    expect(throwVelocity(overCap)).toBeNull()                     // 往下快甩 → null
+    expect(throwVelocity(FLY.MIN / FLY.POWER)).toBeNull()          // 往下刚好线 → 仍 null
   })
 
   it('一次上抛：先减速到顶点，再加速下落，回到 homeY 判落地', () => {

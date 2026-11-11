@@ -125,7 +125,6 @@ const OPTIONS: { value: Visibility; label: string }[] = [
 
 const ROWS: { key: keyof Settings; label: string }[] = [
   { key: 'onFullscreen', label: '全屏时' },
-  { key: 'onPresentation', label: '放映时' },
 ]
 
 /**
@@ -215,9 +214,8 @@ export function createPanel(
     return actionsEl
   }
 
+  /** 这个视图有没有副板（除动作视图外都有）。副板都挂自己的锚点：食物/游戏在按钮条外侧，状态/调试挂右侧，设置挂左侧。 */
   const hasPlate = (v: PanelView): boolean => v !== 'actions'
-  /** 副板有没有自己的锚点：除动作视图外都有（食物/游戏挂按钮条外侧，状态/调试挂右侧，设置挂左侧）。 */
-  const hasSecondAnchor = (v: PanelView): boolean => v !== 'actions'
 
   // 滚动状态只属于食物视图，就住在这里：一个数，其余全是纯函数算出来的（shared/scroll.ts）。
   const VIEW_W = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
@@ -771,7 +769,7 @@ export function createPanel(
   }
 
   function renderSettings(host: HTMLElement): void {
-    // 顺序按用户要的来：开发者模式 → 全屏/放映 → 静音 → 退出。
+    // 顺序：开发者模式 → 全屏 → 静音 → 退出（放映已并入全屏，共用一挡）。
     boolRow(host, 'developerMode', '开发者模式')
     for (const row of ROWS) {
       const line = document.createElement('div')
@@ -787,17 +785,11 @@ export function createPanel(
       host.append(line)
     }
     boolRow(host, 'muted', '静音')
-    const credit = document.createElement('div')
-    credit.className = 'pet-credit'
-    credit.textContent = '字体：思源黑体 / Fredoka（SIL OFL 1.1）'
-    host.append(credit)
     // 退出桌宠：走装配层的 bye 流程（先说再见、再让主进程落盘退出），面板自己不关窗。
+    // 收设置板靠再点一次齿轮（回动作视图）或离开满延时，不再单列「返回」按钮。
     const quit = btn('退出桌宠', { id: 'quit' }, false)
     quit.addEventListener('click', () => handlers.quit())
     host.append(quit)
-    const back = btn('返回', { view: 'actions' }, false)
-    back.addEventListener('click', () => switchTo('actions'))
-    host.append(back)
   }
 
   /**
@@ -853,7 +845,7 @@ export function createPanel(
     syncDebugGate()
     // 视图换了尺寸就变，锚在旧矩形上会飘：两块各按自己的锚点重贴
     place(primary(), at)
-    place(plateEl, hasSecondAnchor(current) ? plateAt : null)
+    place(plateEl, hasPlate(current) ? plateAt : null)
   }
 
   /** 带 view 的按钮里，当前视图那一颗高亮。 */
@@ -894,7 +886,7 @@ export function createPanel(
       at = p
       el.hidden = false
       place(primary(), p)
-      place(plateEl, hasSecondAnchor(current) ? plateAt : null)
+      place(plateEl, hasPlate(current) ? plateAt : null)
     },
     showPlate(p) {
       plateAt = p
@@ -923,12 +915,12 @@ export function createPanel(
       return node === null ? null : { w: node.offsetWidth, h: node.offsetHeight }
     },
     plateSize() {
-      if (!at || plateEl === null || !hasSecondAnchor(current)) return null
+      if (!at || plateEl === null || !hasPlate(current)) return null
       return { w: plateEl.offsetWidth, h: plateEl.offsetHeight }
     },
     plateRect() {
-      // 只看「有没有副板且开着」，不套 hasSecondAnchor：设置视图的副板就是主块本身，
-      // 它同样占着宠物旁边那块地方，飘字该躲的是它占的位置，不是它算不算"第二块"。
+      // 只看「有没有副板且开着」：设置视图的副板如今也是独立一块（挂左侧），
+      // 它同样占着宠物旁边那块地方，飘字该躲的是它占的位置。
       if (at === null || plateEl === null) return null
       const r = plateEl.getBoundingClientRect()
       return { x: r.x, y: r.y, w: r.width, h: r.height }

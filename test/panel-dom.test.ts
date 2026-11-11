@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { createPanel, defaultActions } from '../src/renderer/panel.js'
 import { DEFAULT_SETTINGS, type Settings } from '../src/shared/visibility.js'
@@ -148,16 +149,16 @@ describe('设置视图', () => {
     expect(panel.view).toBe('actions')
   })
 
-  it('点设置切成四行开关（开发者模式/全屏/放映/静音），并通知调用方换收起延时', () => {
+  it('点设置切成三行开关（开发者模式/全屏/静音），并通知调用方换收起延时', () => {
     const { panel, view } = mountWithSettings()
     panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     expect(panel.view).toBe('settings')
     expect(view).toHaveBeenCalledWith('settings')
     const rows = panel.el.querySelectorAll('.pet-setting')
-    expect(rows).toHaveLength(4)
+    expect(rows).toHaveLength(3)
     expect([...rows[0]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['开', '关'])
     expect([...rows[1]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['陪我', '隐藏'])
-    expect([...rows[3]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['开', '关'])
+    expect([...rows[2]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['开', '关'])
   })
 
   it('开发者模式/静音是布尔开关：点「开」只报那一项 true', () => {
@@ -179,6 +180,14 @@ describe('设置视图', () => {
     expect(debug().hidden).toBe(true)
   })
 
+  // jsdom 不做 CSS 层叠，量不到「hidden 属性到底有没有真的把按钮移出布局」。
+  // 上一轮就栽在 `.pet-panel button{display:inline-flex}` 权重盖过 UA 的 [hidden]，
+  // 属性设对了却还看得见。这条钉住作者必须显式补一条按钮级的 [hidden] 规则。
+  it('style.css 给动作按钮显式写了 [hidden]{display:none}，别让 display 盖掉隐藏', () => {
+    const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(css).toMatch(/\.pet-panel button\[hidden\]\s*\{[^}]*display:\s*none/)
+  })
+
   it('点「隐藏」只报被点的那一项，不整包覆盖', () => {
     const { panel, set } = mountWithSettings()
     panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
@@ -191,17 +200,19 @@ describe('设置视图', () => {
     panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     const on = () => [...panel.el.querySelectorAll('.pet-setting')]
       .map((r) => r.querySelector('button.on')?.getAttribute('data-value'))
-    expect(on()).toEqual(['off', 'show', 'show', 'off'])
-    panel.setSettings({ onFullscreen: 'hide', onPresentation: 'show', developerMode: false, muted: false })
-    expect(on()).toEqual(['off', 'hide', 'show', 'off'])
-    panel.setSettings({ onFullscreen: 'hide', onPresentation: 'show', developerMode: true, muted: true })
-    expect(on()).toEqual(['on', 'hide', 'show', 'on'])
+    expect(on()).toEqual(['off', 'show', 'off'])
+    panel.setSettings({ onFullscreen: 'hide', developerMode: false, muted: false })
+    expect(on()).toEqual(['off', 'hide', 'off'])
+    panel.setSettings({ onFullscreen: 'hide', developerMode: true, muted: true })
+    expect(on()).toEqual(['on', 'hide', 'on'])
   })
 
-  it('返回切回动作视图，延时通知回一次', () => {
+  it('再点一次齿轮收回设置板，回动作视图（不再单列返回按钮）', () => {
     const { panel, view } = mountWithSettings()
     panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
-    panel.el.querySelector<HTMLButtonElement>('button[data-view="actions"]')!.click()
+    expect(panel.view).toBe('settings')
+    expect(panel.el.querySelector('button[data-view="actions"]')).toBeNull()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     expect(panel.view).toBe('actions')
     expect(view).toHaveBeenLastCalledWith('actions')
     expect(panel.el.querySelectorAll('.pet-setting')).toHaveLength(0)

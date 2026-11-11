@@ -6,7 +6,7 @@
  *  - 心情高/低、深夜仍在用 → 各选各的一组
  *  - 交互事件（连续点击、刚犯困被点）→ pickInteract
  *  - 说话档 → SPEECH 配一段动画（feed 不在此表，喂那一口播吃相是铁律）
- *  - 游戏入口片 GAME_INTRO；跨级片 LEVELUP_CLIP
+ *  - 启动/退出随机片 STARTUP_CLIPS / EXIT_CLIPS；跨级片 LEVELUP_CLIP
  *
  * clip 一律用 `{pool,name}` 寻址（和食物 anim、pickNamed 同一条按名播放路）：
  * 复用的片段沿用其原池（guess/core/turn），新增片段统一进 `daily` 池（见 spike/dsh-asar-extract.mjs）。
@@ -63,13 +63,6 @@ export const SPEECH: Readonly<Partial<Record<TalkReason, readonly ClipRef[]>>> =
   game: [g('swing')],
   greet: [g('flowers'), d('butterfly'), d('animals'), d('ghost'), g('liondance')],
   bye: [d('curtsy')],
-}
-
-/** 游戏入口片（开局各播一次；玩法动画不动）。 */
-export const GAME_INTRO: Record<'fly' | 'guess' | 'bubble', ClipRef> = {
-  fly: d('jumpcatch'),
-  guess: d('spin'),
-  bubble: g('balloon'),
 }
 
 /** 跨级时播的片（播完那一拍再冒「等级+1」）。 */
@@ -154,7 +147,7 @@ function flatPick(list: readonly ClipRef[], rng: () => number): ClipRef | null {
 /** 本模块用到的全部具名片段（供单测/装配层核对「候选名都在皮肤池清单里」）。 */
 export const ALL_CLIPS: readonly ClipRef[] = [
   ...AMBIENT, ...SLEEPY, ...MOOD_HIGH, ...MOOD_LOW, ...LATE_NIGHT,
-  REACT_CLICKSTREAK, REACT_SLEEPY_WAKE, LEVELUP_CLIP, GAME_INTRO.fly, GAME_INTRO.guess, GAME_INTRO.bubble,
+  REACT_CLICKSTREAK, REACT_SLEEPY_WAKE, LEVELUP_CLIP,
   ...STARTUP_CLIPS, ...EXIT_CLIPS,
   ...Object.values(SPEECH).flatMap((v) => v ?? []),
 ]

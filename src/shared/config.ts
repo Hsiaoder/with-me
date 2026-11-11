@@ -124,10 +124,11 @@ export const ONLINE_TICK_MS = 1000
 // ---- 说话 ----
 /** 气泡默认停留时长。光标还在气泡上会续命，见渲染层装配。 */
 export const BUBBLE_SHOW_MS = 5000
-/** 配了语音时，气泡比语音多停这么一会儿，让主人读完最后一句。 */
+/** 语音真播完（`ended`）之后，气泡再多停这么一会儿，让主人读完最后一句再收。 */
 export const VOICE_BUBBLE_PAD_MS = 1000
-/** 配了语音时气泡的最短停留：再短的句子也不许一闪而过。 */
-export const VOICE_BUBBLE_MIN_MS = 2500
+/** 退出收尾等再见语音的最长时间：autoplay 被拒 / 素材坏 / 中途静音时，语音这一路最多等这么久，
+ *  不等满退出的总兜底（见 index 的 10 秒）。 */
+export const EXIT_VOICE_MAX_MS = 6000
 /** 距上次说话不足这么久就不再插一句，六个 reason 都受它约束。 */
 export const TALK_COOLDOWN_MS = 25000
 /** 「闲到交出决策权」那一拍里开口的概率。事件驱动的台词不受它约束。 */

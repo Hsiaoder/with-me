@@ -10,7 +10,6 @@ export const IPC = {
   cursor: 'pet:cursor',                  // main → renderer，Point（覆盖层内坐标）
   skinLoaded: 'pet:skin-loaded',         // main → renderer，LoadedSkin 或 { errors }
   clickThroughRequest: 'pet:click-through', // renderer → main，{ grab }
-  focusable: 'pet:focusable',            // renderer → main，boolean
   settings: 'pet:settings',              // renderer → main，Partial<Settings>（改完立刻落盘）
   settingsLoaded: 'pet:settings-loaded', // main → renderer，Settings（开局把存档里的值推过去）
   statsEvent: 'pet:stats-event',         // renderer → main，一次动作（喂/玩/回应/开面板），主进程算完再广播
@@ -26,7 +25,6 @@ export type CursorPayload = Point
 export type ClickThroughPayload = { grab: boolean }
 /** 装载成功给皮肤，失败给逐条错误——两条路都走同一个通道，渲染层不必猜。 */
 export type SkinLoadedPayload = SkinPayload | SkinErrorPayload
-export type FocusablePayload = boolean
 export type SettingsPayload = Settings
 export type SettingsPatchPayload = Partial<Settings>
 

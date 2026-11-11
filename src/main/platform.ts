@@ -9,10 +9,14 @@ export interface Platform {
   createWindow(): void
   /** true = 接住鼠标（关闭穿透）。 */
   setInteractive(on: boolean): void
+  /**
+   * 这条 IPC 消息是不是宠物那扇窗发的。渲染层→主进程每条通道先过这道闸：
+   * 现在只有一扇窗，将来若多了设置窗/更新窗/任意可导航的 webContents，它们不能白拿改档、
+   * 抢焦点、退进程这些高权限动作。
+   */
+  ownsSender(id: number): boolean
   /** 把系统光标位置推给渲染层。穿透状态下网页收不到 mousemove，只能从外面喂。 */
   sendCursor(p: Point): void
-  /** 面板里有输入框时才临时可聚焦。 */
-  setFocusable(on: boolean): void
   /** 页面加载完成时回调一次。首屏数据（皮肤）必须等这个时机才发得出去。 */
   onPageReady(cb: () => void): void
   /** 向渲染层发一条消息。业务语义在调用方，这里只负责搬运。 */

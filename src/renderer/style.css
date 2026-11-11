@@ -495,6 +495,13 @@ body.pet-over {
   cursor: var(--pet-cursor);
 }
 
+/* 作者给按钮写了 `display: inline-flex`，权重压过 UA 的 `[hidden]{display:none}`——
+   不显式补这一条，开发者模式关掉时用 `hidden` 藏调试按钮会毫无效果（看着没反应）。
+   `.pet-panel button[hidden]` 权重比 `.pet-panel button` 多一个属性选择器，盖得回来。 */
+.pet-panel button[hidden] {
+  display: none;
+}
+
 /* 动作视图的五颗：图标底下垫一枚 Kenney `button_round_depth_line`（CC0，**已按 A 套重染**：
    面 #EBF5FB + 环 #6990A7 + 下半圈更深的底影 #3E718C + 那条青内圈 #36BDF7 原样没动）。
    2026-11-06 曾换成手绘的小鲸鱼，用户在真机上看过说「现在的不好看」，改回来——
@@ -858,15 +865,6 @@ body.pet-over {
   justify-content: space-between;
   padding-bottom: 2px;
   border-bottom: 1px solid rgba(43, 47, 54, 0.28);
-}
-
-/* 设置视图底部的字体署名行（OFL 要求随包附协议，UI 里这一行是给人看的出处）。 */
-.pet-credit {
-  margin-top: 6px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: rgba(0, 0, 0, 0.45);
-  text-align: center;
 }
 
 .pet-plate-title {

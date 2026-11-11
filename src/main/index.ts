@@ -93,7 +93,12 @@ void app.whenReady().then(() => {
     save.settings = applySettings(save, patch).settings
     watch.setSettings(save.settings)
     if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
-  }, (raw) => stats.event(raw), (raw) => stats.identity(raw), () => app.quit(), (raw) => stats.debugSet(raw))
+  }, (raw) => stats.event(raw), (raw) => stats.identity(raw), () => app.quit(), (raw) => {
+    // 调试改档只在开发者模式开着时接受。设置里关掉只是把按钮藏起来——真正的权限闸在这侧，
+    // 否则 renderer 一旦被注入脚本就能绕过界面直接改真实存档。
+    if (save.settings.developerMode !== true) return
+    stats.debugSet(raw)
+  })
   platform.createWindow()
   statsSink = (snapshot) => platform.send(IPC.statsLoaded, snapshot)
 

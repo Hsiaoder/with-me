@@ -58,11 +58,12 @@ export function createWindowsPlatform(): Platform {
     setInteractive(on) {
       up().setIgnoreMouseEvents(!on)
     },
+    ownsSender(id) {
+      // 窗口还没建时谁都算不上——建窗之前挂的监听收到消息，id 也对不上这扇窗。
+      return win !== null && win.webContents.id === id
+    },
     sendCursor(p: Point) {
       up().webContents.send(IPC.cursor, p)
-    },
-    setFocusable(on) {
-      up().setFocusable(on)
     },
     onPageReady(cb) {
       up().webContents.once('did-finish-load', cb)

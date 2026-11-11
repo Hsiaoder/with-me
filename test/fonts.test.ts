@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 
 const css = readFileSync('src/renderer/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 const copyStatic = readFileSync('tools/copy-static.mjs', 'utf8')
-const panel = readFileSync('src/renderer/panel.ts', 'utf8')
 
 describe('界面字体接入（2026-11-07）', () => {
   it('两道白名单都放行 woff2 与 txt：漏一个字体就 404 落回雅黑', () => {
@@ -43,8 +42,10 @@ describe('界面字体接入（2026-11-07）', () => {
     }
   })
 
-  it('设置视图有署名行（OFL 随包附协议，UI 给人看的出处）', () => {
-    expect(panel).toContain('SIL OFL 1.1')
-    expect(css).toMatch(/\.pet-credit \{/)
+  it('字体署名随包附 OFL 协议（不是 UI 里那行——设置板已去掉字体显示，出处靠随包 license 文件）', () => {
+    for (const f of ['OFL-fredoka.txt', 'OFL-noto-sans-sc.txt']) {
+      const text = readFileSync(`src/renderer/fonts/${f}`, 'utf8')
+      expect(text).toMatch(/SIL OPEN FONT LICENSE/)
+    }
   })
 })

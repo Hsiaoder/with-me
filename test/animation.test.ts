@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  AMBIENT, SLEEPY, MOOD_HIGH, MOOD_LOW, LATE_NIGHT, SPEECH, GAME_INTRO, LEVELUP_CLIP, CLICK_STREAK_MIN,
+  AMBIENT, SLEEPY, MOOD_HIGH, MOOD_LOW, LATE_NIGHT, SPEECH, LEVELUP_CLIP, CLICK_STREAK_MIN,
   STARTUP_CLIPS, EXIT_CLIPS, ALL_CLIPS, pickAmbient, pickForSpeech, pickInteract, pickStartup, pickExit, type Situation,
 } from '../src/shared/animation.js'
 
@@ -70,10 +70,7 @@ describe('日常动画 · 纯选择器', () => {
     expect(pickForSpeech('levelup', fixed(0.1))).toBeNull()
   })
 
-  it('游戏入口片与跨级片都在，且是具名可寻址片段', () => {
-    expect(GAME_INTRO.fly).toEqual({ pool: 'daily', name: 'jumpcatch' })
-    expect(GAME_INTRO.guess).toEqual({ pool: 'daily', name: 'spin' })
-    expect(GAME_INTRO.bubble).toEqual({ pool: 'guess', name: 'balloon' })
+  it('跨级片是具名可寻址片段', () => {
     expect(LEVELUP_CLIP).toEqual({ pool: 'guess', name: 'bluewhale' })
   })
 

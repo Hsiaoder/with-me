@@ -146,16 +146,16 @@ describe('toSaveFile', () => {
 })
 
 describe('settings', () => {
-  it('旧档没有 settings 时补默认值：两档都陪我', () => {
+  it('旧档没有 settings 时补默认值：全屏陪我、调试关、声音开', () => {
     const s = migrate({ version: 1, skin: 'block', stats: {} }, NOW)
-    expect(s.settings).toEqual({ onFullscreen: 'show', onPresentation: 'show', developerMode: false, muted: false })
+    expect(s.settings).toEqual({ onFullscreen: 'show', developerMode: false, muted: false })
   })
 
-  it('认得的值保留，认不出的回默认并说清是哪一项', () => {
-    const s = migrate({ version: 1, settings: { onFullscreen: 'hide', onPresentation: '也许' } }, NOW)
-    expect(s.settings.onFullscreen).toBe('hide')
-    expect(s.settings.onPresentation).toBe('show')
-    expect(s.warnings.join()).toContain('onPresentation')
+  it('认得的值保留，认不出的回默认并说清是哪一项；旧的 onPresentation 被忽略且不报错', () => {
+    const s = migrate({ version: 1, settings: { onFullscreen: '也许', onPresentation: 'hide' } }, NOW)
+    expect(s.settings.onFullscreen).toBe('show')   // 认不出 → 回默认
+    expect('onPresentation' in s.settings).toBe(false)  // 放映并入全屏，旧字段直接丢
+    expect(s.warnings.join()).toContain('onFullscreen')
   })
 
   it('settings 是垃圾也不炸', () => {
@@ -167,7 +167,7 @@ describe('settings', () => {
   it('applySettings 只改提到的那一项，且返回新对象', () => {
     const base = defaultSave(NOW)
     const next = applySettings(base, { onFullscreen: 'hide' })
-    expect(next.settings).toEqual({ onFullscreen: 'hide', onPresentation: 'show', developerMode: false, muted: false })
+    expect(next.settings).toEqual({ onFullscreen: 'hide', developerMode: false, muted: false })
     expect(base.settings.onFullscreen).toBe('show')
     expect(applySettings(base, { onFullscreen: '也许' as never }).settings).toEqual(base.settings)
   })

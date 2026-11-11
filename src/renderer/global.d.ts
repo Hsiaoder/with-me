@@ -16,7 +16,6 @@ declare global {
       onCursor(cb: (p: Point) => void): void
       onSkin(cb: (skin: SkinLoadedPayload) => void): void
       requestGrab(grab: boolean): void
-      setFocusable(on: boolean): void
       setSettings(s: Settings): void
       onSettings(cb: (s: Settings) => void): void
       /** 上报一次养成动作。给多少由主进程算，渲染层不猜。 */
