@@ -17,6 +17,7 @@
     "start": "npm run build && electron .",
     "e2e": "npm run build && node e2e/pet-check.mjs",
     "check:license": "node tools/check-licenses.mjs",
+    "skin:pack": "npm run build && node tools/build-skin-dafeiyu.mjs",
     "skin:test": "node tools/make-test-skin.mjs",
     "fonts": "node tools/make-font-subset.mjs",
     "alpha:check": "node tools/alpha-report.mjs",

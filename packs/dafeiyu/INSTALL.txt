@@ -1,0 +1,29 @@
+大肥鱼皮肤包 · 装上它
+
+适用版本：with-me 0.1.0。目录名必须就叫 dafeiyu（小写字母数字），程序不认「大肥鱼」这种中文目录名。
+
+1. 解压，把整个 dafeiyu 目录放到：
+   %APPDATA%\with-me\skins\dafeiyu
+   也就是 C:\Users\<你>\AppData\Roaming\with-me\skins\ 下面新建 dafeiyu。
+   放对了的话，这个路径能直接看到 manifest.json：
+   %APPDATA%\with-me\skins\dafeiyu\manifest.json
+
+2. 退出桌宠：设置面板（齿轮那颗）里的「退出」，等它演完退出动画和再见语音自己走。
+
+3. 用记事本打开 %APPDATA%\with-me\save.json，把
+       "skin": "block"
+   改成
+       "skin": "dafeiyu"
+   存盘。
+
+4. 重新打开桌宠。看见鲸鱼娘就是装上了。
+   想换回来：把 "skin" 改回 "block" 即可，删不删皮肤目录都行。
+
+如果屏幕上还是方块「色块」、并且冒出一条「找不到皮肤」的提示：
+十有八九是目录套多了一层。解压工具常会再包一层同名目录，正确结构是
+skins\dafeiyu\manifest.json，不是 skins\dafeiyu\dafeiyu\manifest.json。
+另一可能是 save.json 改了但桌宠没退干净（后台还有进程），任务管理器里结束 with-me.exe 再开。
+
+许可：本皮肤包是 CC BY-NC-SA 4.0，禁止商用。
+署名义务、形象谱系与「改了必须同样共享」的完整说明见同目录 ATTRIBUTION.md，
+许可证正文见 LICENSE-CC-BY-NC-SA.txt。
