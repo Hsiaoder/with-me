@@ -11,7 +11,7 @@
 
 ```bash
 npm install          # 依赖走 npmmirror 镜像，见 .npmrc
-npm run skin:test    # 生成占位皮肤的 6 段动画（色块，不需要美术素材）
+npm run skin:test    # 生成占位皮肤（色块）的动画，不需要美术素材
 npm start            # 构建并启动
 ```
 
@@ -23,11 +23,14 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
 | 命令 | 做什么 |
 |---|---|
 | `npm run typecheck` | TypeScript 检查，不产出文件 |
-| `npm test` | 纯逻辑单测（30 个文件 471 条，约 1.6 秒） |
-| `npm run build` | `tsc` + 复制 html/css/svg/png 与 preload。没有打包器 |
-| `npm run e2e` | 真 Electron 上验播放器、面板、气泡、列表、光标、心跳、可见性子进程（51 项） |
-| `npm run e2e:skin` | 真 Electron 上验「换皮肤」这条轴（3 项） |
+| `npm test` | 纯逻辑单测（条数以这条命令自己的输出为准，别信文档里的快照） |
+| `npm run build` | `tsc` + 复制 html/css/svg/png/woff2/mp3/json 与 preload。没有打包器 |
+| `npm run e2e` | 真 Electron 上验播放器、面板、气泡、列表、光标、心跳、可见性子进程 |
+| `npm run e2e:skin` | 真 Electron 上验「换皮肤」这条轴 |
 | `npm run alpha:check` | 素材透明通道体检 |
+| `npm run dist` | 出安装包与免压 zip（见「发布流程」；产物在 `release/`，不是 `dist/`） |
+| `npm run check:license` | 许可闸门：素材有没有登记、形象素材有没有混进包 |
+| `npm run skin:pack` | 装配大肥鱼皮肤包 zip（素材不进 git，只能在本地出） |
 | `npm run progress` | 重新生成 `docs/实现进度.md` |
 
 ---
@@ -287,7 +290,8 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
   才分得清「素材里的白」和「透明底摊成的白」），逐簇打印**带平均位置**，才认出发箍那圈蕾丝在哪。
   页面里 `drawImage(video)` 读像素这条路走不通：皮肤挂在 `app://skin`、页面在 `app://assets`，
   不同源，`getImageData` 直接 SecurityError（实测撞过）——所以探针截的是合成器出来的图，反而更接近用户真看到的。
-  只取**色值**：dshtry 那套皮肤授权没谈拢、只本地试穿、不进仓库也不打包，一个 hex 不是作品的一部分。
+  只取**色值**：dshtry 那套原片（现在以 CC BY-NC-SA 的独立皮肤包发布，见「许可」）不进仓库也不进主程序包，
+  而一个 hex 不是作品的一部分，取色不受它约束。
   第四轮（同日）用户改口「**改成和按钮内边框的那种蓝色**」= Kenney 圆底那圈青内圈 `#36BDF7`，第三轮那两支角色色随之退场：
   · **按钮面用原值 `#36BDF7`**，文字仍是墨色（6.26:1）。它对白内腔只有 2.15:1，压不住白色气泡，
     所以组件边界由深一档的描边 `#007EB5` 承担（对白内腔 4.51），硬底影再暗一档 `#0072A8`。
@@ -573,6 +577,37 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 
 ---
 
+## 发布流程
+
+日常开发不需要这些命令，只有出包时才跑。产物一律落在 `release/`（不进 git；`dist/` 是 tsc 的地盘，别让给打包）。
+
+| 想做 | 命令 | 出什么 |
+|---|---|---|
+| 出主程序包 | `npm run dist` | `with-me-<版本>-setup.exe` + `with-me-<版本>-portable.zip` |
+| 验装机产物 | `node e2e/package-check.mjs` | 页面 / 动画 / 语音 / 字体是不是真从包里取到了 |
+| 查素材许可 | `npm run check:license` | 没登记的、形象素材混进来的，逐条报错并退码 1 |
+| 装大肥鱼包 | `npm run skin:pack` | `with-me-skin-dafeiyu-<版本>.zip`（素材不进 git，只能本地出） |
+
+### 发一版
+
+1. 全门禁：`npm run typecheck && npm test && npm run build && npm run e2e && npm run check:license`
+2. 出包自检：`npm run dist && node e2e/package-check.mjs && npm run skin:pack`
+3. **仓库得是 Public**，否则 Release 下载页要登录才打得开——目标是不登录就能下。
+4. 推 tag：`git tag v<版本> && git push origin v<版本>`，CI 自动出包并建 Release。
+5. 补挂皮肤包（素材不在 git，CI 拿不到，这一步只能手工）：
+   `gh release upload v<版本> release/with-me-skin-dafeiyu-<版本>.zip`
+6. 用没登录的浏览器开一次 Release 页，三个文件都下得动，才算发完。
+
+版本号只改 `package.json` 的 `version`，tag 与它对齐。
+`e2e` 不进 CI：它要真机窗口和 Win32 z 序读数，runner 上的结果不可信。
+
+### v1 明确没有的两件事
+
+- **代码签名**：没证书。Windows SmartScreen 会弹「未知发布者」，这是预期，不是坏了。
+- **自动更新**：不检查新版也不下载，要更新就自己回 Release 页拿。
+
+---
+
 ## 架构与文档
 
 几份文档各司其职，冲突时以功能规格的约束节和验收节为准：
@@ -608,5 +643,15 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 
 ## 许可
 
-代码许可证待定（v1 收尾时决定）。**不搬运任何第三方美术素材**——参考项目的
-图与视频一律不用。
+代码与台词：**GPL-3.0-only**（全文见 [`LICENSE`](LICENSE)，逐项出处与义务见 [`NOTICE.md`](NOTICE.md)）。
+台词改写自 [qqpet](https://github.com/AnkioTomas/qqpet)（© Ankio，GPL-3.0-only），
+这条派生关系就是主程序不能挂 MIT 的原因——[`src/shared/talk.ts`](src/shared/talk.ts) 顶部也写着。
+
+素材逐项：Kenney 图标与气泡 = CC0；字体子集 = OFL-1.1（许可证全文随包）；
+`skins/block` 占位皮肤 = 本项目自制。新增第三方素材要登记进 [`licenses.json`](licenses.json)，
+`npm run check:license` 会在 CI 拦住没登记的那一份。
+
+**大肥鱼不在这份授权里。** 形象与动画原片来自
+[dsh-pet](https://github.com/PC2005-cloud/dsh-pet)，授权 **CC BY-NC-SA 4.0**（署名 · 非商业 · 相同方式共享），
+以同一 Release 上的独立皮肤包提供，包内 `ATTRIBUTION.md` 写清了署名与「改了必须同样共享」。
+本仓库与两个安装包都不含这些素材，许可闸门也会拦。主程序的 GPL 不覆盖、也不会放开这个形象。
