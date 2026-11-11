@@ -34,6 +34,9 @@ export function toSettings(raw: unknown): Partial<Settings> | null {
   for (const key of ['onFullscreen', 'onPresentation'] as const) {
     if (isVisibility(r[key])) out[key] = r[key]
   }
+  for (const key of ['developerMode', 'muted'] as const) {
+    if (typeof r[key] === 'boolean') out[key] = r[key]
+  }
   return Object.keys(out).length > 0 ? out : null
 }
 

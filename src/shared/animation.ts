@@ -75,6 +75,20 @@ export const GAME_INTRO: Record<'fly' | 'guess' | 'bubble', ClipRef> = {
 /** 跨级时播的片（播完那一拍再冒「等级+1」）。 */
 export const LEVELUP_CLIP: ClipRef = g('bluewhale')
 
+/**
+ * 启动随机片（用户 2026-11-11 指定八条）：开机问候时随机播一条，配一句随机问候语音。
+ * 舞狮头/女仆舞/摇摆舞复用 guess 池已切的名片；动物环绕/小幽灵/荡秋千在 daily；
+ * 堆雪人/放风筝是这一轮新切进 daily 的（见 spike/dsh-asar-extract.mjs）。
+ */
+export const STARTUP_CLIPS: readonly ClipRef[] = [
+  g('liondance'), g('maid'), g('swing'), d('animals'), d('ghost'), d('snowman'), d('swingset'), d('kite'),
+]
+
+/** 退出随机片（用户指定四条）：被落叶淹没/女仆屈膝礼仪/超大伸懒腰/清点归档。演完这条 + 再见语音才真正退。 */
+export const EXIT_CLIPS: readonly ClipRef[] = [
+  d('leaves'), d('curtsy'), d('stretch'), d('archive'),
+]
+
 /** 连点到这个数就判定「连续点击」。 */
 export const CLICK_STREAK_MIN = 3
 
@@ -121,6 +135,16 @@ export function pickForSpeech(reason: TalkReason, rng: () => number): ClipRef | 
   return flatPick(SPEECH[reason] ?? [], rng)
 }
 
+/** 开机随机一条启动片（rng 注入）。 */
+export function pickStartup(rng: () => number): ClipRef | null {
+  return flatPick(STARTUP_CLIPS, rng)
+}
+
+/** 退出随机一条收尾片（rng 注入）。 */
+export function pickExit(rng: () => number): ClipRef | null {
+  return flatPick(EXIT_CLIPS, rng)
+}
+
 function flatPick(list: readonly ClipRef[], rng: () => number): ClipRef | null {
   if (list.length === 0) return null
   const i = Math.min(list.length - 1, Math.floor(rng() * list.length))
@@ -131,5 +155,6 @@ function flatPick(list: readonly ClipRef[], rng: () => number): ClipRef | null {
 export const ALL_CLIPS: readonly ClipRef[] = [
   ...AMBIENT, ...SLEEPY, ...MOOD_HIGH, ...MOOD_LOW, ...LATE_NIGHT,
   REACT_CLICKSTREAK, REACT_SLEEPY_WAKE, LEVELUP_CLIP, GAME_INTRO.fly, GAME_INTRO.guess, GAME_INTRO.bubble,
+  ...STARTUP_CLIPS, ...EXIT_CLIPS,
   ...Object.values(SPEECH).flatMap((v) => v ?? []),
 ]

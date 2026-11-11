@@ -480,7 +480,7 @@ check('气泡里的回应按钮：看得见、点得到、点完收掉', async (
   })
   assert.match(cloud.filter, /drop-shadow/, `云朵底图没挂投影：${cloud.filter}`)
   assert.deepEqual({ w: cloud.w, h: cloud.h }, { w: BUBBLE_W, h: BUBBLE_H }, `气泡框不是云朵那套尺寸：${JSON.stringify(cloud)}`)
-  assert.equal(cloud.textTop, 57, `文字层不在量好的那一行：${cloud.textTop}`)
+  assert.equal(cloud.textTop, 42, `文字层不在量好的那一行：${cloud.textTop}`)
   assert.equal(cloud.replyBottom, BUBBLE_INNER_BOTTOM, `回应按钮底边没压在 BUBBLE_INNER_BOTTOM 上：${cloud.replyBottom}`)
 
   await btn.click()
@@ -660,15 +660,16 @@ check('鲸鲸会飞：游戏列表→开始收起按钮不弹气泡→抛出屏�
     assert.equal(await hud(), null, '点退出后 HUD 还在，没回到普通态')
     assert.equal(await flyActive(), false, '点退出后仍是游戏态')
 
-    // 退出结算这一局的账：像吃完东西那样飘出数字，且**掉的那两条也要冒**（带符号）。
-    // 抛一次 → 心情/亲密涨、饱食/体重掉；默认「只飘涨的」会把 −饱食/−体重吞掉，用户就说没提示。
+    // 退出结算这一局的账：像吃完东西那样飘出数字，且**掉的体重要冒**（带符号）。
+    // 抛一次 → 心情/亲密涨、体重掉（不掉饥饿）；默认「只飘涨的」会把 −体重 吞掉，用户就说没提示。
     await page.waitForFunction(
       () => window.__petDebug.floatTexts.some((t) => t.includes('−')),
       null, { timeout: 2000 },
     )
     const floats = await page.evaluate(() => window.__petDebug.floatTexts)
     assert.ok(floats.some((t) => /心情 \+\d/.test(t)), `退出没飘出心情涨幅：${JSON.stringify(floats)}`)
-    assert.ok(floats.some((t) => /饥饿 −\d/.test(t)), `退出没飘出饱食下降（signed 没生效？）：${JSON.stringify(floats)}`)
+    assert.ok(floats.some((t) => /体重 −\d/.test(t)), `退出没飘出体重下降（signed 没生效？）：${JSON.stringify(floats)}`)
+    assert.ok(!floats.some((t) => /饥饿/.test(t)), `玩游戏不该掉饥饿，却飘了饥饿：${JSON.stringify(floats)}`)
 
     assert.ok(await openOnBody(), '退出游戏后身体叫不出面板，说明没回到普通交互态')
     await feed({ x: 4, y: 4 })
@@ -793,6 +794,21 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   await clickBody(center)
   await page.waitForTimeout(120)
   assert.equal((await dbg()).open, true, '点了一下没把面板叫出来')
+  // 开发者模式默认关：调试按钮藏掉（用户 2026-11-11 要默认不显示调试按钮）。
+  const debugHidden = await page.evaluate(() => document.querySelector('.pet-panel button[data-id="debug"]').hidden)
+  assert.equal(debugHidden, true, '开发者模式默认关，调试按钮该藏掉')
+  // 走设置 UI 打开开发者模式，调试按钮才露面（后面的图标尺寸/调试板检查需要它）。
+  await page.click('.pet-panel button[data-id="settings"]')
+  await page.waitForSelector('.pet-panel .pet-setting')
+  // 设置板弹出来时原按钮条不许整块消失（用户 2026-11-11）：五颗动作按钮还在 DOM 里
+  // （调试那颗此刻因开发者模式默认关而 hidden，但节点仍在——量的是「按钮条没被摘掉」）。
+  const actionsStill = await page.evaluate(() =>
+    document.querySelectorAll('.pet-actions button[data-id]').length)
+  assert.equal(actionsStill, 5, `设置板出来时按钮条被摘掉了：只剩 ${actionsStill} 颗`)
+  await page.click('.pet-panel button[data-key="developerMode"][data-value="on"]')
+  await page.waitForFunction(() => !document.querySelector('.pet-panel button[data-id="debug"]').hidden)
+  await page.click('.pet-panel button[data-id="settings"]')   // 再点设置收回副板，回动作视图
+  await page.waitForTimeout(80)
   const labels = await page.locator('.pet-panel button').evaluateAll((bs) =>
     bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
   assert.deepEqual(labels,
@@ -835,6 +851,17 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   // 要真的切过去看——动作视图里没有 .pet-setting 按钮，选择器写错就是一条永远为真的断言。
   await page.click('.pet-panel button[data-id="settings"]')
   await page.waitForSelector('.pet-panel .pet-setting')
+  // 设置板挂宠物侧面（左侧优先，放不下翻右），按钮条常驻脚下（用户 2026-11-11）。
+  const sPos = await page.evaluate(() => {
+    const plate = document.querySelector('.pet-plate.is-settings').getBoundingClientRect()
+    const b = window.__petDebug.inkBox
+    const actions = document.querySelector('.pet-actions').getBoundingClientRect()
+    return { px: plate.x, pw: plate.width, bx: b.x, bw: b.w, sw: innerWidth, actionsW: actions.width }
+  })
+  assert.ok(sPos.actionsW > 0, '设置视图里按钮条不在布局里')
+  assert.ok(sPos.px + sPos.pw <= sPos.bx + 1 || sPos.px >= sPos.bx + sPos.bw - 1,
+    `设置板没挂在宠物侧面：${JSON.stringify(sPos)}`)
+  assert.ok(sPos.px >= -0.5 && sPos.px + sPos.pw <= sPos.sw + 0.5, `设置板横向溢出屏幕：${JSON.stringify(sPos)}`)
   const plateBtn = await page.evaluate(() =>
     getComputedStyle(document.querySelector('.pet-panel .pet-setting button')).backgroundImage)
   // 匹配整个按钮底家族（Kenney 的 button_round_* 与试过的手绘 whale_round）而不是具体一枚：
@@ -1646,27 +1673,33 @@ check('设置视图：切视图、改一项、当场落盘、收起延时更宽�
   const selected = () => page.locator('.pet-setting').evaluateAll((rows) =>
     rows.map((r) => r.querySelector('button.on')?.dataset.value))
 
-  assert.equal(await page.locator('.pet-setting').count(), 2, '两档场景该有两行')
-  assert.deepEqual(await selected(), ['show', 'show'], '默认值必须是「都陪我」')
+  assert.equal(await page.locator('.pet-setting').count(), 4, '四行开关：开发者模式/全屏/放映/静音')
+  // 行序固定：0 开发者模式、1 全屏、2 放映、3 静音。开发者模式可能已被前面那条检查开启，
+  // 所以只钉全屏/放映两档默认「都陪我」，不钉死整排（免得依赖前序状态）。
+  const sel0 = await selected()
+  assert.equal(sel0[1], 'show', '全屏时默认陪我')
+  assert.equal(sel0[2], 'show', '放映时默认陪我')
 
   await page.click('.pet-panel button[data-key="onFullscreen"][data-value="hide"]')
-  assert.deepEqual(await selected(), ['hide', 'show'], '只该被点的那一项变选中态')
+  const sel1 = await selected()
+  assert.equal(sel1[1], 'hide', '只该被点的那一项变选中态')
+  assert.equal(sel1[2], 'show', '没点的那一项不许跟着变')
 
   // 立刻落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查。
   // 轮询而不是睡一下：IPC 到写盘是异步的，读早了会误报成「没落盘」。
   const file = join(userData, 'save.json')
-  const want = JSON.stringify({ onFullscreen: 'hide', onPresentation: 'show' })
   let saved = null
   for (let i = 0; i < 30; i++) {
     try {
       saved = JSON.parse(readFileSync(file, 'utf8')).settings
-      if (JSON.stringify(saved) === want) break
+      if (saved && saved.onFullscreen === 'hide' && saved.onPresentation === 'show') break
     } catch {
       /* 还没写出来 */
     }
     await page.waitForTimeout(100)
   }
-  assert.equal(JSON.stringify(saved), want, `设置没在 3 秒内落盘：${JSON.stringify(saved)}`)
+  assert.ok(saved && saved.onFullscreen === 'hide' && saved.onPresentation === 'show',
+    `设置没在 3 秒内落盘：${JSON.stringify(saved)}`)
 
   // 设置视图里挑选项要的时间更长：过了动作视图的 1500ms 还不能收
   const h = await page.evaluate(() => window.__petDebug.hitBox)
@@ -1926,10 +1959,12 @@ check('喂食真的进了数值并落盘；点性别当场写进存档', async (
     }
   }
   // 喂之前先抄一份：等级那本账要证的是「喂食进经验、但不进亲密条」，得有个对照。
-  // 饥饿/体重也拿这份「喂前」做基准，而不是开机初值 70/50——前面两个小游戏各扣了一截饱食/体重，
-  // 基准早就不是初值了；这条要证的是「这一口喂下去涨了」，比前后差才不会被游戏奖励误伤。
+  // 先把饥饿/体重设到 50 做基准：玩游戏不掉饥饿后，饥饿可能攒到 >90 吃饱封顶（喂了不涨），
+  // 体重也可能被前面喂满；设到中间值保证「这一口喂下去涨了」可观测，不受前面状态误伤。
+  await page.evaluate(() => window.petBridge.debugStats({ stats: { hunger: 50, weight: 50 } }))
+  await page.waitForFunction(() => window.__petDebug.stats?.hunger === 50, null, { timeout: 3000 })
   const before = readSave()
-  const baseHunger = before?.stats?.hunger ?? 70
+  const baseHunger = before?.stats?.hunger ?? 50
   const baseWeight = before?.stats?.weight ?? 50
   assert.ok(await openOnBody(), '前置：面板叫不出来')
   await page.click('.pet-panel button[data-id="feed"]')

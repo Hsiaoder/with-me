@@ -26,6 +26,36 @@ export function fitsLabel(text: string, max: number): boolean {
 }
 
 /**
+ * 气泡正文的「短长」排版：把一句台词拆成居中的几行，第一行比第二行少 gap（2~3）字。
+ * 两行 → 短长；三行 → 短长短（中间最长）；超出三行容量 → 按更窄行长 greedy 拆成 >3 行，
+ * 调用方（台词表）据此把超长句剔除。纯按码点拆（汉字等宽），不丢字：join('') 还原原文。
+ *
+ * maxPerLine 是「一行最多几个字」，由气泡宽 ÷ 字号估出（150px / 14px ≈ 10）。
+ */
+export function taperLines(text: string, maxPerLine: number, gap = 2): string[] {
+  const chars = [...text]
+  const L = chars.length
+  if (L <= maxPerLine) return [text]
+  // 两行：短长。line2 = ceil((L+gap)/2)，line1 = L - line2（比 line2 少 gap 或 gap+1 字）。
+  if (L <= 2 * maxPerLine - gap) {
+    const line2 = Math.ceil((L + gap) / 2)
+    const line1 = L - line2
+    return [chars.slice(0, line1).join(''), chars.slice(line1).join('')]
+  }
+  // 三行：短长短。中间 line2 最长（≤maxPerLine），两侧短。
+  if (L <= 3 * maxPerLine - 2 * gap) {
+    const line2 = Math.min(maxPerLine, Math.ceil((L + 2 * gap) / 3))
+    const line1 = Math.floor((L - line2) / 2)
+    return [chars.slice(0, line1).join(''), chars.slice(line1, line1 + line2).join(''), chars.slice(line1 + line2).join('')]
+  }
+  // 超三行：用更窄行长拆，保证行数 >3，让调用方剔除（不会真的拿去显示）。
+  const w = Math.max(1, maxPerLine - gap)
+  const lines: string[] = []
+  for (let i = 0; i < L; i += w) lines.push(chars.slice(i, i + w).join(''))
+  return lines
+}
+
+/**
  * 把「陪了你多久」写成一句人话。
  *
  * 只留最大的两档：`3天2小时5分30秒` 在 150px 的卡上放不下，而且第 3 档往后

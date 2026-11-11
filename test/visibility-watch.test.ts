@@ -4,8 +4,8 @@ import { spawn } from 'node:child_process'
 import type { Platform } from '../src/main/platform.js'
 import { mapScenario, type Settings } from '../src/shared/visibility.js'
 
-const HIDE: Settings = { onFullscreen: 'hide', onPresentation: 'hide' }
-const SHOW: Settings = { onFullscreen: 'show', onPresentation: 'show' }
+const HIDE: Settings = { onFullscreen: 'hide', onPresentation: 'hide', developerMode: false, muted: false }
+const SHOW: Settings = { onFullscreen: 'show', onPresentation: 'show', developerMode: false, muted: false }
 
 /** 只记录调了哪个动作，别真去碰 Electron。 */
 function fakePlatform() {
@@ -46,7 +46,7 @@ describe('可见性策略的执行', () => {
 
   it('放映只受 onPresentation 管：全屏隐藏、放映显示', () => {
     const { platform, calls } = fakePlatform()
-    const w = createVisibilityPolicy(platform, { onFullscreen: 'hide', onPresentation: 'show' })
+    const w = createVisibilityPolicy(platform, { onFullscreen: 'hide', onPresentation: 'show', developerMode: false, muted: false })
     w.setScenario('presentation')
     expect(calls).toEqual([])
     w.setScenario('fullscreen')

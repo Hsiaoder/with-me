@@ -110,14 +110,12 @@ export const PLAY_MOOD = 6
 export const PLAY_WEIGHT_COST = 0.25
 export const PLAY_BOND = 0.15
 /**
- * 「鲸鲸会飞」落地一次的账：心情、亲密往上，饱食、体重往下——抛来抛去是一场运动，
- * 玩累了会饿、会掉肉，陪它玩也涨亲密。逗玩只有 +6/-0.25/+0.15，游戏更费力气也更哄开心，
- * 所以四项都比它高一档，但喂食仍是涨饱食的最大头（游戏是往下拉的，不冲突）。
- * 亲密增益整体压到约 1/3、体重消耗减半（用户 2026-11-09：亲密别加太多、体重别变太大）。
+ * 「鲸鲸会飞」落地一次的账：心情、亲密往上，体重往下——抛来抛去是一场运动，会掉肉、陪它玩也涨亲密。
+ * **不掉饥饿**（用户 2026-11-10：玩游戏不该掉饥饿值）。逗玩只有 +6/-0.25/+0.15，游戏更费力气也更哄开心，
+ * 所以心情/亲密/体重都比它高一档。亲密增益整体压到约 1/3、体重消耗减半（用户 2026-11-09）。
  */
 export const GAME_MOOD = 8
 export const GAME_BOND = 0.2
-export const GAME_HUNGER_COST = 6
 export const GAME_WEIGHT_COST = 0.6
 /**
  * 一局游戏按「答对/抛成次数」结算时的封顶：猜动作答对越多给越多，但一场最多按 5 次算，
@@ -179,10 +177,10 @@ export function eventDeltas(e: StatEvent, ctx: EventCtx): Partial<Stats> {
       return { mood: PLAY_MOOD * mult, weight: -PLAY_WEIGHT_COST * mult, bond: PLAY_BOND * mult }
     case 'game': {
       const n = gameCount(e)
+      // 玩游戏不掉饥饿（用户 2026-11-10）：只涨心情/亲密、掉体重，饱食不动。
       return {
         mood: GAME_MOOD * mult * n,
         bond: GAME_BOND * mult * n,
-        hunger: -GAME_HUNGER_COST * mult * n,
         weight: -GAME_WEIGHT_COST * mult * n,
       }
     }

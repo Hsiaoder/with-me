@@ -343,16 +343,18 @@ body.pet-over {
 .pet-bubble-text {
   position: absolute;
   left: 29px;
-  top: 57px;
+  top: 42px;
   width: 150px;
   height: 60px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  /* 迁移台词最长 40 字、不压缩原话，靠缩字号容纳：12px/1.2（行高 14.4），150 宽一行约 12 字、
-     60 高放 4 行（57.6px）≈ 48 字，40 字稳塞下。色用品牌深蓝 #2b6cb0（对白内腔 ≈5.4:1 过 AA）。 */
-  font: 12px/1.2 var(--font-ui);
+  /* 默认 14px/1.2（与回应按钮同号，用户 2026-11-10）；位置上移约一行（top 57→42，云腔白底最高只到 42）。
+     字号走 --bubble-text-size，调试板可实时调。14px 时长句换行更多、超出 60px 框会裁，可调小字号。
+     色用品牌深蓝 #2b6cb0（对白内腔 ≈5.4:1 过 AA）。 */
+  font: var(--bubble-text-size, 14px)/1.2 var(--font-ui);
   color: #2b6cb0;
   overflow: hidden;
   pointer-events: none;
@@ -368,12 +370,13 @@ body.pet-over {
      浅壁纸上气泡的边缘会化开，这是第二轮换成 `#5492B2` 的原因。用户看过四轮之后仍要淡的那支，
      那是**观感优先于门槛**的一次拍板，所以测试从「门槛」改成「钉住这支 + 记下实测」，
      别再有人拿 3:1 把它悄悄调深（要调深请重新问用户）。
-   迁移后回应最长 12 字，按钮加宽到 140 并缩字号到 11px 容纳（仍居中：中线 x104）；nowrap 保证单行不裁。 */
+   回应按钮缩短到 110px、字号 14px（用户 2026-11-10：按钮短一点、字 14px）；仍居中（中线 x104，left=49）。
+   高度 22 不变（底边压 BUBBLE_INNER_BOTTOM=143）；nowrap 单行，超长回应裁切。 */
 .pet-bubble-reply {
   position: absolute;
-  left: 34px;
+  left: 49px;
   top: 121px;
-  width: 140px;
+  width: 110px;
   height: 22px;
   padding: 0;
   border: 1px solid #5492b2;
@@ -381,7 +384,7 @@ body.pet-over {
   background: var(--reply-fill);
   box-shadow: 0 2px 0 #3e718c, 0 4px 8px rgba(0, 0, 0, 0.22);
   color: #2b2f36;
-  font: 11px/1.2 var(--font-ui);
+  font: 14px/1.2 var(--font-ui);
   white-space: nowrap;
   overflow: hidden;
   pointer-events: auto;

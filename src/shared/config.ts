@@ -124,6 +124,10 @@ export const ONLINE_TICK_MS = 1000
 // ---- 说话 ----
 /** 气泡默认停留时长。光标还在气泡上会续命，见渲染层装配。 */
 export const BUBBLE_SHOW_MS = 5000
+/** 配了语音时，气泡比语音多停这么一会儿，让主人读完最后一句。 */
+export const VOICE_BUBBLE_PAD_MS = 1000
+/** 配了语音时气泡的最短停留：再短的句子也不许一闪而过。 */
+export const VOICE_BUBBLE_MIN_MS = 2500
 /** 距上次说话不足这么久就不再插一句，六个 reason 都受它约束。 */
 export const TALK_COOLDOWN_MS = 25000
 /** 「闲到交出决策权」那一拍里开口的概率。事件驱动的台词不受它约束。 */
@@ -170,6 +174,10 @@ export const BUBBLE_RING_W = 6
 export const BUBBLE_INNER_BOTTOM = 143
 /** 气泡与它下面那块（面板或身体）之间的间隙。 */
 export const BUBBLE_GAP = 12
+/** 气泡文字框宽（与 style.css .pet-bubble-text 的 width 一致）。 */
+export const BUBBLE_TEXT_WIDTH = 150
+/** 默认每行字数（150px / 14px 默认字号 ≈ 10）。台词表按它剔除超 3 行的句子；气泡渲染按当前字号实时算。 */
+export const BUBBLE_CHARS_PER_LINE = 10
 
 /**
  * 属性变化时飘出来的那串小数字（「饥饿 +12」）。

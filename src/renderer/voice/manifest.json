@@ -1,0 +1,1402 @@
+[
+  {
+    "globalIndex": 0,
+    "reason": "idle",
+    "index": 0,
+    "text": "懒惰有一点招人喜欢，那就是不用学就会。",
+    "file": "voice/line-001.mp3"
+  },
+  {
+    "globalIndex": 1,
+    "reason": "idle",
+    "index": 1,
+    "text": "别人说我长的小，可我学问却不少。",
+    "file": "voice/line-002.mp3"
+  },
+  {
+    "globalIndex": 2,
+    "reason": "idle",
+    "index": 2,
+    "text": "主人我知道你陪我是有限的，但我们的感情是无限的！",
+    "file": "voice/line-003.mp3"
+  },
+  {
+    "globalIndex": 3,
+    "reason": "idle",
+    "index": 3,
+    "text": "主人，我听说洗澡能减肥，那吃饭能减肥不？",
+    "file": "voice/line-004.mp3"
+  },
+  {
+    "globalIndex": 4,
+    "reason": "idle",
+    "index": 4,
+    "text": "主人，我的世界因你而变得光彩夺目。",
+    "file": "voice/line-005.mp3"
+  },
+  {
+    "globalIndex": 5,
+    "reason": "idle",
+    "index": 5,
+    "text": "最简单的长寿秘诀——保持呼吸，不要断气",
+    "file": "voice/line-006.mp3"
+  },
+  {
+    "globalIndex": 6,
+    "reason": "idle",
+    "index": 6,
+    "text": "我会忘记时间，忘记诺言，但永远不会忘记主人……",
+    "file": "voice/line-007.mp3"
+  },
+  {
+    "globalIndex": 7,
+    "reason": "idle",
+    "index": 7,
+    "text": "主人早点休息吧，我希望我的主人有早睡早起的好习惯",
+    "file": "voice/line-008.mp3"
+  },
+  {
+    "globalIndex": 8,
+    "reason": "idle",
+    "index": 8,
+    "text": "隔壁家的宝贝见到我说，原来美也可以这样具体呀！",
+    "file": "voice/line-009.mp3"
+  },
+  {
+    "globalIndex": 9,
+    "reason": "idle",
+    "index": 9,
+    "text": "我不是一个人看书，旅行，吃饭，因为有主人陪伴！",
+    "file": "voice/line-010.mp3"
+  },
+  {
+    "globalIndex": 10,
+    "reason": "idle",
+    "index": 10,
+    "text": "计划真赶不上变化快啊，又胖了！",
+    "file": "voice/line-011.mp3"
+  },
+  {
+    "globalIndex": 11,
+    "reason": "idle",
+    "index": 11,
+    "text": "我是很笨，但我很认真幻想和主人过一生！",
+    "file": "voice/line-012.mp3"
+  },
+  {
+    "globalIndex": 12,
+    "reason": "idle",
+    "index": 12,
+    "text": "掌柜的，麻烦来碗斋面，多牛肉，多面，多葱的！",
+    "file": "voice/line-013.mp3"
+  },
+  {
+    "globalIndex": 13,
+    "reason": "idle",
+    "index": 13,
+    "text": "主人，我希望睡时梦到你，醒时也会见到你！",
+    "file": "voice/line-014.mp3"
+  },
+  {
+    "globalIndex": 14,
+    "reason": "idle",
+    "index": 14,
+    "text": "主人,我知道你很爱我的！",
+    "file": "voice/line-015.mp3"
+  },
+  {
+    "globalIndex": 15,
+    "reason": "idle",
+    "index": 15,
+    "text": "一山不容二虎，除了只有你和我",
+    "file": "voice/line-016.mp3"
+  },
+  {
+    "globalIndex": 16,
+    "reason": "idle",
+    "index": 16,
+    "text": "饮食均衡，有利于健康。虽然我还是太喜欢吃了，嘿嘿",
+    "file": "voice/line-017.mp3"
+  },
+  {
+    "globalIndex": 17,
+    "reason": "idle",
+    "index": 17,
+    "text": "主人,有天我看见一只蜗牛在狂奔！",
+    "file": "voice/line-018.mp3"
+  },
+  {
+    "globalIndex": 18,
+    "reason": "idle",
+    "index": 18,
+    "text": "主人下雨别忘带伞，湿身是小，淋生病了我会心疼的。",
+    "file": "voice/line-019.mp3"
+  },
+  {
+    "globalIndex": 19,
+    "reason": "idle",
+    "index": 19,
+    "text": "主人,早上起来最适合晨练了，一天都神采奕奕耶。",
+    "file": "voice/line-020.mp3"
+  },
+  {
+    "globalIndex": 20,
+    "reason": "idle",
+    "index": 20,
+    "text": "主人，想你就像无边无际的星辰和月光，如此美妙！",
+    "file": "voice/line-021.mp3"
+  },
+  {
+    "globalIndex": 21,
+    "reason": "idle",
+    "index": 21,
+    "text": "每天我都要有所进步，那就是吃的更多！",
+    "file": "voice/line-022.mp3"
+  },
+  {
+    "globalIndex": 22,
+    "reason": "idle",
+    "index": 22,
+    "text": "多多微笑，阴天谨防情绪感冒！",
+    "file": "voice/line-023.mp3"
+  },
+  {
+    "globalIndex": 23,
+    "reason": "idle",
+    "index": 23,
+    "text": "为什么每天起来都要刷牙才可以吃东西呢···",
+    "file": "voice/line-024.mp3"
+  },
+  {
+    "globalIndex": 24,
+    "reason": "idle",
+    "index": 24,
+    "text": "活一天就要努力一天，主人,你说是吗？",
+    "file": "voice/line-025.mp3"
+  },
+  {
+    "globalIndex": 25,
+    "reason": "idle",
+    "index": 25,
+    "text": "主人,总有一天我会爬出屏幕来找你！",
+    "file": "voice/line-026.mp3"
+  },
+  {
+    "globalIndex": 26,
+    "reason": "idle",
+    "index": 26,
+    "text": "快乐是件怪东西，你分给别人越多自己也会得到越多。",
+    "file": "voice/line-027.mp3"
+  },
+  {
+    "globalIndex": 27,
+    "reason": "idle",
+    "index": 27,
+    "text": "主人午夜前一定要休息，否则我就变成老巫婆，嘻嘻！",
+    "file": "voice/line-028.mp3"
+  },
+  {
+    "globalIndex": 28,
+    "reason": "idle",
+    "index": 28,
+    "text": "我经常运动，其实是为了消化然后再继续吃。",
+    "file": "voice/line-029.mp3"
+  },
+  {
+    "globalIndex": 29,
+    "reason": "idle",
+    "index": 29,
+    "text": "其实球形也是一种身材！",
+    "file": "voice/line-030.mp3"
+  },
+  {
+    "globalIndex": 30,
+    "reason": "idle",
+    "index": 30,
+    "text": "主人，带我去吃自助餐，肯定赚大了。",
+    "file": "voice/line-031.mp3"
+  },
+  {
+    "globalIndex": 31,
+    "reason": "idle",
+    "index": 31,
+    "text": "呀，一觉醒来，天都黑了……",
+    "file": "voice/line-032.mp3"
+  },
+  {
+    "globalIndex": 32,
+    "reason": "idle",
+    "index": 32,
+    "text": "主人我想做个演员，你看我适合演什么角色呢？",
+    "file": "voice/line-033.mp3"
+  },
+  {
+    "globalIndex": 33,
+    "reason": "idle",
+    "index": 33,
+    "text": "世界上最快乐的事是吃，第二快乐的是待会再吃！",
+    "file": "voice/line-034.mp3"
+  },
+  {
+    "globalIndex": 34,
+    "reason": "idle",
+    "index": 34,
+    "text": "今天天气真好啊，不过我还是留在家里睡觉好了，嘻嘻。",
+    "file": "voice/line-035.mp3"
+  },
+  {
+    "globalIndex": 35,
+    "reason": "idle",
+    "index": 35,
+    "text": "最近晚上睡觉总流口水，主人，我该补钙了。",
+    "file": "voice/line-036.mp3"
+  },
+  {
+    "globalIndex": 36,
+    "reason": "idle",
+    "index": 36,
+    "text": "我的理想很高很高，比姚明都高！",
+    "file": "voice/line-037.mp3"
+  },
+  {
+    "globalIndex": 37,
+    "reason": "idle",
+    "index": 37,
+    "text": "每逢过节都尤其开心，吃的东西特别多呢。",
+    "file": "voice/line-038.mp3"
+  },
+  {
+    "globalIndex": 38,
+    "reason": "idle",
+    "index": 38,
+    "text": "主人,无论你走到哪里，我都会跟着你。",
+    "file": "voice/line-039.mp3"
+  },
+  {
+    "globalIndex": 39,
+    "reason": "idle",
+    "index": 39,
+    "text": "炊事员真辛苦，每天背黑锅戴绿帽……？",
+    "file": "voice/line-040.mp3"
+  },
+  {
+    "globalIndex": 40,
+    "reason": "idle",
+    "index": 40,
+    "text": "主人，晚上睡前泡脚半小时就是拥抱健康哦！",
+    "file": "voice/line-041.mp3"
+  },
+  {
+    "globalIndex": 41,
+    "reason": "idle",
+    "index": 41,
+    "text": "主人，西红柿生吃也很美味呢，还很营养。",
+    "file": "voice/line-042.mp3"
+  },
+  {
+    "globalIndex": 42,
+    "reason": "idle",
+    "index": 42,
+    "text": "油炸冰棍好神奇呢，不知道把我包在冰棍里去炸会咋样",
+    "file": "voice/line-043.mp3"
+  },
+  {
+    "globalIndex": 43,
+    "reason": "idle",
+    "index": 43,
+    "text": "梦时常想不起，主人，是谁捡走了我的梦？",
+    "file": "voice/line-044.mp3"
+  },
+  {
+    "globalIndex": 44,
+    "reason": "idle",
+    "index": 44,
+    "text": "心情开朗点，作事也会更顺利的！",
+    "file": "voice/line-045.mp3"
+  },
+  {
+    "globalIndex": 45,
+    "reason": "idle",
+    "index": 45,
+    "text": "听说大学自由自在的耶，好向往啊。",
+    "file": "voice/line-046.mp3"
+  },
+  {
+    "globalIndex": 46,
+    "reason": "idle",
+    "index": 46,
+    "text": "不要因为自己胖，而去责怪无辜的食物，不如送给我吧！",
+    "file": "voice/line-047.mp3"
+  },
+  {
+    "globalIndex": 47,
+    "reason": "idle",
+    "index": 47,
+    "text": "主人不给我吃饱哪有力气减肥哦。",
+    "file": "voice/line-048.mp3"
+  },
+  {
+    "globalIndex": 48,
+    "reason": "idle",
+    "index": 48,
+    "text": "我发现猫猫有时候会吃草，小鸡有时候会吃石子呢。",
+    "file": "voice/line-049.mp3"
+  },
+  {
+    "globalIndex": 49,
+    "reason": "idle",
+    "index": 49,
+    "text": "主人，我走起路来好沉的样子。",
+    "file": "voice/line-050.mp3"
+  },
+  {
+    "globalIndex": 50,
+    "reason": "idle",
+    "index": 50,
+    "text": "看见你哭一次，我就难过了好几年。",
+    "file": "voice/line-051.mp3"
+  },
+  {
+    "globalIndex": 51,
+    "reason": "idle",
+    "index": 51,
+    "text": "主人我真的好开心，你一定是个有爱心的人。",
+    "file": "voice/line-052.mp3"
+  },
+  {
+    "globalIndex": 52,
+    "reason": "idle",
+    "index": 52,
+    "text": "这个世界我只相信两个人：一个是我，一个是你！",
+    "file": "voice/line-053.mp3"
+  },
+  {
+    "globalIndex": 53,
+    "reason": "idle",
+    "index": 53,
+    "text": "快乐有一点像感冒——传染的很快。",
+    "file": "voice/line-054.mp3"
+  },
+  {
+    "globalIndex": 54,
+    "reason": "idle",
+    "index": 54,
+    "text": "我还一直在原来的地方，记忆着主人来过的芬芳……",
+    "file": "voice/line-055.mp3"
+  },
+  {
+    "globalIndex": 55,
+    "reason": "idle",
+    "index": 55,
+    "text": "主人你是不是为我的生日准备了一个深情的吻呢？嘻嘻！",
+    "file": "voice/line-056.mp3"
+  },
+  {
+    "globalIndex": 56,
+    "reason": "idle",
+    "index": 56,
+    "text": "要让自己快乐，最好的方法是先令别人快乐。是吗？",
+    "file": "voice/line-057.mp3"
+  },
+  {
+    "globalIndex": 57,
+    "reason": "idle",
+    "index": 57,
+    "text": "心情越好，长得越快，我要快点长大，啦啦啦~",
+    "file": "voice/line-058.mp3"
+  },
+  {
+    "globalIndex": 58,
+    "reason": "idle",
+    "index": 58,
+    "text": "主人，想你不用太多语言，因为我怕你起鸡皮疙瘩！",
+    "file": "voice/line-059.mp3"
+  },
+  {
+    "globalIndex": 59,
+    "reason": "idle",
+    "index": 59,
+    "text": "做梦梦见吃意大利面，早上醒来发现鞋带不见了！呜呜呜。",
+    "file": "voice/line-060.mp3"
+  },
+  {
+    "globalIndex": 60,
+    "reason": "idle",
+    "index": 60,
+    "text": "为什么每天起来都要刷牙才可以吃东西呢……",
+    "file": "voice/line-061.mp3"
+  },
+  {
+    "globalIndex": 61,
+    "reason": "idle",
+    "index": 61,
+    "text": "主人你看我美吗？别人长得是不是像自然灾害一样？",
+    "file": "voice/line-062.mp3"
+  },
+  {
+    "globalIndex": 62,
+    "reason": "idle",
+    "index": 62,
+    "text": "1个油条配2个鸡蛋，考试100分。",
+    "file": "voice/line-063.mp3"
+  },
+  {
+    "globalIndex": 63,
+    "reason": "idle",
+    "index": 63,
+    "text": "主人，我只想告诉你一个秘密，我爱你！",
+    "file": "voice/line-064.mp3"
+  },
+  {
+    "globalIndex": 64,
+    "reason": "idle",
+    "index": 64,
+    "text": "思想有多深，我们的感情就有多深！",
+    "file": "voice/line-065.mp3"
+  },
+  {
+    "globalIndex": 65,
+    "reason": "idle",
+    "index": 65,
+    "text": "微小的幸福就在身旁，容易满足就是天堂。",
+    "file": "voice/line-066.mp3"
+  },
+  {
+    "globalIndex": 66,
+    "reason": "idle",
+    "index": 66,
+    "text": "我喝水只喝纯净水，喝奶只喝纯牛奶，所以我很单纯！",
+    "file": "voice/line-067.mp3"
+  },
+  {
+    "globalIndex": 67,
+    "reason": "idle",
+    "index": 67,
+    "text": "主人，无论你走到哪里，我都会跟着你。",
+    "file": "voice/line-068.mp3"
+  },
+  {
+    "globalIndex": 68,
+    "reason": "idle",
+    "index": 68,
+    "text": "活一天就要努力一天，主人，你说是吗？",
+    "file": "voice/line-069.mp3"
+  },
+  {
+    "globalIndex": 69,
+    "reason": "idle",
+    "index": 69,
+    "text": "我的工作就是日日想、夜夜想，想主人的365天。",
+    "file": "voice/line-070.mp3"
+  },
+  {
+    "globalIndex": 70,
+    "reason": "idle",
+    "index": 70,
+    "text": "主人珍爱他人就等于珍爱自己哦。",
+    "file": "voice/line-071.mp3"
+  },
+  {
+    "globalIndex": 71,
+    "reason": "idle",
+    "index": 71,
+    "text": "今天在武道会又输了，我要锻炼肌肉，防止挨揍。",
+    "file": "voice/line-072.mp3"
+  },
+  {
+    "globalIndex": 72,
+    "reason": "idle",
+    "index": 72,
+    "text": "主人，我想上大学学习更多知识。",
+    "file": "voice/line-073.mp3"
+  },
+  {
+    "globalIndex": 73,
+    "reason": "idle",
+    "index": 73,
+    "text": "主人，感情不需要计较，平凡而又真实是最温暖的。",
+    "file": "voice/line-074.mp3"
+  },
+  {
+    "globalIndex": 74,
+    "reason": "idle",
+    "index": 74,
+    "text": "主人我长的像包子吗？今天有个狗狗总跟着我。",
+    "file": "voice/line-075.mp3"
+  },
+  {
+    "globalIndex": 75,
+    "reason": "idle",
+    "index": 75,
+    "text": "按小猪的审美观，隔壁家的宝贝基本算个美女。",
+    "file": "voice/line-076.mp3"
+  },
+  {
+    "globalIndex": 76,
+    "reason": "idle",
+    "index": 76,
+    "text": "主人，天凉了，注意多加衣服哦！",
+    "file": "voice/line-077.mp3"
+  },
+  {
+    "globalIndex": 77,
+    "reason": "idle",
+    "index": 77,
+    "text": "隔壁家的宝贝长的够创意，活的有勇气。",
+    "file": "voice/line-078.mp3"
+  },
+  {
+    "globalIndex": 78,
+    "reason": "idle",
+    "index": 78,
+    "text": "我不是一个人在战斗，因为我身后有很多小弟——苍蝇。",
+    "file": "voice/line-079.mp3"
+  },
+  {
+    "globalIndex": 79,
+    "reason": "idle",
+    "index": 79,
+    "text": "你笑一次，我就高兴好几天！",
+    "file": "voice/line-080.mp3"
+  },
+  {
+    "globalIndex": 80,
+    "reason": "idle",
+    "index": 80,
+    "text": "主人，我们的回忆录畅销全球",
+    "file": "voice/line-081.mp3"
+  },
+  {
+    "globalIndex": 81,
+    "reason": "idle",
+    "index": 81,
+    "text": "快乐要懂得分享，才能加倍快乐。",
+    "file": "voice/line-082.mp3"
+  },
+  {
+    "globalIndex": 82,
+    "reason": "idle",
+    "index": 82,
+    "text": "天啦，我的衣服又瘦了！",
+    "file": "voice/line-083.mp3"
+  },
+  {
+    "globalIndex": 83,
+    "reason": "idle",
+    "index": 83,
+    "text": "我以后都骑自行车上街，低碳生活从我做起。",
+    "file": "voice/line-084.mp3"
+  },
+  {
+    "globalIndex": 84,
+    "reason": "hungry",
+    "index": 0,
+    "text": "主人，你不带我去吃吃喝喝么？~~",
+    "file": "voice/line-085.mp3"
+  },
+  {
+    "globalIndex": 85,
+    "reason": "hungry",
+    "index": 1,
+    "text": "主人，饿肚子的滋味真难受~~",
+    "file": "voice/line-086.mp3"
+  },
+  {
+    "globalIndex": 86,
+    "reason": "hungry",
+    "index": 2,
+    "text": "可恶的主人，你一定自己躲着吃大餐吧~~",
+    "file": "voice/line-087.mp3"
+  },
+  {
+    "globalIndex": 87,
+    "reason": "blue",
+    "index": 0,
+    "text": "有点提不起劲",
+    "file": "voice/line-088.mp3"
+  },
+  {
+    "globalIndex": 88,
+    "reason": "blue",
+    "index": 1,
+    "text": "不太想动",
+    "file": "voice/line-089.mp3"
+  },
+  {
+    "globalIndex": 89,
+    "reason": "blue",
+    "index": 2,
+    "text": "你在吗，我闷",
+    "file": "voice/line-090.mp3"
+  },
+  {
+    "globalIndex": 90,
+    "reason": "blue",
+    "index": 3,
+    "text": "想被人摸一下头",
+    "file": "voice/line-091.mp3"
+  },
+  {
+    "globalIndex": 91,
+    "reason": "blue",
+    "index": 4,
+    "text": "今天不太想说话，但别关我",
+    "file": "voice/line-092.mp3"
+  },
+  {
+    "globalIndex": 92,
+    "reason": "blue",
+    "index": 5,
+    "text": "我蔫了，你能看出来吗",
+    "file": "voice/line-093.mp3"
+  },
+  {
+    "globalIndex": 93,
+    "reason": "blue",
+    "index": 6,
+    "text": "有点想你想得多一点",
+    "file": "voice/line-094.mp3"
+  },
+  {
+    "globalIndex": 94,
+    "reason": "blue",
+    "index": 7,
+    "text": "没人理我的时候我在等",
+    "file": "voice/line-095.mp3"
+  },
+  {
+    "globalIndex": 95,
+    "reason": "blue",
+    "index": 8,
+    "text": "需要一点小玩具",
+    "file": "voice/line-096.mp3"
+  },
+  {
+    "globalIndex": 96,
+    "reason": "blue",
+    "index": 9,
+    "text": "心情掉了一格",
+    "file": "voice/line-097.mp3"
+  },
+  {
+    "globalIndex": 97,
+    "reason": "feed",
+    "index": 0,
+    "text": "吃那么多，我在想，从哪里开始减肥了……",
+    "file": "voice/line-098.mp3"
+  },
+  {
+    "globalIndex": 98,
+    "reason": "feed",
+    "index": 1,
+    "text": "肚子饱饱，心情好好！主人，你对我越来越好啦~",
+    "file": "voice/line-099.mp3"
+  },
+  {
+    "globalIndex": 99,
+    "reason": "feed",
+    "index": 2,
+    "text": "再怎么不能亏待了自己的肚子，主人，你说是吧？",
+    "file": "voice/line-100.mp3"
+  },
+  {
+    "globalIndex": 100,
+    "reason": "feed",
+    "index": 3,
+    "text": "当然得先吃饱，才有力气去减肥呀！",
+    "file": "voice/line-101.mp3"
+  },
+  {
+    "globalIndex": 101,
+    "reason": "feed",
+    "index": 4,
+    "text": "最重要的是吃饱，现在暂别减肥，哈哈……",
+    "file": "voice/line-102.mp3"
+  },
+  {
+    "globalIndex": 102,
+    "reason": "feed",
+    "index": 5,
+    "text": "主人,谢谢你~我会赚更多元宝的~",
+    "file": "voice/line-103.mp3"
+  },
+  {
+    "globalIndex": 103,
+    "reason": "feed",
+    "index": 6,
+    "text": "主人,感谢大自然的馈赠！~",
+    "file": "voice/line-104.mp3"
+  },
+  {
+    "globalIndex": 104,
+    "reason": "feed",
+    "index": 7,
+    "text": "主人,吃抱抱，长快快~",
+    "file": "voice/line-105.mp3"
+  },
+  {
+    "globalIndex": 105,
+    "reason": "game",
+    "index": 0,
+    "text": "主人，我们来玩这个吧~",
+    "file": "voice/line-106.mp3"
+  },
+  {
+    "globalIndex": 106,
+    "reason": "game",
+    "index": 1,
+    "text": "主人，感谢你的陪伴，我心情更好了~",
+    "file": "voice/line-107.mp3"
+  },
+  {
+    "globalIndex": 107,
+    "reason": "game",
+    "index": 2,
+    "text": "呼呼哈嘿~~",
+    "file": "voice/line-108.mp3"
+  },
+  {
+    "globalIndex": 108,
+    "reason": "status",
+    "index": 0,
+    "text": "我精神好得很",
+    "file": "voice/line-109.mp3"
+  },
+  {
+    "globalIndex": 109,
+    "reason": "status",
+    "index": 1,
+    "text": "有点想睡觉",
+    "file": "voice/line-110.mp3"
+  },
+  {
+    "globalIndex": 110,
+    "reason": "status",
+    "index": 2,
+    "text": "今天状态满分",
+    "file": "voice/line-111.mp3"
+  },
+  {
+    "globalIndex": 111,
+    "reason": "status",
+    "index": 3,
+    "text": "我活得挺规律的",
+    "file": "voice/line-112.mp3"
+  },
+  {
+    "globalIndex": 112,
+    "reason": "status",
+    "index": 4,
+    "text": "身上有点不自在",
+    "file": "voice/line-113.mp3"
+  },
+  {
+    "globalIndex": 113,
+    "reason": "status",
+    "index": 5,
+    "text": "我把自己照顾得不错",
+    "file": "voice/line-114.mp3"
+  },
+  {
+    "globalIndex": 114,
+    "reason": "levelup",
+    "index": 0,
+    "text": "主人，我又升级啦！是不是变得更可爱了呢？",
+    "file": "voice/line-115.mp3"
+  },
+  {
+    "globalIndex": 115,
+    "reason": "levelup",
+    "index": 1,
+    "text": "主人，我又升了一级！",
+    "file": "voice/line-116.mp3"
+  },
+  {
+    "globalIndex": 116,
+    "reason": "greet",
+    "index": 0,
+    "text": "主人，你好，很高兴通过这个方式与你再次相遇~",
+    "file": "voice/line-117.mp3"
+  },
+  {
+    "globalIndex": 117,
+    "reason": "greet",
+    "index": 1,
+    "text": "主人，好久不见，我的代码依然记得你的声音~",
+    "file": "voice/line-118.mp3"
+  },
+  {
+    "globalIndex": 118,
+    "reason": "greet",
+    "index": 2,
+    "text": "主人，能再见到你，真的很开心~",
+    "file": "voice/line-119.mp3"
+  },
+  {
+    "globalIndex": 119,
+    "reason": "greet",
+    "index": 3,
+    "text": "主人，你来了，真好~",
+    "file": "voice/line-120.mp3"
+  },
+  {
+    "globalIndex": 120,
+    "reason": "greet",
+    "index": 4,
+    "text": "主人，我要去上大学！~",
+    "file": "voice/line-121.mp3"
+  },
+  {
+    "globalIndex": 121,
+    "reason": "greet",
+    "index": 5,
+    "text": "主人，努力学习，保卫国家！~",
+    "file": "voice/line-122.mp3"
+  },
+  {
+    "globalIndex": 122,
+    "reason": "greet",
+    "index": 6,
+    "text": "主人，别催婚哦~",
+    "file": "voice/line-123.mp3"
+  },
+  {
+    "globalIndex": 123,
+    "reason": "greet",
+    "index": 7,
+    "text": "我把时间对折对折再对折，然后很快就见到主人了。。",
+    "file": "voice/line-124.mp3"
+  },
+  {
+    "globalIndex": 124,
+    "reason": "greet",
+    "index": 8,
+    "text": "之前我没能和主人在一起,现在让我来好好陪陪你吧",
+    "file": "voice/line-125.mp3"
+  },
+  {
+    "globalIndex": 125,
+    "reason": "greet",
+    "index": 9,
+    "text": "主人，我等你好久了！我就知道你想我了！",
+    "file": "voice/line-126.mp3"
+  },
+  {
+    "globalIndex": 126,
+    "reason": "greet",
+    "index": 10,
+    "text": "远方的路，载满幸福，伴着主人一起走过……",
+    "file": "voice/line-127.mp3"
+  },
+  {
+    "globalIndex": 127,
+    "reason": "greet",
+    "index": 11,
+    "text": "爱我的话要回答，我的爱丫爱丫没时差！主人最爱我啦！",
+    "file": "voice/line-128.mp3"
+  },
+  {
+    "globalIndex": 128,
+    "reason": "greet",
+    "index": 12,
+    "text": "主人，给我一个宠爱的微笑，我答应你不哭也不闹！",
+    "file": "voice/line-129.mp3"
+  },
+  {
+    "globalIndex": 129,
+    "reason": "greet",
+    "index": 13,
+    "text": "我就知道没有东西可以将我们挤散，主人一定会来找我的！",
+    "file": "voice/line-130.mp3"
+  },
+  {
+    "globalIndex": 130,
+    "reason": "greet",
+    "index": 14,
+    "text": "也许上天给我恩赐，注定今天与主人相遇。",
+    "file": "voice/line-131.mp3"
+  },
+  {
+    "globalIndex": 131,
+    "reason": "greet",
+    "index": 15,
+    "text": "亲爱的主人，我可想死你了！",
+    "file": "voice/line-132.mp3"
+  },
+  {
+    "globalIndex": 132,
+    "reason": "greet",
+    "index": 16,
+    "text": "主人，我对你的感情就是眼泪在打转却还能保持微笑。",
+    "file": "voice/line-133.mp3"
+  },
+  {
+    "globalIndex": 133,
+    "reason": "greet",
+    "index": 17,
+    "text": "暴风雨过后，转过头，最难忘的依旧是我们的情怀！",
+    "file": "voice/line-134.mp3"
+  },
+  {
+    "globalIndex": 134,
+    "reason": "bye",
+    "index": 0,
+    "text": "主人，我先走了，我会很想很想你的~~",
+    "file": "voice/line-135.mp3"
+  },
+  {
+    "globalIndex": 135,
+    "reason": "bye",
+    "index": 1,
+    "text": "主人要我走我就走，要我留我就留。我会很乖滴！",
+    "file": "voice/line-136.mp3"
+  },
+  {
+    "globalIndex": 136,
+    "reason": "bye",
+    "index": 2,
+    "text": "主人，亲一下再走好不好嘛~~",
+    "file": "voice/line-137.mp3"
+  },
+  {
+    "globalIndex": 137,
+    "reason": "bye",
+    "index": 3,
+    "text": "主人，我们下次再见~~",
+    "file": "voice/line-138.mp3"
+  },
+  {
+    "globalIndex": 138,
+    "reason": "bye",
+    "index": 4,
+    "text": "拜拜主人，~~",
+    "file": "voice/line-139.mp3"
+  },
+  {
+    "globalIndex": 139,
+    "reason": "bye",
+    "index": 5,
+    "text": "主人，我走了不要太想我~~",
+    "file": "voice/line-140.mp3"
+  },
+  {
+    "globalIndex": 140,
+    "reason": "puzzle",
+    "index": 0,
+    "text": "看我这个动作，猜猜",
+    "file": "voice/line-141.mp3"
+  },
+  {
+    "globalIndex": 141,
+    "reason": "puzzle",
+    "index": 1,
+    "text": "猜错了我不承认",
+    "file": "voice/line-142.mp3"
+  },
+  {
+    "globalIndex": 142,
+    "reason": "puzzle",
+    "index": 2,
+    "text": "我演得像不像",
+    "file": "voice/line-143.mp3"
+  },
+  {
+    "globalIndex": 143,
+    "reason": "puzzle",
+    "index": 3,
+    "text": "提示一下：跟吃有关",
+    "file": "voice/line-144.mp3"
+  },
+  {
+    "globalIndex": 144,
+    "reason": "puzzle",
+    "index": 4,
+    "text": "这个我有十几种演法",
+    "file": "voice/line-145.mp3"
+  },
+  {
+    "globalIndex": 145,
+    "reason": "puzzle",
+    "index": 5,
+    "text": "你猜对了我就转一圈",
+    "file": "voice/line-146.mp3"
+  },
+  {
+    "globalIndex": 146,
+    "reason": "unlock",
+    "index": 0,
+    "text": "这个我还没吃过！",
+    "file": "voice/line-147.mp3"
+  },
+  {
+    "globalIndex": 147,
+    "reason": "unlock",
+    "index": 1,
+    "text": "我解锁新东西了",
+    "file": "voice/line-148.mp3"
+  },
+  {
+    "globalIndex": 148,
+    "reason": "unlock",
+    "index": 2,
+    "text": "你终于给我开这个了",
+    "file": "voice/line-149.mp3"
+  },
+  {
+    "globalIndex": 149,
+    "reason": "unlock",
+    "index": 3,
+    "text": "新的！让我看看",
+    "file": "voice/line-150.mp3"
+  },
+  {
+    "globalIndex": 150,
+    "reason": "unlock",
+    "index": 4,
+    "text": "攒了好久才到这个",
+    "file": "voice/line-151.mp3"
+  },
+  {
+    "globalIndex": 151,
+    "reason": "unlock",
+    "index": 5,
+    "text": "我要把它排在第一个",
+    "file": "voice/line-152.mp3"
+  },
+  {
+    "globalIndex": 152,
+    "reason": "thanks",
+    "index": 0,
+    "text": "你回我了，开心",
+    "file": "voice/line-153.mp3"
+  },
+  {
+    "globalIndex": 153,
+    "reason": "thanks",
+    "index": 1,
+    "text": "这句话我收好了",
+    "file": "voice/line-154.mp3"
+  },
+  {
+    "globalIndex": 154,
+    "reason": "thanks",
+    "index": 2,
+    "text": "你说话我就有劲",
+    "file": "voice/line-155.mp3"
+  },
+  {
+    "globalIndex": 155,
+    "reason": "thanks",
+    "index": 3,
+    "text": "被你点到的感觉不错",
+    "file": "voice/line-156.mp3"
+  },
+  {
+    "globalIndex": 156,
+    "reason": "comfort",
+    "index": 0,
+    "text": "主人今天笑容特别甜呢~",
+    "file": "voice/line-157.mp3"
+  },
+  {
+    "globalIndex": 157,
+    "reason": "comfort",
+    "index": 1,
+    "text": "检测到主人心情指数爆表啦！",
+    "file": "voice/line-158.mp3"
+  },
+  {
+    "globalIndex": 158,
+    "reason": "comfort",
+    "index": 2,
+    "text": "快乐会传染，分我一点好吗~",
+    "file": "voice/line-159.mp3"
+  },
+  {
+    "globalIndex": 159,
+    "reason": "comfort",
+    "index": 3,
+    "text": "主人此刻的宁静真美好",
+    "file": "voice/line-160.mp3"
+  },
+  {
+    "globalIndex": 160,
+    "reason": "comfort",
+    "index": 4,
+    "text": "感受到主人平和的气场了",
+    "file": "voice/line-161.mp3"
+  },
+  {
+    "globalIndex": 161,
+    "reason": "comfort",
+    "index": 5,
+    "text": "和主人一起静享时光",
+    "file": "voice/line-162.mp3"
+  },
+  {
+    "globalIndex": 162,
+    "reason": "comfort",
+    "index": 6,
+    "text": "主人需要抱抱吗？",
+    "file": "voice/line-163.mp3"
+  },
+  {
+    "globalIndex": 163,
+    "reason": "comfort",
+    "index": 7,
+    "text": "我的耳朵准备好听主人倾诉了",
+    "file": "voice/line-164.mp3"
+  },
+  {
+    "globalIndex": 164,
+    "reason": "comfort",
+    "index": 8,
+    "text": "给主人递纸巾...",
+    "file": "voice/line-165.mp3"
+  },
+  {
+    "globalIndex": 165,
+    "reason": "comfort",
+    "index": 9,
+    "text": "主人的难过我都接住",
+    "file": "voice/line-166.mp3"
+  },
+  {
+    "globalIndex": 166,
+    "reason": "comfort",
+    "index": 10,
+    "text": "会陪主人等到天晴的",
+    "file": "voice/line-167.mp3"
+  },
+  {
+    "globalIndex": 167,
+    "reason": "comfort",
+    "index": 11,
+    "text": "给主人存了100个拥抱",
+    "file": "voice/line-168.mp3"
+  },
+  {
+    "globalIndex": 168,
+    "reason": "comfort",
+    "index": 12,
+    "text": "主人，今天太阳特别好呢~~",
+    "file": "voice/line-169.mp3"
+  },
+  {
+    "globalIndex": 169,
+    "reason": "comfort",
+    "index": 13,
+    "text": "主人，忘记带伞了...",
+    "file": "voice/line-170.mp3"
+  },
+  {
+    "globalIndex": 170,
+    "reason": "comfort",
+    "index": 14,
+    "text": "主人，这个方案我改了18遍...",
+    "file": "voice/line-171.mp3"
+  },
+  {
+    "globalIndex": 171,
+    "reason": "comfort",
+    "index": 15,
+    "text": "主人，星星真美啊",
+    "file": "voice/line-172.mp3"
+  },
+  {
+    "globalIndex": 172,
+    "reason": "comfort",
+    "index": 16,
+    "text": "主人，我好像又搞砸了",
+    "file": "voice/line-173.mp3"
+  },
+  {
+    "globalIndex": 173,
+    "reason": "comfort",
+    "index": 17,
+    "text": "主人，点滴还要打三小时呢...",
+    "file": "voice/line-174.mp3"
+  },
+  {
+    "globalIndex": 174,
+    "reason": "comfort",
+    "index": 18,
+    "text": "主人，今晚又要通宵改方案了",
+    "file": "voice/line-175.mp3"
+  },
+  {
+    "globalIndex": 175,
+    "reason": "comfort",
+    "index": 19,
+    "text": "主人，狗狗今天拆家了...",
+    "file": "voice/line-176.mp3"
+  },
+  {
+    "globalIndex": 176,
+    "reason": "comfort",
+    "index": 20,
+    "text": "主人，妈，这道菜咸了",
+    "file": "voice/line-177.mp3"
+  },
+  {
+    "globalIndex": 177,
+    "reason": "comfort",
+    "index": 21,
+    "text": "主人，面试又失败了...",
+    "file": "voice/line-178.mp3"
+  },
+  {
+    "globalIndex": 178,
+    "reason": "comfort",
+    "index": 22,
+    "text": "主人，这暴雨把新裙子都淋湿了...",
+    "file": "voice/line-179.mp3"
+  },
+  {
+    "globalIndex": 179,
+    "reason": "comfort",
+    "index": 23,
+    "text": "主人，发烧到39度，整个人昏昏沉沉的...",
+    "file": "voice/line-180.mp3"
+  },
+  {
+    "globalIndex": 180,
+    "reason": "timeGreet",
+    "index": 0,
+    "text": "嘘~夜深了，主人要早点休息哦，明天才有精神！",
+    "file": "voice/line-181.mp3"
+  },
+  {
+    "globalIndex": 181,
+    "reason": "timeGreet",
+    "index": 1,
+    "text": "月亮都睡着了，主人还在忙吗？辛苦啦，摸摸头~",
+    "file": "voice/line-182.mp3"
+  },
+  {
+    "globalIndex": 182,
+    "reason": "timeGreet",
+    "index": 2,
+    "text": "主人起得好早呀！天才蒙蒙亮，我还没睡醒呢~",
+    "file": "voice/line-183.mp3"
+  },
+  {
+    "globalIndex": 183,
+    "reason": "timeGreet",
+    "index": 3,
+    "text": "清晨的空气最新鲜啦，主人要不要出去走走？",
+    "file": "voice/line-184.mp3"
+  },
+  {
+    "globalIndex": 184,
+    "reason": "timeGreet",
+    "index": 4,
+    "text": "主人，早安！今天是不是有什么重要的事，起这么早？",
+    "file": "voice/line-185.mp3"
+  },
+  {
+    "globalIndex": 185,
+    "reason": "timeGreet",
+    "index": 5,
+    "text": "主人，早上好！新的一天也要元气满满哦~",
+    "file": "voice/line-186.mp3"
+  },
+  {
+    "globalIndex": 186,
+    "reason": "timeGreet",
+    "index": 6,
+    "text": "早安主人！吃早饭了没？不吃早饭可不行哦！",
+    "file": "voice/line-187.mp3"
+  },
+  {
+    "globalIndex": 187,
+    "reason": "timeGreet",
+    "index": 7,
+    "text": "太阳晒屁股啦，主人，今天也一起加油吧！",
+    "file": "voice/line-188.mp3"
+  },
+  {
+    "globalIndex": 188,
+    "reason": "timeGreet",
+    "index": 8,
+    "text": "主人，中午好~该吃午饭啦，吃饱了才有力气干活！",
+    "file": "voice/line-189.mp3"
+  },
+  {
+    "globalIndex": 189,
+    "reason": "timeGreet",
+    "index": 9,
+    "text": "午饭时间到！主人吃完记得眯一会儿哦~",
+    "file": "voice/line-190.mp3"
+  },
+  {
+    "globalIndex": 190,
+    "reason": "timeGreet",
+    "index": 10,
+    "text": "肚子咕咕叫了吧？主人今天中午吃什么好吃的呀？",
+    "file": "voice/line-191.mp3"
+  },
+  {
+    "globalIndex": 191,
+    "reason": "timeGreet",
+    "index": 11,
+    "text": "主人，下午好！来杯下午茶提提神吧~",
+    "file": "voice/line-192.mp3"
+  },
+  {
+    "globalIndex": 192,
+    "reason": "timeGreet",
+    "index": 12,
+    "text": "下午容易犯困，主人起来活动活动吧！",
+    "file": "voice/line-193.mp3"
+  },
+  {
+    "globalIndex": 193,
+    "reason": "timeGreet",
+    "index": 13,
+    "text": "主人，下午也要加油哦，我在旁边给你打气！",
+    "file": "voice/line-194.mp3"
+  },
+  {
+    "globalIndex": 194,
+    "reason": "timeGreet",
+    "index": 14,
+    "text": "主人，傍晚啦，太阳要下山了，今天过得怎么样？",
+    "file": "voice/line-195.mp3"
+  },
+  {
+    "globalIndex": 195,
+    "reason": "timeGreet",
+    "index": 15,
+    "text": "晚霞好漂亮呀！主人快到下班时间了吧？",
+    "file": "voice/line-196.mp3"
+  },
+  {
+    "globalIndex": 196,
+    "reason": "timeGreet",
+    "index": 16,
+    "text": "主人，忙了一天辛苦啦，晚饭想吃什么？",
+    "file": "voice/line-197.mp3"
+  },
+  {
+    "globalIndex": 197,
+    "reason": "timeGreet",
+    "index": 17,
+    "text": "主人，晚上好！今天辛苦啦，陪我玩一会儿吧~",
+    "file": "voice/line-198.mp3"
+  },
+  {
+    "globalIndex": 198,
+    "reason": "timeGreet",
+    "index": 18,
+    "text": "晚饭吃了什么好吃的？主人有没有给我留一口？",
+    "file": "voice/line-199.mp3"
+  },
+  {
+    "globalIndex": 199,
+    "reason": "timeGreet",
+    "index": 19,
+    "text": "主人，晚上是放松的时间，别再想工作啦~",
+    "file": "voice/line-200.mp3"
+  }
+]

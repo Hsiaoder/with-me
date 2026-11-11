@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   AMBIENT, SLEEPY, MOOD_HIGH, MOOD_LOW, LATE_NIGHT, SPEECH, GAME_INTRO, LEVELUP_CLIP, CLICK_STREAK_MIN,
-  ALL_CLIPS, pickAmbient, pickForSpeech, pickInteract, type Situation,
+  STARTUP_CLIPS, EXIT_CLIPS, ALL_CLIPS, pickAmbient, pickForSpeech, pickInteract, pickStartup, pickExit, type Situation,
 } from '../src/shared/animation.js'
 
 const fixed = (v: number) => () => v
@@ -83,5 +83,44 @@ describe('日常动画 · 纯选择器', () => {
       expect(pools.has(c.pool), `未知池 ${c.pool}`).toBe(true)
       expect(c.name.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('启动/退出随机片（用户 2026-11-11 指定）', () => {
+  it('启动八条：舞狮头/女仆舞/摇摆舞/动物环绕/小幽灵/堆雪人/荡秋千/放风筝', () => {
+    expect(STARTUP_CLIPS).toEqual([
+      { pool: 'guess', name: 'liondance' }, { pool: 'guess', name: 'maid' }, { pool: 'guess', name: 'swing' },
+      { pool: 'daily', name: 'animals' }, { pool: 'daily', name: 'ghost' }, { pool: 'daily', name: 'snowman' },
+      { pool: 'daily', name: 'swingset' }, { pool: 'daily', name: 'kite' },
+    ])
+  })
+
+  it('退出四条：被落叶淹没/女仆屈膝礼仪/超大伸懒腰/清点归档', () => {
+    expect(EXIT_CLIPS).toEqual([
+      { pool: 'daily', name: 'leaves' }, { pool: 'daily', name: 'curtsy' },
+      { pool: 'daily', name: 'stretch' }, { pool: 'daily', name: 'archive' },
+    ])
+  })
+
+  it('pickStartup：只出启动集里的一条，且 rng 确定则结果确定', () => {
+    for (let i = 0; i < 16; i++) {
+      const c = pickStartup(fixed(i / 16))!
+      expect(STARTUP_CLIPS).toContain(c)
+    }
+    expect(pickStartup(fixed(0))).toEqual(STARTUP_CLIPS[0])
+    expect(pickStartup(fixed(0.37))).toEqual(pickStartup(fixed(0.37)))
+  })
+
+  it('pickExit：只出退出集里的一条，首尾 rng 取首尾', () => {
+    for (let i = 0; i < 12; i++) {
+      const c = pickExit(fixed(i / 12))!
+      expect(EXIT_CLIPS).toContain(c)
+    }
+    expect(pickExit(fixed(0))).toEqual(EXIT_CLIPS[0])
+    expect(pickExit(fixed(0.99))).toEqual(EXIT_CLIPS[EXIT_CLIPS.length - 1])
+  })
+
+  it('启动/退出片都并进 ALL_CLIPS（供装配层核对皮肤池清单）', () => {
+    for (const c of [...STARTUP_CLIPS, ...EXIT_CLIPS]) expect(ALL_CLIPS).toContain(c)
   })
 })

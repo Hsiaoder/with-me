@@ -9,7 +9,8 @@ import { join } from 'node:path'
 // .png 不能漏：气泡底图是 png。上一轮栽在 app:// 的 MIME 白名单，这次栽在复制白名单——
 // 文件躺在仓库里不等于进得了 dist，两道白名单都得过。
 // .woff2/.txt 是界面字体子集与随包 OFL 协议（2026-11-07 字体接入），漏一个字体就 404 落回雅黑。
-const STATIC_EXT = ['.html', '.css', '.svg', '.png', '.woff2', '.txt']
+// .mp3/.json 是台词语音与它的 text→file 清单（2026-11-11 语音接入），漏一个清单就查无此句、全程哑巴。
+const STATIC_EXT = ['.html', '.css', '.svg', '.png', '.woff2', '.txt', '.mp3', '.json']
 const COPIES = [
   ['src/preload/index.cjs', 'dist/preload/index.cjs'],
 ]

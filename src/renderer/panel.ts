@@ -210,14 +210,14 @@ export function createPanel(
     node.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`
   }
 
-  /** 主块 = 谁代表「面板现在站在宠物脚下的那一格」：设置视图是那块板，其余是按钮条。 */
+  /** 主块永远是按钮条：用户要「设置板弹出来时原按钮也不消失」（2026-11-11），所以没有任何视图整块替换它。 */
   function primary(): HTMLElement | null {
-    return current === 'settings' ? plateEl : actionsEl
+    return actionsEl
   }
 
   const hasPlate = (v: PanelView): boolean => v !== 'actions'
-  /** 副板有没有自己的锚点：设置板走主块那条，不参与 stackAnchor/statsAnchor。 */
-  const hasSecondAnchor = (v: PanelView): boolean => v === 'foods' || v === 'games' || v === 'stats' || v === 'debug'
+  /** 副板有没有自己的锚点：除动作视图外都有（食物/游戏挂按钮条外侧，状态/调试挂右侧，设置挂左侧）。 */
+  const hasSecondAnchor = (v: PanelView): boolean => v !== 'actions'
 
   // 滚动状态只属于食物视图，就住在这里：一个数，其余全是纯函数算出来的（shared/scroll.ts）。
   const VIEW_W = FOOD_VISIBLE * FOOD_CELL + (FOOD_VISIBLE - 1) * FOOD_GAP
@@ -755,7 +755,24 @@ export function createPanel(
     return row
   }
 
+  /** 布尔开关一行：标签 + [开][关] 两颗，和可见性那两行同一套形状（data-key/data-value/.on）。 */
+  function boolRow(host: HTMLElement, key: 'developerMode' | 'muted', label: string): void {
+    const line = document.createElement('div')
+    line.className = 'pet-setting'
+    const lab = document.createElement('span')
+    lab.textContent = label
+    line.append(lab)
+    for (const o of [{ v: true, label: '开' }, { v: false, label: '关' }]) {
+      const b = btn(o.label, { key, value: o.v ? 'on' : 'off' }, values[key] === o.v)
+      b.addEventListener('click', () => handlers.setting({ [key]: o.v }))
+      line.append(b)
+    }
+    host.append(line)
+  }
+
   function renderSettings(host: HTMLElement): void {
+    // 顺序按用户要的来：开发者模式 → 全屏/放映 → 静音 → 退出。
+    boolRow(host, 'developerMode', '开发者模式')
     for (const row of ROWS) {
       const line = document.createElement('div')
       line.className = 'pet-setting'
@@ -769,6 +786,7 @@ export function createPanel(
       }
       host.append(line)
     }
+    boolRow(host, 'muted', '静音')
     const credit = document.createElement('div')
     credit.className = 'pet-credit'
     credit.textContent = '字体：思源黑体 / Fredoka（SIL OFL 1.1）'
@@ -806,7 +824,6 @@ export function createPanel(
   }
 
   function render(): void {
-    const wantActions = current !== 'settings'
     if (plateEl !== null) {
       plateEl.remove()
       plateEl = null
@@ -814,12 +831,8 @@ export function createPanel(
     foodRefs = null                 // 旧列表节点已经不在了，别让 syncScroll 去摸它们
     if (tipEl !== null) { tipEl.remove(); tipEl = null }   // 悬浮卡随列表一起退场
     runtimeRefs = null              // 同上：那两行的字要等下一次 renderStats 重新交出来
-    if (!wantActions) {
-      if (actionsEl !== null) {
-        actionsEl.remove()
-        actionsEl = null
-      }
-    } else if (actionsEl === null) {
+    // 按钮条常驻所有视图（含设置）：用户要「设置板出来时原按钮不消失」。跨视图复用，不重建。
+    if (actionsEl === null) {
       actionsEl = renderActions()
       el.append(actionsEl)
     }
@@ -836,6 +849,8 @@ export function createPanel(
     }
     // 按钮条跨视图复用之后，「哪一颗是当前视图」得单独同步——以前是重建时顺手带上的
     syncActive()
+    // 调试按钮只在开发者模式开着时露面；开关换了就地翻 hidden，不重建按钮条。
+    syncDebugGate()
     // 视图换了尺寸就变，锚在旧矩形上会飘：两块各按自己的锚点重贴
     place(primary(), at)
     place(plateEl, hasSecondAnchor(current) ? plateAt : null)
@@ -848,6 +863,13 @@ export function createPanel(
       const view = actions.find((a) => a.id === b.dataset.id)?.view
       b.classList.toggle('on', view !== undefined && view === current)
     }
+  }
+
+  /** 开发者模式关着就把调试按钮藏掉（默认关）。按钮始终建在树里，只翻 hidden，开了立刻能显示。 */
+  function syncDebugGate(): void {
+    if (actionsEl === null) return
+    const b = actionsEl.querySelector<HTMLButtonElement>('button[data-id="debug"]')
+    if (b !== null) b.hidden = !values.developerMode
   }
 
   function switchTo(v: PanelView): void {
@@ -926,7 +948,10 @@ export function createPanel(
     },
     setSettings(s) {
       values = s
+      // 设置视图开着就整块重绘（render 里会同步调试按钮）；没开着也要就地翻一下调试按钮的显隐，
+      // 否则主进程回灌开发者模式时按钮条上的门控不更新。
       if (current === 'settings') render()
+      else syncDebugGate()
     },
     setStats(s) {
       snap = s

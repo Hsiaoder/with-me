@@ -37,6 +37,8 @@ export interface DebugApi {
   startGame(game: Game): void
   setLevel(level: number): void
   setStat(key: keyof Stats, value: number): void
+  /** 调气泡正文字号（px），纯显示调试，不改存档。 */
+  setBubbleFontSize(px: number): void
 }
 
 export interface DebugContext {
@@ -214,6 +216,26 @@ export function createDebugPlate(
     values.append(row)
     statRefs.push({ key, range, num })
   }
+
+  // 气泡字号（纯显示调试，不改存档）：实时调气泡正文字号，方便对比不同字号的排版。
+  const fontNum = el('span', 'pet-debug-num', '14px')
+  const fontRange = document.createElement('input')
+  fontRange.type = 'range'
+  fontRange.min = '9'
+  fontRange.max = '24'
+  fontRange.step = '1'
+  fontRange.value = '14'
+  fontRange.className = 'pet-debug-range'
+  fontRange.dataset.fontsize = 'bubble'
+  fontRange.setAttribute('aria-label', '气泡字号')
+  fontRange.addEventListener('input', () => {
+    const v = Number(fontRange.value)
+    fontNum.textContent = `${v}px`
+    api.setBubbleFontSize(v)
+  })
+  const fontRow = el('div', 'pet-debug-value-row')
+  fontRow.append(el('span', 'pet-debug-valuelabel', '气泡字号'), fontRange, fontNum)
+  values.append(fontRow)
 
   function refresh(): void {
     const s = snapshot()

@@ -181,6 +181,24 @@ export function statsAnchor(
 }
 
 /**
+ * 设置板该摆在宠物哪一侧（覆盖层 CSS 坐标）。
+ *
+ * **左侧优先**：按钮条常驻脚下、状态栏挂右侧，设置板再去右边就和状态栏挤同一列；
+ * 左边常年空着（飘字也只活一秒），挂左边既不压宠物也不压按钮。左边放不下（宠物贴左边缘）
+ * 才翻到右边——不是夹进屏幕压在宠物身上（气泡/状态栏踩过的坑，problem/05 §5.10）。
+ * 两边都不行才夹回屏幕内。纵向与身体中线对齐后夹回屏幕。
+ */
+export function settingsAnchor(body: Rect, size: { w: number; h: number }, screen: Rect, gap: number): Point {
+  const left = body.x - gap - size.w
+  const right = body.x + body.w + gap
+  const x0 = left >= screen.x ? left : right
+  const x = Math.min(Math.max(x0, screen.x), Math.max(screen.x, screen.x + screen.w - size.w))
+  const centered = body.y + body.h / 2 - size.h / 2
+  const y = Math.min(Math.max(centered, screen.y), Math.max(screen.y, screen.y + screen.h - size.h))
+  return { x, y }
+}
+
+/**
  * 把命中框按墨迹内缩收成「看得见的身子」那一条：**只动左右，上下不碰**。
  *
  * 为什么不连 y 一起动：`FLOAT_HEAD_OFFSET` 当初是按命中框顶沿量出来的（气泡底沿在身体顶

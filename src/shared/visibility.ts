@@ -16,10 +16,14 @@ export type Settings = {
   onFullscreen: Visibility
   /** 放映、演示模式时。 */
   onPresentation: Visibility
+  /** 开发者模式：开启后才显示调试按钮（默认关）。 */
+  developerMode: boolean
+  /** 静音：开启后关掉所有音效（语音播放受它闸，默认关）。 */
+  muted: boolean
 }
 
-/** 用户拍定的默认值：任何时候都陪着。 */
-export const DEFAULT_SETTINGS: Settings = { onFullscreen: 'show', onPresentation: 'show' }
+/** 用户拍定的默认值：任何时候都陪着；调试按钮默认藏、声音默认开。 */
+export const DEFAULT_SETTINGS: Settings = { onFullscreen: 'show', onPresentation: 'show', developerMode: false, muted: false }
 
 const VISIBILITIES: readonly Visibility[] = ['show', 'hide']
 

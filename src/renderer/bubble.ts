@@ -1,4 +1,5 @@
-import { BUBBLE_IMAGE } from '../shared/config.js'
+import { BUBBLE_IMAGE, BUBBLE_TEXT_WIDTH } from '../shared/config.js'
+import { taperLines } from '../shared/text.js'
 import type { Point, Rect } from '../shared/types.js'
 
 /**
@@ -82,7 +83,15 @@ export function createBubble(root: HTMLElement, handlers: BubbleHandlers = { onR
     },
     show(content, p) {
       if (content.text.trim() === '') return
-      text.textContent = content.text
+      // 短长排版：按当前字号算每行字数，拆成 短长/短长短 几行，各渲染成一个居中子 div。
+      // 用子 div 而非插 \n：父节点 textContent 仍是原句（不带换行），读屏与文本断言不变。
+      const fontSize = parseFloat(getComputedStyle(text).fontSize) || 14
+      const perLine = Math.max(4, Math.floor(BUBBLE_TEXT_WIDTH / fontSize))
+      text.replaceChildren(...taperLines(content.text, perLine).map((line) => {
+        const d = document.createElement('div')
+        d.textContent = line
+        return d
+      }))
       const r = (content.reply ?? '').trim()
       // 没配回复就藏掉按钮：一颗点不动的东西不该占着白色区的位置。
       // 用 hidden 而不是不创建，是为了让 CSS 的显隐规则只有一套。

@@ -55,6 +55,7 @@ const MIME: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
   '.json': 'application/json',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',

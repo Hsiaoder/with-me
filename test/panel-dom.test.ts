@@ -148,14 +148,35 @@ describe('设置视图', () => {
     expect(panel.view).toBe('actions')
   })
 
-  it('点设置切成两行开关，并通知调用方换收起延时', () => {
+  it('点设置切成四行开关（开发者模式/全屏/放映/静音），并通知调用方换收起延时', () => {
     const { panel, view } = mountWithSettings()
     panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     expect(panel.view).toBe('settings')
     expect(view).toHaveBeenCalledWith('settings')
     const rows = panel.el.querySelectorAll('.pet-setting')
-    expect(rows).toHaveLength(2)
-    expect([...rows[0]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['陪我', '隐藏'])
+    expect(rows).toHaveLength(4)
+    expect([...rows[0]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['开', '关'])
+    expect([...rows[1]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['陪我', '隐藏'])
+    expect([...rows[3]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['开', '关'])
+  })
+
+  it('开发者模式/静音是布尔开关：点「开」只报那一项 true', () => {
+    const { panel, set } = mountWithSettings()
+    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
+    panel.el.querySelector<HTMLButtonElement>('button[data-key="developerMode"][data-value="on"]')!.click()
+    expect(set).toHaveBeenCalledWith({ developerMode: true })
+    panel.el.querySelector<HTMLButtonElement>('button[data-key="muted"][data-value="on"]')!.click()
+    expect(set).toHaveBeenCalledWith({ muted: true })
+  })
+
+  it('开发者模式关着时调试按钮藏掉；开了立刻露面（默认不显示调试按钮）', () => {
+    const { panel } = mountWithSettings()
+    const debug = () => panel.el.querySelector<HTMLButtonElement>('button[data-id="debug"]')!
+    expect(debug().hidden).toBe(true)
+    panel.setSettings({ ...DEFAULT_SETTINGS, developerMode: true })
+    expect(debug().hidden).toBe(false)
+    panel.setSettings({ ...DEFAULT_SETTINGS, developerMode: false })
+    expect(debug().hidden).toBe(true)
   })
 
   it('点「隐藏」只报被点的那一项，不整包覆盖', () => {
@@ -170,9 +191,11 @@ describe('设置视图', () => {
     panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
     const on = () => [...panel.el.querySelectorAll('.pet-setting')]
       .map((r) => r.querySelector('button.on')?.getAttribute('data-value'))
-    expect(on()).toEqual(['show', 'show'])
-    panel.setSettings({ onFullscreen: 'hide', onPresentation: 'show' })
-    expect(on()).toEqual(['hide', 'show'])
+    expect(on()).toEqual(['off', 'show', 'show', 'off'])
+    panel.setSettings({ onFullscreen: 'hide', onPresentation: 'show', developerMode: false, muted: false })
+    expect(on()).toEqual(['off', 'hide', 'show', 'off'])
+    panel.setSettings({ onFullscreen: 'hide', onPresentation: 'show', developerMode: true, muted: true })
+    expect(on()).toEqual(['on', 'hide', 'show', 'on'])
   })
 
   it('返回切回动作视图，延时通知回一次', () => {
@@ -829,10 +852,12 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(plate.querySelectorAll('.pet-stat')).toHaveLength(4)
   })
 
-  it('设置视图保持原样：整块替换，按钮条不在布局里', () => {
+  it('设置视图：五颗按钮还在，设置板在另一块里（用户 2026-11-11 要原按钮不消失）', () => {
     const { panel } = openView('settings')
-    expect(actionBtns(panel)).toHaveLength(0)
-    expect(panel.el.querySelector('.pet-plate .pet-setting')).not.toBeNull()
+    expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
+    const plate = panel.el.querySelector('.pet-plate')!
+    expect(plate.querySelector('.pet-setting')).not.toBeNull()
+    expect(plate.closest('.pet-actions')).toBeNull()
   })
 
   /**
@@ -850,16 +875,14 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(panel.el.querySelector('.pet-actions')).toBe(before)
   })
 
-  it('从设置页回来才重建按钮条（离开时摘掉，回来是新的一批）', () => {
+  it('设置页也复用同一批按钮条（不再整块替换，节点始终活着）', () => {
     const { panel } = mount()
     panel.show({ x: 0, y: 0 })
     const before = panel.el.querySelector('.pet-actions')
     panel.setView('settings')
-    expect(panel.el.querySelector('.pet-actions')).toBeNull()
+    expect(panel.el.querySelector('.pet-actions')).toBe(before)
     panel.setView('foods')
-    const after = panel.el.querySelector('.pet-actions')
-    expect(after).not.toBeNull()
-    expect(after).not.toBe(before)
+    expect(panel.el.querySelector('.pet-actions')).toBe(before)
   })
 
   it('高亮跟着当前视图走（复用节点后必须单独同步，不能再靠重建带上）', () => {
@@ -883,12 +906,13 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(i).toEqual(['0', '1', '2', '3', '4'])
   })
 
-  it('主块尺寸跟着视图走：设置视图量到的是设置板，不是按钮条', () => {
+  it('主块永远是按钮条；设置板是副板，单独量（不再顶替主块）', () => {
     const actions = mount()
     actions.panel.show({ x: 0, y: 0 })
     expect(actions.panel.primaryEl()?.classList.contains('pet-actions')).toBe(true)
     const settings = openView('settings')
-    expect(settings.panel.primaryEl()?.classList.contains('pet-plate')).toBe(true)
+    expect(settings.panel.primaryEl()?.classList.contains('pet-actions')).toBe(true)
+    expect(settings.panel.plateSize()).not.toBeNull()
   })
 
   it('再点一次喂食把副板收回：回动作视图，副板移出布局', () => {

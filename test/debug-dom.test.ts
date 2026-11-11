@@ -11,7 +11,7 @@ type Mock = ReturnType<typeof vi.fn>
 const callsOf = (fn: unknown): unknown[][] => (fn as Mock).mock.calls
 
 const makeApi = (): DebugApi => ({
-  playClip: vi.fn(), sayLine: vi.fn(), feed: vi.fn(), startGame: vi.fn(), setLevel: vi.fn(), setStat: vi.fn(),
+  playClip: vi.fn(), sayLine: vi.fn(), feed: vi.fn(), startGame: vi.fn(), setLevel: vi.fn(), setStat: vi.fn(), setBubbleFontSize: vi.fn(),
 })
 
 const POOLS = { daily: ['siesta', 'yawn'], eat: ['rice', 'hotpot'], guess: ['maid'], idle: ['patrol'] }
@@ -138,5 +138,19 @@ describe('数值区：等级 + 四条滑条改真存档', () => {
     expect(document.querySelector<HTMLInputElement>('.pet-debug-range[data-stat="hunger"]')!.value).toBe('15')
     expect(levelOf(LEVEL_CUM[4]!)).toBe(5)
     expect(document.querySelector<HTMLInputElement>('.pet-debug-range[aria-label="设置等级"]')!.value).toBe('5')
+  })
+})
+
+describe('气泡字号滑块（纯显示调试）', () => {
+  it('默认 12px，拖动调 setBubbleFontSize 并更新读数，不动存档', () => {
+    const { api } = mount()
+    const range = document.querySelector<HTMLInputElement>('.pet-debug-range[data-fontsize="bubble"]')!
+    expect(range).not.toBeNull()
+    expect(range.value).toBe('14')
+    range.value = '18'
+    fire(range)
+    expect(api.setBubbleFontSize).toHaveBeenCalledWith(18)
+    expect(api.setStat).not.toHaveBeenCalled()
+    expect(range.closest('.pet-debug-value-row')!.querySelector('.pet-debug-num')!.textContent).toBe('18px')
   })
 })

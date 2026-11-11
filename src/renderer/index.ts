@@ -20,7 +20,7 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, rectContains, settingsAnchor, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
@@ -31,13 +31,14 @@ import type { Food } from '../shared/food.js'
 import type { Game } from '../shared/games.js'
 import type { DebugContext } from './debug.js'
 import {
-  LEVELUP_CLIP, SLEEPY, pickAmbient, pickForSpeech, pickInteract, type Situation,
+  LEVELUP_CLIP, SLEEPY, pickAmbient, pickExit, pickForSpeech, pickInteract, pickStartup, type Situation,
 } from '../shared/animation.js'
 import { formatOnline } from '../shared/text.js'
 import type { StatsSnapshot } from '../shared/save.js'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/visibility.js'
 import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createBubble, type BubbleContent } from './bubble.js'
+import { createVoicePlayer, voiceBubbleMs, type VoiceEntry, type VoicePlayer } from './audio.js'
 import { createFloatLayer } from './float.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
@@ -143,6 +144,8 @@ function bootstrap(skin: SkinPayload): void {
         const ref = current
         const r = await player.play(ref)
         if (myToken !== chainToken) return          // 已有新目标接管
+        // 退出收尾：演完当前这条就不再往下接，标记动画完成，等语音也齐了再 quit。
+        if (exiting) { exitAnimDone = true; maybeFinishExit(); return }
         if (r === 'cancelled') {
           // 素材坏了或被协议挡下。停住并留痕，不许空转把 CPU 吃满
           console.error('[pet] 行为链停住：播放未开始', ref)
@@ -255,6 +258,36 @@ function bootstrap(skin: SkinPayload): void {
    */
   let settings: Settings = { ...DEFAULT_SETTINGS }
 
+  /**
+   * 台词语音播放器。manifest 异步取（200 句的 text→mp3 映射），取到前用空表占位——
+   * 开机问候挂在第一份数值快照上，那也是异步 IPC，绝大多数时候 manifest 已就位；
+   * 万一抢跑也只是那句没声音，气泡照旧。静音用闭包现问 `settings.muted`，勾掉立刻生效。
+   */
+  let voice: VoicePlayer = createVoicePlayer([], () => settings.muted)
+  void fetch('voice/manifest.json')
+    .then((r) => (r.ok ? r.json() : []))
+    .then((entries: VoiceEntry[]) => { voice = createVoicePlayer(entries, () => settings.muted) })
+    .catch(() => {})
+  /** 最近一句开口播的音频（静音/查无此句为 null）。退出收尾要等它播完，故露给装配层。 */
+  let lastVoiceAudio: HTMLAudioElement | null = null
+  /** 经函数读回，类型保持联合：say() 会在内部改它，直接读会被 TS 沿用上一处赋值的窄化。 */
+  const readVoiceAudio = (): HTMLAudioElement | null => lastVoiceAudio
+
+  /**
+   * 退出收尾（用户 2026-11-11 要「等动画 + 再见语音都演完再退」，取代写死的 1.5s）：
+   * 动画那条由行为链演完那一拍标记 exitAnimDone，语音那条由音频 ended 标记 exitVoiceDone，
+   * 两边都齐才 quitApp。exiting 一旦置真，行为链演完当前这条就不再往下接，停在那里等收尾。
+   */
+  let exiting = false
+  let exitAnimDone = false
+  let exitVoiceDone = false
+  let exitSafety: ReturnType<typeof setTimeout> | null = null
+  function maybeFinishExit(): void {
+    if (!exiting || !exitAnimDone || !exitVoiceDone) return
+    if (exitSafety !== null) { clearTimeout(exitSafety); exitSafety = null }
+    window.petBridge?.quitApp()
+  }
+
   // 「鲸鲸会飞」控制器：游戏激活时它接管宠物位置与指针，index 的常规拖拽/点击在下面全部让路。
   // 游戏整个活在**命中框(hitBox)坐标系**里：抓住的是看得见的身子，落点/高度也都按身子算。
   // 而 motion 吃的是舞台坐标（= hitBox 减掉 bodyBox 那截内缩偏移），所以 setPos 负责把
@@ -337,6 +370,7 @@ function bootstrap(skin: SkinPayload): void {
       startGame: doStartGame,
       setLevel: (lv) => { window.petBridge?.debugStats({ exp: LEVEL_CUM[Math.max(1, Math.min(MAX_LEVEL, lv)) - 1] ?? 0 }) },
       setStat: (key, value) => { window.petBridge?.debugStats({ stats: { [key]: value } }) },
+      setBubbleFontSize: (px) => { document.documentElement.style.setProperty('--bubble-text-size', `${px}px`) },
     },
   }
 
@@ -388,11 +422,31 @@ function bootstrap(skin: SkinPayload): void {
         if (bubble.isOpen) placeBubble()
       }
     },
-    // 退出桌宠：先说一句再见 + 播女仆屈膝礼仪，停一会儿让气泡显示出来，再让主进程落盘退出。
+    // 退出桌宠：随机一条收尾动画 + 一句再见（带语音），**等动画和语音都演完**再让主进程落盘退出。
     quit: () => {
+      if (exiting) return
+      exiting = true
+      exitAnimDone = false
+      exitVoiceDone = false
+      // 收尾片皮肤里没有（占位皮肤没 daily 池）就回落 click，保证有动作送别；吃饭时 requestClip 拒换，
+      // 那就等正在播的那条演完——行为链演完当前这条照样会标记 exitAnimDone。
+      const clip = pickExit(talkRng)
+      if (!(clip && requestClip(clip.pool, clip.name))) requestClip('click')
+      // 再见台词 + 语音由 say 内部播。先清掉上一句的音频引用：say 没播（游戏态/静音）就当没有语音要等。
+      lastVoiceAudio = null
       const line = pickLine('bye', talkRng)
-      if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech('bye') }
-      setTimeout(() => window.petBridge?.quitApp(), 1500)
+      if (line !== null) say({ text: line.say, reply: line.reply })
+      // say() 在内部把 lastVoiceAudio 设成这句的音频；经 readVoiceAudio 读回，保住联合类型。
+      const a = readVoiceAudio()
+      if (a === null || a.ended) {
+        exitVoiceDone = true
+      } else {
+        a.addEventListener('ended', () => { exitVoiceDone = true; maybeFinishExit() }, { once: true })
+      }
+      // 动画那条由行为链演完那一拍标记 exitAnimDone；两边都齐才 quit。
+      maybeFinishExit()
+      // 兜底：素材坏 / autoplay 被拒把动画或音频卡住时，最多等 10 秒也必须退得出去。
+      exitSafety = setTimeout(() => window.petBridge?.quitApp(), 10000)
     },
   }, debugCtx)
 
@@ -433,7 +487,10 @@ function bootstrap(skin: SkinPayload): void {
       greeted = true
       if (!activeGame() && !bubble.isOpen) {
         const line = greetLineForHour(new Date().getHours(), talkRng)
-        say({ text: line.say, reply: line.reply }); pairSpeech('greet')
+        say({ text: line.say, reply: line.reply })
+        // 启动动画：随机一条指定的（皮肤没有就回落 click）；问候语音已由 say 内部播。
+        const startup = pickStartup(talkRng)
+        if (!(startup && requestClip(startup.pool, startup.name))) requestClip('click')
       }
     }
   })
@@ -454,6 +511,8 @@ function bootstrap(skin: SkinPayload): void {
   })
   /** 气泡自己的一次性定时器。不挂 rAF：覆盖层没焦点时 rAF 会被节流，定时器才准（心跳那条踩过）。 */
   let bubbleDeadline: ReturnType<typeof setTimeout> | null = null
+  /** 每开口说一句自增。语音元数据异步回调拿它对暗号：不是当前这句就不重挂气泡定时器。 */
+  let bubbleSayToken = 0
   /** 气泡显示尺寸。来自 config，和 style.css 里那条 width/height 是同一个数（有测试钉住）。 */
   const BUBBLE_SIZE = { w: BUBBLE_W, h: BUBBLE_H }
 
@@ -620,7 +679,21 @@ function bootstrap(skin: SkinPayload): void {
     if (clean === '') return false
     bubble.show({ text: clean, reply: line.reply }, bubbleAnchorNow())
     lastTalkAt = Date.now()
+    const token = ++bubbleSayToken
     armBubble(ms)
+    // 弹气泡同时播这句的语音；拿到时长后把停留改成「语音 + 1 秒」（不短于 2.5 秒）。
+    // 元数据异步到，用 token 守住「还是这一句」：下一句已开口时，旧音频的回调不许再重挂定时器。
+    const a = voice.play(clean)
+    lastVoiceAudio = a
+    if (a !== null) {
+      const sync = (): void => {
+        if (token !== bubbleSayToken || !bubble.isOpen) return
+        if (!Number.isFinite(a.duration) || a.duration <= 0) return
+        armBubble(voiceBubbleMs(a.duration, ms))
+      }
+      if (Number.isFinite(a.duration) && a.duration > 0) sync()
+      else a.addEventListener('loadedmetadata', sync, { once: true })
+    }
     // 气泡出现也是「可见区域变大」，光标停在它该覆盖的位置时得立刻接住鼠标
     recomputeInteraction()
     return bubble.isOpen
@@ -677,8 +750,7 @@ function bootstrap(skin: SkinPayload): void {
     panel.show({ x: body.x, y: body.y + body.h + PANEL_GAP })
     const size = panel.size()
     if (!size) return
-    // 主块永远走同一条锚点：动作/食物/状态视图里它是按钮条（贴脚下，脚下没地方翻头顶），
-    // 设置视图里它是那块板（整块替换按钮条，位置规则一样）。
+    // 主块永远是按钮条（贴脚下，脚下没地方翻头顶）；设置板如今也是副板，挂左侧，不再替换按钮条。
     const at = panelAnchor(body, size, screen, PANEL_GAP)
     // 出场动画的方向：按钮条和副板都从「靠宠物那一侧」浮进来，翻到头顶时就得反过来。
     // 这个信息 CSS 只能从根节点拿，所以写在这里——它是唯一一处同时知道 side 和 DOM 的地方。
@@ -710,6 +782,10 @@ function bootstrap(skin: SkinPayload): void {
         PANEL_GAP,
         at.side === 'below' ? at.y : null,
       ))
+    } else if (panel.view === 'settings') {
+      // 设置板挂宠物**左侧**（左边放不下翻右侧）：按钮条常驻脚下、状态栏挂右，设置再去右边就挤同一列。
+      // 锚看得见的身子（inkRect），和状态栏同一条横向距离账。
+      panel.showPlate(settingsAnchor(inkRect(body, inkInsets), ps, screen, PANEL_GAP))
     }
   }
 

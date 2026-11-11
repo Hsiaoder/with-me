@@ -47,7 +47,7 @@ describe('mapScenario', () => {
 
 describe('decideVisibility', () => {
   const at = (onFullscreen: 'show' | 'hide', onPresentation: 'show' | 'hide'): Settings =>
-    ({ onFullscreen, onPresentation })
+    ({ onFullscreen, onPresentation, developerMode: false, muted: false })
 
   it('没有全屏时永远显示，设置管不着', () => {
     for (const s of [at('show', 'show'), at('hide', 'hide'), at('hide', 'show')]) {

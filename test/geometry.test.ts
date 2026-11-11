@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, stageRect, stackAnchor, statsAnchor, unionRect } from '../src/shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, settingsAnchor, stageRect, stackAnchor, statsAnchor, unionRect } from '../src/shared/geometry.js'
 import { BUBBLE_H, BUBBLE_W, CANVAS_H, CANVAS_W, STAGE_H_CSS, STAGE_W_CSS } from '../src/shared/config.js'
 
 const box = { x: 200, y: 50, w: 240, h: 285 }
@@ -239,6 +239,38 @@ describe('statsAnchor', () => {
   it('贴左边缘时右侧仍是首选（左边才是没地方去的那一侧）', () => {
     const left = { x: 10, y: 700, w: 140, h: 180 }
     expect(statsAnchor(left, size, screen, 12).x).toBe(10 + 140 + 12)
+  })
+})
+
+describe('settingsAnchor', () => {
+  const screen = { x: 0, y: 0, w: 1600, h: 952 }
+  const body = { x: 700, y: 700, w: 140, h: 180 }
+  const size = { w: 150, h: 120 }
+
+  it('默认挂在身体左侧，纵向与身体中线对齐', () => {
+    expect(settingsAnchor(body, size, screen, 12)).toEqual({ x: 538, y: 730 })
+  })
+
+  it('左侧放不下时翻到右侧——不是夹进屏幕压在宠物身上', () => {
+    const left = { x: 10, y: 700, w: 140, h: 180 }
+    expect(settingsAnchor(left, size, screen, 12)).toEqual({ x: 162, y: 730 })
+  })
+
+  it('两边都放不下才夹回屏幕内', () => {
+    const narrow = { x: 0, y: 0, w: 200, h: 952 }
+    expect(settingsAnchor({ x: 60, y: 700, w: 100, h: 180 }, size, narrow, 12).x).toBe(50)
+  })
+
+  it('纵向一律夹回屏幕内', () => {
+    const low = { x: 700, y: 900, w: 140, h: 180 }
+    expect(settingsAnchor(low, size, screen, 12).y).toBe(952 - 120)
+    const high = { x: 700, y: 10, w: 140, h: 180 }
+    expect(settingsAnchor(high, size, screen, 12).y).toBe(40)
+  })
+
+  it('贴右边缘时左侧仍是首选', () => {
+    const right = { x: 1500, y: 700, w: 140, h: 180 }
+    expect(settingsAnchor(right, size, screen, 12).x).toBe(1500 - 12 - 150)
   })
 })
 

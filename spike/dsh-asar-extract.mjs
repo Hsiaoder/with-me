@@ -98,6 +98,10 @@ const picks = [
   { pool: 'daily', name: 'ghost', src: 'assets/webm/萌化小幽灵.webm' },
   { pool: 'daily', name: 'curtsy', src: 'assets/webm/女仆屈膝礼仪.webm' },
   { pool: 'daily', name: 'jumpcatch', src: 'assets/webm/原地跳跃抓碎头顶物品.webm' },
+  { pool: 'daily', name: 'snowman', src: 'assets/webm/堆雪人.webm' },
+  { pool: 'daily', name: 'kite', src: 'assets/webm/放风筝.webm' },
+  { pool: 'daily', name: 'leaves', src: 'assets/webm/被落叶淹没.webm' },
+  { pool: 'daily', name: 'archive', src: 'assets/webm/工作状态-清点归档.webm' },
 ];
 
 /* ---------- asar 读取 ---------- */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitsLabel, formatOnline } from '../src/shared/text.js'
+import { fitsLabel, formatOnline, taperLines } from '../src/shared/text.js'
 
 /**
  * 「在线时间」那一句。状态栏按秒跳，跳的就是这个函数的输出，所以边界都得钉住。
@@ -45,5 +45,37 @@ describe('formatOnline', () => {
       const text = formatOnline(ms)
       expect(fitsLabel(text, VALUE_MAX), `${text} 顶爆值栏`).toBe(true)
     }
+  })
+})
+
+describe('taperLines 气泡文字短长排版', () => {
+  it('一行放得下就单行', () => {
+    expect(taperLines('一二三四五', 10)).toEqual(['一二三四五'])
+    expect(taperLines('一'.repeat(10), 10)).toEqual(['一'.repeat(10)])
+  })
+
+  it('两行短长：第一行比第二行少 2~3 字', () => {
+    expect(taperLines('一'.repeat(18), 10).map((s) => [...s].length)).toEqual([8, 10])
+    expect(taperLines('一'.repeat(17), 10).map((s) => [...s].length)).toEqual([7, 10])
+    expect(taperLines('一'.repeat(12), 10).map((s) => [...s].length)).toEqual([5, 7])
+  })
+
+  it('三行短长短：中间最长', () => {
+    expect(taperLines('一'.repeat(24), 10).map((s) => [...s].length)).toEqual([7, 10, 7])
+    expect(taperLines('一'.repeat(26), 10).map((s) => [...s].length)).toEqual([8, 10, 8])
+  })
+
+  it('拼接还原原文，不丢字', () => {
+    for (const n of [5, 12, 18, 24, 26, 30, 40]) {
+      const t = '一'.repeat(n)
+      expect(taperLines(t, 10).join(''), `${n} 字丢字了`).toBe(t)
+    }
+  })
+
+  it('超过三行容量就拆成 >3 行（调用方据此从台词表剔除）', () => {
+    expect(taperLines('一'.repeat(27), 10).length).toBeGreaterThan(3)
+    expect(taperLines('一'.repeat(40), 10).length).toBeGreaterThan(3)
+    // 26 字是三行短长短的上限，恰好不超
+    expect(taperLines('一'.repeat(26), 10).length).toBe(3)
   })
 })

@@ -116,12 +116,16 @@ export function applyIdentity(
   return { ...save, identity }
 }
 
-/** 设置写入的唯一入口：只认 'show'/'hide'，其余静默丢弃（调用方是自家渲染层，不值得为它炸）。 */
+/** 设置写入的唯一入口：可见性只认 'show'/'hide'，布尔项只认真布尔，其余静默丢弃。 */
 export function applySettings(save: SaveData, patch: Partial<Settings>): SaveData {
   const settings: Settings = { ...save.settings }
   for (const key of ['onFullscreen', 'onPresentation'] as const) {
     const v = patch[key]
     if (isVisibility(v)) settings[key] = v
+  }
+  for (const key of ['developerMode', 'muted'] as const) {
+    const v = patch[key]
+    if (typeof v === 'boolean') settings[key] = v
   }
   return { ...save, settings }
 }
@@ -139,6 +143,15 @@ function migrateSettings(r: Record<string, unknown>, warnings: string[]): Settin
     const v = s[key]
     if (v === undefined) continue
     if (isVisibility(v)) settings[key] = v
+    else {
+      settings[key] = DEFAULT_SETTINGS[key]
+      warnings.push(`settings.${key}「${String(v)}」不认识，已用默认值`)
+    }
+  }
+  for (const key of ['developerMode', 'muted'] as const) {
+    const v = s[key]
+    if (v === undefined) continue
+    if (typeof v === 'boolean') settings[key] = v
     else {
       settings[key] = DEFAULT_SETTINGS[key]
       warnings.push(`settings.${key}「${String(v)}」不认识，已用默认值`)

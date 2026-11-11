@@ -148,7 +148,7 @@ describe('toSaveFile', () => {
 describe('settings', () => {
   it('旧档没有 settings 时补默认值：两档都陪我', () => {
     const s = migrate({ version: 1, skin: 'block', stats: {} }, NOW)
-    expect(s.settings).toEqual({ onFullscreen: 'show', onPresentation: 'show' })
+    expect(s.settings).toEqual({ onFullscreen: 'show', onPresentation: 'show', developerMode: false, muted: false })
   })
 
   it('认得的值保留，认不出的回默认并说清是哪一项', () => {
@@ -167,8 +167,21 @@ describe('settings', () => {
   it('applySettings 只改提到的那一项，且返回新对象', () => {
     const base = defaultSave(NOW)
     const next = applySettings(base, { onFullscreen: 'hide' })
-    expect(next.settings).toEqual({ onFullscreen: 'hide', onPresentation: 'show' })
+    expect(next.settings).toEqual({ onFullscreen: 'hide', onPresentation: 'show', developerMode: false, muted: false })
     expect(base.settings.onFullscreen).toBe('show')
     expect(applySettings(base, { onFullscreen: '也许' as never }).settings).toEqual(base.settings)
+  })
+
+  it('developerMode/muted 只认真布尔，默认关，迁移旧档缺省补 false', () => {
+    const base = defaultSave(NOW)
+    expect(base.settings.developerMode).toBe(false)
+    expect(base.settings.muted).toBe(false)
+    const next = applySettings(base, { developerMode: true, muted: true })
+    expect(next.settings.developerMode).toBe(true)
+    expect(next.settings.muted).toBe(true)
+    expect(applySettings(base, { muted: 'yes' as never }).settings.muted).toBe(false)
+    const old = migrate({ version: 1, settings: { onFullscreen: 'show' } }, NOW)
+    expect(old.settings.developerMode).toBe(false)
+    expect(old.settings.muted).toBe(false)
   })
 })

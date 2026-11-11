@@ -8,8 +8,8 @@
  * 每句配一条主人短回复（Line={say, reply}）：气泡里那颗按钮就是这句回复，点下去气泡收掉。
  */
 
-import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_IDLE_PROB, TALK_MAX_CHARS } from './config.js'
-import { labelWidth } from './text.js'
+import { BUBBLE_CHARS_PER_LINE, IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_IDLE_PROB, TALK_MAX_CHARS } from './config.js'
+import { labelWidth, taperLines } from './text.js'
 
 export type TalkReason =
   | 'idle' | 'hungry' | 'blue'                 // 自己搭话（过「闲够 + 概率」那道门）
@@ -33,7 +33,7 @@ export type TalkCtx = {
 /** 回应按钮宽度上限（按 labelWidth 计）。迁移后台词回应最长 12 字，按钮相应加宽。 */
 export const REPLY_MAX_WIDTH = 12
 
-export const TALK_LINES: Record<TalkReason, Line[]> = {
+const RAW_TALK_LINES: Record<TalkReason, Line[]> = {
   idle: [
     { say: "懒惰有一点招人喜欢，那就是不用学就会。", reply: "懒蛋" },
     { say: "别人说我长的小，可我学问却不少。", reply: "嗯嗯" },
@@ -289,6 +289,17 @@ export const TALK_LINES: Record<TalkReason, Line[]> = {
   ],
 }
 
+/**
+ * 对外台词表：剔除默认排版下超过 3 行的句子（用户 2026-11-10：超 3 行就从表里去掉）。
+ * 判据与气泡渲染同源——taperLines 按默认每行字数拆，>3 行即弃。各档保留顺序与至少两句。
+ */
+export const TALK_LINES: Record<TalkReason, Line[]> = Object.fromEntries(
+  (Object.keys(RAW_TALK_LINES) as TalkReason[]).map((r) => [
+    r,
+    RAW_TALK_LINES[r].filter((l) => taperLines(l.say, BUBBLE_CHARS_PER_LINE).length <= 3),
+  ]),
+) as Record<TalkReason, Line[]>
+
 /** 时段问候：按当前小时取最后一档已到点的（与 qqpet GREET 同构）。[host]→主人，过滤企鹅句。 */
 export const GREET_BY_HOUR: readonly (readonly [number, readonly Line[]])[] = [
   [0, [
@@ -342,7 +353,10 @@ export const GREET_BY_HOUR: readonly (readonly [number, readonly Line[]])[] = [
 export function greetLineForHour(hour: number, rng: () => number): Line {
   let bucket: readonly Line[] = GREET_BY_HOUR[0]![1]
   for (const [h, lines] of GREET_BY_HOUR) if (hour >= h) bucket = lines
-  return bucket[Math.floor(rng() * bucket.length) % bucket.length] ?? bucket[0]!
+  // 与台词表同一道闸：超 3 行的句子不选（兜底全被剔时退回原桶，保证有话可说）。
+  const fit = bucket.filter((l) => taperLines(l.say, BUBBLE_CHARS_PER_LINE).length <= 3)
+  const pool = fit.length > 0 ? fit : bucket
+  return pool[Math.floor(rng() * pool.length) % pool.length] ?? pool[0]!
 }
 
 /** 折叠换行、去首尾空白，超长按码点截断加省略号。空的一律变空串。 */

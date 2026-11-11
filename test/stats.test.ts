@@ -12,7 +12,6 @@ import {
   FOOD_EFFECT,
   GAME_BOND,
   GAME_COUNT_CAP,
-  GAME_HUNGER_COST,
   GAME_MOOD,
   GAME_WEIGHT_COST,
   gameCount,
@@ -289,25 +288,25 @@ describe('经验与等级', () => {
     expect(eventDeltas({ kind: 'feed', food: 'rice' }, ctx).bond).toBeUndefined()
   })
 
-  it('游戏落地一次：心情/亲密涨，饱食/体重掉，四项各按自己的常量', () => {
+  it('游戏落地一次：心情/亲密涨、体重掉，**不动饱食**（玩游戏不掉饥饿）', () => {
     const d = eventDeltas({ kind: 'game' }, { now: NOW, lastEventAt: {} })
     expect(d.mood).toBeCloseTo(GAME_MOOD, 6)
     expect(d.bond).toBeCloseTo(GAME_BOND, 6)
-    expect(d.hunger, '玩一场该更饿').toBeCloseTo(-GAME_HUNGER_COST, 6)
+    expect(d.hunger, '玩游戏不该掉饥饿').toBeUndefined()
     expect(d.weight, '抛来抛去是运动，该掉体重').toBeCloseTo(-GAME_WEIGHT_COST, 6)
-    // 从初始值真的往下走，而不是被夹在 0 地板上当没发生。
+    // 体重真的往下走；饥饿保持不变。
     const applied = applyEvent(fresh(), { kind: 'game' }, { now: NOW, lastEventAt: {} }).stats
-    expect(applied.hunger).toBeCloseTo(INITIAL_STATS.hunger - GAME_HUNGER_COST, 6)
+    expect(applied.hunger).toBeCloseTo(INITIAL_STATS.hunger, 6)
     expect(applied.weight).toBeCloseTo(INITIAL_STATS.weight - GAME_WEIGHT_COST, 6)
     expect(applied.mood).toBeGreaterThan(INITIAL_STATS.mood)
     expect(applied.bond).toBeGreaterThan(INITIAL_STATS.bond)
   })
 
-  it('猜动作按答对数结算：四项与经验 ×count，count 封顶、非法值兜底为 1', () => {
+  it('猜动作按答对数结算：各项与经验 ×count，count 封顶、非法值兜底为 1', () => {
     const ctx = { now: NOW, lastEventAt: {} }
     const d3 = eventDeltas({ kind: 'game', count: 3 }, ctx)
     expect(d3.mood).toBeCloseTo(GAME_MOOD * 3, 6)
-    expect(d3.hunger).toBeCloseTo(-GAME_HUNGER_COST * 3, 6)
+    expect(d3.hunger, '玩游戏不掉饥饿，无论几局').toBeUndefined()
     expect(expGain({ kind: 'game', count: 3 }, ctx)).toBeCloseTo(EXP_GAIN.game * 3, 6)
     // 封顶：答对 99 下也只按 GAME_COUNT_CAP 算，别一场抽干。
     expect(gameCount({ kind: 'game', count: 99 })).toBe(GAME_COUNT_CAP)
@@ -350,17 +349,16 @@ describe('飘字：涨的那几条才值得打扰主人', () => {
     expect(gainsToFloat(before, after)).toEqual([])
   })
 
-  it('带 signed 时掉的要飘出来（小游戏把饱食/体重往下拉，用户要看得见）', () => {
+  it('带 signed 时掉的要飘出来（小游戏把体重往下拉，用户要看得见）', () => {
     expect(gainText('饥饿', -6, true)).toBe('饥饿 −6')
     expect(gainText('体重', -1.2, true)).toBe('体重 −1.2')
     expect(gainText('心情', 8, true)).toBe('心情 +8')     // 涨的照旧带 +
     expect(gainText('亲密', 0, true), '没动的还是不写').toBeNull()
-    // 游戏落地那一下：四条里涨的两条 + 掉的两条都要写出来。
+    // 游戏落地那一下：涨的心情/亲密 + 掉的体重要写出来；饥饿不动就不写。
     const before = { ...INITIAL_STATS }
     const { stats } = applyEvent(before, { kind: 'game' }, { now: NOW, lastEventAt: {} })
     const signed = gainsToFloat(before, stats, true)
-    expect(signed.map((g) => g.key).sort()).toEqual(['bond', 'hunger', 'mood', 'weight'])
-    expect(signed.find((g) => g.key === 'hunger')?.text).toBe(`${STAT_LABELS.hunger} −${GAME_HUNGER_COST}`)
+    expect(signed.map((g) => g.key).sort()).toEqual(['bond', 'mood', 'weight'])
     expect(signed.find((g) => g.key === 'weight')?.text).toBe(`${STAT_LABELS.weight} −${GAME_WEIGHT_COST}`)
   })
 
