@@ -6,8 +6,12 @@
  *
  * 断言分两层，故意分开报：
  *   1) 代码层——index.html / ES module / CSS 取得到（asar 内，qqpet 已验证过的路）
- *   2) 媒体层——webm 分段解码出画面、mp3 出时长、woff2 真的生效（asar 外才有意义）
+ *   2) 媒体层——webm 分段解码出画面、mp3 出时长、woff2 取得到且装得上（asar 外才有意义）
  * 第 1 层红是打包坏了；第 2 层红才是那个未知数在响。
+ *
+ * 启动目标二选一（默认走等价回退路，见 launchOpts 上方注释）：
+ *   默认          electron.exe + release/win-unpacked/resources/app.asar
+ *   PKG_PROBE_EXE=1  release/win-unpacked/with-me.exe（args 必须为空，带了 '.' 反而起不来）
  *
  * 跑法：npm run dist && node e2e/package-check.mjs
  */
@@ -17,21 +21,42 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const EXE = join(process.cwd(), 'release', 'win-unpacked', 'with-me.exe')
-if (!existsSync(EXE)) {
-  console.error(`找不到 ${EXE}，先跑 npm run dist`)
-  process.exit(1)
+const UNPACKED = join(process.cwd(), 'release', 'win-unpacked')
+const EXE = join(UNPACKED, 'with-me.exe')
+const ASAR = join(UNPACKED, 'resources', 'app.asar')
+const ELECTRON = join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe')
+
+// 为什么默认不打装机 exe 而是 electron.exe + 同一份 app.asar：
+//   - 本机装了 Device Guard / 智能应用控制，改名后的未签名 with-me.exe 直接被拦，electron.launch
+//     报 "Process failed to launch!"（且 playwright 会泄漏一条异步 unhandledRejection 把 node 打死，
+//     「先试 exe 失败再自动回退」这条路在这台机器上根本跑不稳）——是安全策略拦 exe，不是打包坏了。
+//   - with-me.exe 只是 electron.exe 的改名版，resources/app.asar 与旁边的 app.asar.unpacked 是同一份产物，
+//     electron.exe <app.asar> 走的是同一套 asar→unpacked 重定向。断言逐条不变，只换了启动方式，没放宽判据。
+//   判定 A 的证据因此可由「仓库里的这条命令」复现。想直连装机 exe（能跑它的机器 / CI）就设 PKG_PROBE_EXE=1。
+const useExe = process.env.PKG_PROBE_EXE === '1'
+let launchOpts
+if (useExe) {
+  if (!existsSync(EXE)) {
+    console.error(`找不到 ${EXE}，先跑 npm run dist`)
+    process.exit(1)
+  }
+  launchOpts = { executablePath: EXE, args: [] }
+} else {
+  if (!existsSync(ASAR) || !existsSync(ELECTRON)) {
+    console.error(`缺 ${ASAR} 或 ${ELECTRON}，先跑 npm run dist`)
+    process.exit(1)
+  }
+  launchOpts = { executablePath: ELECTRON, args: [ASAR] }
 }
 
 const userData = mkdtempSync(join(tmpdir(), 'pet-pkg-'))
 const results = {}
+let app
 
 try {
-  const app = await electron.launch({
-    executablePath: EXE,
-    args: [],                       // 打包后的 exe 不需要 '.'，带了反而起不来
-    env: { ...process.env, PET_USER_DATA: userData },
-  })
+  app = await electron.launch({ ...launchOpts, env: { ...process.env, PET_USER_DATA: userData } })
+  console.log(`探针启动方式：${useExe ? `装机 exe ${EXE}` : `electron.exe + app.asar（等价回退）${ASAR}`}`)
+
   const page = await app.firstWindow()
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(String(e)))
@@ -79,18 +104,54 @@ try {
   assert.ok(Number.isFinite(results.mp3.duration) && results.mp3.duration > 0,
     `mp3 没有时长：${JSON.stringify(results.mp3)}`)
 
-  // 2) 媒体层——字体（woff2 也是 unpack 名单里的）
+  // 2) 媒体层——字体（woff2 也在 unpack 名单里）
+  //   这一层要测的是「app:// 能不能把 woff2 供出来、装得上」，不是「当前 DOM 用没用到这支字体」。
+  //   旧写法只 `await document.fonts.ready` 再 `fonts.check(...)`，而 check 只对「已加载」的 face
+  //   返回 true：'WithMe Num' 仅被 .pet-float（飘字 +N，style.css:425-434）消费，默认待机画面里没有
+  //   这个元素，那条 @font-face 根本不触发加载 → check 恒 false。这是脚本问错了问题的假阴，不是
+  //   环境问题。改成从 CSS 的 @font-face 规则里同时读出 family 名和 src 的 url（文件名以 style.css
+  //   为唯一真相，探针不写死文件名），对每支 woff2 先 fetch 断言 200 且字节数 > 0（app:// 供得出来），
+  //   再显式 document.fonts.load 之后断言 check 为 true（装得上）。sans / num 两支都要覆盖。
   results.font = await page.evaluate(async () => {
-    await document.fonts.ready
-    return {
-      sans: document.fonts.check('12px "WithMe Sans"'),
-      num: document.fonts.check('12px "WithMe Num"'),
+    const faces = []
+    for (const sheet of document.styleSheets) {
+      let rules
+      try {
+        rules = sheet.cssRules // 跨源样式表读不到，跳过而不是抛
+      } catch {
+        continue
+      }
+      for (const rule of rules) {
+        if (rule.type !== CSSRule.FONT_FACE_RULE) continue
+        const family = rule.style.getPropertyValue('font-family').trim().replace(/^["']|["']$/g, '')
+        const m = rule.style.getPropertyValue('src').match(/url\(["']?([^"')]+)["']?\)/)
+        if (!family || !m) continue
+        // src 里的 url 相对样式表解析；浏览器多半已归一成绝对，new URL 两种写法都能接住
+        const url = new URL(m[1], sheet.href ?? document.baseURI).href
+        const res = await fetch(url)
+        const byteLength = (await res.arrayBuffer()).byteLength
+        const spec = `12px "${family}"`
+        await document.fonts.load(spec)
+        faces.push({ family, url, status: res.status, byteLength, checkAfterLoad: document.fonts.check(spec) })
+      }
     }
+    return faces
   })
-  assert.ok(results.font.sans && results.font.num, `字体没生效：${JSON.stringify(results.font)}`)
+  assert.ok(results.font.length >= 2,
+    `CSS 里登记到的 @font-face 不足两支（sans/num 没都进包？）：${JSON.stringify(results.font)}`)
+  for (const f of results.font) {
+    assert.equal(f.status, 200, `woff2 经 app:// 取不到（第 2 层媒体没流出来）：${JSON.stringify(f)}`)
+    assert.ok(f.byteLength > 0, `woff2 取到了但是空文件：${JSON.stringify(f)}`)
+    assert.ok(f.checkAfterLoad, `woff2 取得到却装不上（fonts.load 之后 check 仍 false）：${JSON.stringify(f)}`)
+  }
 
-  await app.close()
   console.log('打包产物验证通过', JSON.stringify(results, null, 2))
 } finally {
+  // 失败路径也要收进程：launch 成功过才 close；close 自身报错不掩盖前面抛出的主异常。
+  try {
+    await app?.close()
+  } catch {
+    /* 压根没起来 / 已退出，别再在 finally 里抛第二个错 */
+  }
   rmSync(userData, { recursive: true, force: true })
 }

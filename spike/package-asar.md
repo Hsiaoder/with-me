@@ -4,13 +4,16 @@
 
 命令：`npm run dist` → `node e2e/package-check.mjs`
 
-> 关于跑法的重要说明：本机装了 Device Guard / 智能应用控制，会**拒绝执行改名后的未签名 `release/win-unpacked/with-me.exe`**（直接跑报 “已被你的组织的 Device Guard 代码保护阻止”；`node e2e/package-check.mjs` 因此停在 `electron.launch` 的 “Process failed to launch!”）。这不是打包坏了，是本机安全策略拦 exe。
-> 为了仍然拿到**真实测**（而非推测）的判定，我改用**有信誉的** `node_modules/electron/dist/electron.exe` 直接加载**同一份构建产物** `release/win-unpacked/resources/app.asar`（旁边就是它的 `app.asar.unpacked`）。`electron.exe app.asar` 与装机 exe 走的是同一套 asar→unpacked 重定向，断言逐条照抄 `package-check.mjs`，只换了启动方式。判定基于这套实测。
+> 关于跑法的重要说明：本机装了 Device Guard / 智能应用控制，会**拒绝执行改名后的未签名 `release/win-unpacked/with-me.exe`**（直接跑报 “已被你的组织的 Device Guard 代码保护阻止”；playwright `electron.launch` 因此报 “Process failed to launch!”，且会泄漏一条异步 unhandledRejection 把 node 进程打死，所以「先试装机 exe、失败再自动回退」这种双启动在本机不可靠）。这不是打包坏了，是本机安全策略拦 exe。
+>
+> `e2e/package-check.mjs` 因此**默认**改用**有信誉的** `node_modules/electron/dist/electron.exe` 直接加载**同一份构建产物** `release/win-unpacked/resources/app.asar`（旁边就是它的 `app.asar.unpacked`）：`electron.exe app.asar` 与装机 exe 走的是同一套 asar→unpacked 重定向，with-me.exe 只是 electron.exe 的改名版，产物完全同一份。断言逐条照抄、一条没放宽，只换了启动方式。脚本首行会打印本次用的是哪条路。
+> 在能直接跑装机 exe 的机器 / CI 上，设 `PKG_PROBE_EXE=1` 即改打真正的 `with-me.exe`（`args: []`）。**下面的 JSON 就是 `node e2e/package-check.mjs`（默认 asar 等价路）这次真打印的，任何人 clone 仓库、`npm run dist` 后跑同一条命令都能复现。**
 
-实测输出（asar 路径跑法打印的 JSON，原样贴入）：
+实测输出（`node e2e/package-check.mjs` 原样打印，字体那格见下方说明）：
 
-```json
-{
+```
+探针启动方式：electron.exe + app.asar（等价回退）.../release/win-unpacked/resources/app.asar
+打包产物验证通过 {
   "code": {
     "url": "app://assets/renderer/index.html",
     "skinName": "色块"
@@ -28,33 +31,36 @@
     "file": "voice/line-001.mp3",
     "duration": 5.808
   },
-  "font": {
-    "sans": true,
-    "num": false
-  }
+  "font": [
+    {
+      "family": "WithMe Sans",
+      "url": "app://assets/renderer/fonts/with-me-sans-var.woff2",
+      "status": 200,
+      "byteLength": 146492,
+      "checkAfterLoad": true
+    },
+    {
+      "family": "WithMe Num",
+      "url": "app://assets/renderer/fonts/with-me-num-400.woff2",
+      "status": 200,
+      "byteLength": 1776,
+      "checkAfterLoad": true
+    }
+  ]
 }
 ```
 
 第 1 层（代码在 asar 内）：绿。`location.href === app://assets/renderer/index.html`，`__petDebug` 到位，`pageErrors` 空。
-第 2 层（媒体在 asar 外）：
+第 2 层（媒体在 asar 外）：**全绿**。
 - webm：绿。`video.is-front` 解出真实画面 640×360，src 是 `app://skin/click/tapped.webm`——这个文件就在 `app.asar.unpacked/skins/block/animation/click/`，说明 `net.fetch` 跟着重定向读到了 unpacked。
 - 语音：绿。`voice/manifest.json` 取回 200 / 27469 字节（数组形状，首条 `file` 带 `voice/` 前缀，和真实样例一致）；`voice/line-001.mp3` 出时长 5.808s，mp3 也在 `app.asar.unpacked/dist/renderer/voice/`。
-- 字体：`document.fonts.check` 给出 `sans:true / num:false`。这个 `num:false` **不是媒体拿不到**，见下面的专项复核。
+- 字体：绿。两支 woff2 都 `status:200`、字节数 > 0（sans 146492 / num 1776），且 `document.fonts.load` 之后 `checkAfterLoad` 为 `true`。
 
-专项复核（字体那一格为什么红）：
+字体这一格为什么从旧版的 `num:false` 变成现在全绿（判据修对了，不是运气）：
 
-```json
-{
-  "numFetch":   { "status": 200, "bytes": 1776 },
-  "sansFetch":  { "status": 200, "bytes": 146492 },
-  "faces": ["WithMe Sans:unloaded", "WithMe Num:unloaded"],
-  "checkAfterLoad": true
-}
-```
-
-- 直接 `fetch('fonts/with-me-num-400.woff2')` → 200、1776 字节；`with-me-sans-var.woff2` → 200、146492 字节。两个 woff2 都在 `app.asar.unpacked/dist/renderer/fonts/`，**都拿得到、字节数对**。
-- 此刻两个 `@font-face` 都还是 `unloaded`（页面当前没渲染到用到它们的文本，浏览器还没触发加载），所以 `document.fonts.check` 对没被用到/没加载完的字体返回 false。显式 `await document.fonts.load('12px "WithMe Num"')` 之后再 check → `true`。
-- 结论：`font.num:false` 是探针里 `document.fonts.check` 的**懒加载时序假阴**（同目录同机制的 sans 能过，字节也能 fetch 到），不是 asar/unpacked 的重定向没发生。判定不因此翻成 C。（我没有为了让探针变绿去放宽断言——红的那格是另开专项脚本测出来的。）
+- **旧判据问错了问题**：旧脚本只 `await document.fonts.ready` 再 `document.fonts.check('12px "WithMe Num"')`。`fonts.check` 测的是「DOM 现在用没用到、加载没加载这支字体」，而 `'WithMe Num'` 只被 `.pet-float`（飘字 +N，`src/renderer/style.css:425-434`）消费，探针看到的默认待机画面里根本没有这个元素，那条 `@font-face` 从不触发加载 → check 恒 false。这是假阴，不是环境/asar 问题。
+- **新判据测「app:// 供得出 + 装得上」**：从 CSS 的 `@font-face` 规则里读出 family 名和 `src` 的 url（文件名以 `style.css` 为唯一真相，探针不写死），对每支 woff2 先 `fetch` 断言 200 且字节 > 0，再 `await document.fonts.load(...)` 之后断言 `check` 为 true。sans / num 两支都覆盖。
+- **反向对照**：临时往判据里塞一支包里根本没有的 `fonts/no-such-font.woff2`，脚本变红退出（`AssertionError ... status:404`）；删掉临时那段后重跑恢复绿。证明这一层真在测「app:// 取不取得到 woff2」，红/绿随判据而非随环境。详见 Fix round 1 报告一节。
 
 release/win-unpacked/resources/ 实际结构（关键几行）：
 
