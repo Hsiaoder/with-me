@@ -5,6 +5,7 @@
   "description": "Windows 桌面宠物：整屏透明覆盖窗 + 可自定义皮肤 + 预渲染 webm 动画",
   "author": "Hsiaoder",
   "homepage": "https://github.com/Hsiaoder/with-me",
+  "license": "GPL-3.0-only",
   "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
@@ -15,6 +16,7 @@
     "build": "tsc -p tsconfig.build.json && node tools/copy-static.mjs",
     "start": "npm run build && electron .",
     "e2e": "npm run build && node e2e/pet-check.mjs",
+    "check:license": "node tools/check-licenses.mjs",
     "skin:test": "node tools/make-test-skin.mjs",
     "fonts": "node tools/make-font-subset.mjs",
     "alpha:check": "node tools/alpha-report.mjs",

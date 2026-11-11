@@ -1,0 +1,38 @@
+[
+  {
+    "path": "src/renderer/icons/",
+    "license": "CC0-1.0",
+    "source": "Kenney (kenney.nl) — UI Pack / Emotes",
+    "note": "按钮圆底、箭头、光标等；部分按本项目配色重染（`spike/palette-recolor.mjs`），CC0 允许"
+  },
+  {
+    "path": "src/renderer/foods/",
+    "license": "CC0-1.0",
+    "source": "Kenney UI Pack 底板 + 本项目生成脚本（`tools/make-food-icons.mjs`）",
+    "note": "没用 iconfont 那批：上游条款禁止商用再分发"
+  },
+  {
+    "path": "src/renderer/emotes/",
+    "license": "CC0-1.0",
+    "source": "Kenney Emotes，经 `spike/emote-thin.mjs` / `emote-shorten.mjs` 削描边删中段",
+    "note": "32×32 位图，CSS 放大显示"
+  },
+  {
+    "path": "src/renderer/fonts/",
+    "license": "OFL-1.1",
+    "source": "Noto Sans SC 可变子集（`with-me-sans-var.woff2`）/ Fredoka（`with-me-num-400.woff2`）",
+    "note": "两份 OFL 正文是上游发布的原文，逐字节不改；子集已改名，未使用 Reserved Font Name。源 TTF 各 16MB 不入库，见 `tools/make-font-subset.mjs`"
+  },
+  {
+    "path": "src/renderer/voice/",
+    "license": "GPL-3.0-only",
+    "source": "台词派生自 qqpet（© Ankio，GPL-3.0-only），语音由 BreezeBlue TTS 合成",
+    "note": "合成音频的再分发权利取证见发布清单；取证不过就把本目录移出安装包（`audio.ts` 查不到表自动走无声路径）"
+  },
+  {
+    "path": "skins/block/",
+    "license": "GPL-3.0-only",
+    "source": "本项目自制占位皮肤（`tools/make-test-skin.mjs` 用 ffmpeg 现场生成的蓝幕抠像片段）",
+    "note": "不含任何第三方美术素材"
+  }
+]
