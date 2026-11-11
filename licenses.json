@@ -27,7 +27,7 @@
     "path": "src/renderer/voice/",
     "license": "GPL-3.0-only",
     "source": "台词派生自 qqpet（© Ankio，GPL-3.0-only），语音由 BreezeBlue TTS 合成",
-    "note": "合成音频的再分发权利取证见发布清单；取证不过就把本目录移出安装包（`audio.ts` 查不到表自动走无声路径）"
+    "note": "平台条款允许再分发（账号持有人 2026-11-12 确认），语音随包发行"
   },
   {
     "path": "skins/block/",
