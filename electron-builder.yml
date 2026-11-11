@@ -37,3 +37,6 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   artifactName: with-me-${version}-setup.${ext}
+
+# v1 不做自动更新：不生成 latest.yml，不留更新源（spec 非目标）
+publish: null

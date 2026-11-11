@@ -12,6 +12,7 @@
  * 启动目标二选一（默认走等价回退路，见 launchOpts 上方注释）：
  *   默认          electron.exe + release/win-unpacked/resources/app.asar
  *   PKG_PROBE_EXE=1  release/win-unpacked/with-me.exe（args 必须为空，带了 '.' 反而起不来）
+ *   开关只接受 '0' / '1'：设了别的值（CI 里写成 true 之类）立刻报错退出，不许静默落回等价路。
  *
  * 跑法：npm run dist && node e2e/package-check.mjs
  */
@@ -21,7 +22,17 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const UNPACKED = join(process.cwd(), 'release', 'win-unpacked')
+/**
+ * 被打产物所在的目录。默认 `release/win-unpacked`（`npm run dist` 的真产物）。
+ *
+ * 为什么留这个口子：做反向对照要「改点东西再重打一次」，而 electron-builder 每次都会先清空它的
+ * 输出目录——直接往 `release/` 里 `--dir` 重来，一旦中途 EBUSY 就会把真产物掏成半个
+ * （实测踩过：win-unpacked 只剩 resources/，探针随后超时，那次结果不作数）。
+ * 所以反向对照一律用独立目录：
+ *   npx electron-builder --win dir --config.directories.output=release-rc --config.electronDist=node_modules/electron/dist
+ *   PKG_PROBE_ROOT=release-rc/win-unpacked node e2e/package-check.mjs
+ */
+const UNPACKED = join(process.cwd(), process.env.PKG_PROBE_ROOT ?? join('release', 'win-unpacked'))
 const EXE = join(UNPACKED, 'with-me.exe')
 const ASAR = join(UNPACKED, 'resources', 'app.asar')
 const ELECTRON = join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe')
@@ -33,9 +44,15 @@ const ELECTRON = join(process.cwd(), 'node_modules', 'electron', 'dist', 'electr
 //   - with-me.exe 只是 electron.exe 的改名版，resources/app.asar 与旁边的 app.asar.unpacked 是同一份产物，
 //     electron.exe <app.asar> 走的是同一套 asar→unpacked 重定向。断言逐条不变，只换了启动方式，没放宽判据。
 //   判定 A 的证据因此可由「仓库里的这条命令」复现。想直连装机 exe（能跑它的机器 / CI）就设 PKG_PROBE_EXE=1。
-const useExe = process.env.PKG_PROBE_EXE === '1'
+// 启动路必须显式：这份判定的价值就在「到底验的是哪个二进制」，静默回退等于把结论换个来源还不说。
+const exeSwitch = process.env.PKG_PROBE_EXE
+if (exeSwitch !== undefined && !['0', '1'].includes(exeSwitch)) {
+  console.error(`PKG_PROBE_EXE 只接受 '0' 或 '1'，收到 ${JSON.stringify(exeSwitch)}`)
+  process.exit(2)
+}
+const useInstalledExe = exeSwitch === '1'
 let launchOpts
-if (useExe) {
+if (useInstalledExe) {
   if (!existsSync(EXE)) {
     console.error(`找不到 ${EXE}，先跑 npm run dist`)
     process.exit(1)
@@ -55,7 +72,7 @@ let app
 
 try {
   app = await electron.launch({ ...launchOpts, env: { ...process.env, PET_USER_DATA: userData } })
-  console.log(`探针启动方式：${useExe ? `装机 exe ${EXE}` : `electron.exe + app.asar（等价回退）${ASAR}`}`)
+  console.log(`探针启动方式：${useInstalledExe ? `装机 exe ${EXE}` : `electron.exe + app.asar（等价回退）${ASAR}`}`)
 
   const page = await app.firstWindow()
   const pageErrors = []
@@ -131,8 +148,18 @@ try {
         const res = await fetch(url)
         const byteLength = (await res.arrayBuffer()).byteLength
         const spec = `12px "${family}"`
-        await document.fonts.load(spec)
-        faces.push({ family, url, status: res.status, byteLength, checkAfterLoad: document.fonts.check(spec) })
+        // 逐支兜住 load 的异常：真坏包时 document.fonts.load 会以网络错误 reject，
+        // 异常直接从 page.evaluate 冒出来——上一支还没进 faces、后面的字体也不再验，
+        // 打印只剩一句裸 "A network error occurred."。包一层后失败变成一条带 loadError 的观测值，
+        // 下面的断言照常逐条报「哪一支、取到什么状态、load 报了什么」。
+        let loadError = null
+        try {
+          await document.fonts.load(spec)
+        } catch (e) {
+          loadError = String(e)
+        }
+        const checkAfterLoad = document.fonts.check(spec)
+        faces.push({ family, url, status: res.status, byteLength, loadError, checkAfterLoad })
       }
     }
     return faces

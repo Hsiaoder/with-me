@@ -101,3 +101,77 @@ resources/
 
 ## 为什么不能照抄 qqpet
 它是 `asar:true`，但重素材走 `extraResources` 落在 asar **外面**，asar 里只有代码——它没回答「大媒体在 asar 内被 `net.fetch` 分段读」这个问题。我们这边大媒体是 `asarUnpack` 搬进 `app.asar.unpacked`（不是 extraResources 的 `resources/` 根），路径主机是 `app://skin/…`、`app://assets/renderer/voice/…`，和 qqpet 不是同一条读法，所以必须实测。实测过了：unpacked 重定向确实发生，判定 A。
+
+## 还没验过的一格（交真机）
+
+本机 Device Guard 拦未签名 exe，所以 `release/win-unpacked/with-me.exe` **至今没被执行过**：
+判定 A 的证据来自「有信誉的 `electron.exe` + 同一份 `app.asar`/`app.asar.unpacked` + 同一套断言」。
+这两条路在 `app.getAppPath()` 上同解（`src/main` 里没有 `app.isPackaged` 分支），
+但**「双击装好的 exe 能不能跑起来」这一格仍是空的**，只能在没被策略拦的机器上勾：
+
+    PKG_PROBE_EXE=1 node e2e/package-check.mjs   # 期望退出码 0，首行打印「装机 exe」那条路
+
+### 勾这一格之前先知道的两件事（Task 2 收口）
+
+- `PKG_PROBE_EXE` 现在只接受 `'0'` / `'1'`：设成别的值（CI 里写 `true` 之类）脚本立刻
+  `exit 2` 并报 `PKG_PROBE_EXE 只接受 '0' 或 '1'`，**不会**静默落回等价路。也就是说
+  「首行打印哪条路」这句验收话现在是真的可判定的。
+- `publish: null` 已生效：`npm run dist` 不再产出 `release/latest.yml`（v1 不做自动更新，
+  留着等于对外宣称有更新源）。上面门禁一节里那句「另有 …latest.yml」是 Task 1 当时的实测记录，
+  保留作历史；现阶段 `npm run dist` 的产物是 `with-me-0.1.0-setup.exe` + `.blockmap`、
+  `with-me-0.1.0-portable.zip`、`win-unpacked/`，**没有 `latest.yml`**。
+
+## Task 2 实测补记（2026-11-12，本机）
+
+`publish: null` 生效，实测证据：全量构建（`--win`，nsis+zip 两个 target）落到 `release-pub2/` 的产物是
+
+```
+builder-debug.yml
+win-unpacked/
+with-me-0.1.0-portable.zip      167,502,687 B
+with-me-0.1.0-setup.exe             189,756 B   ← 壳，见下
+```
+
+**没有 `latest.yml`**（Task 1 那轮的门禁记录里有它，那时还没关 publish）。
+探针对着 `release-pub2/win-unpacked` 跑：退出码 0，mp3 `duration: 5.808`，两支 woff2 `status: 200`
+（146,492 / 1,776 B）。
+
+### 本机出不了可用的安装包
+
+`building target=nsis` 走到 `spawn UNKNOWN`，对象是 electron-builder 自己临时目录里的
+`%TEMP%\t-xxxx\elevate-staging-1\resources\elevate.exe`——一个刚写出来的未签名 exe。
+和拦 `with-me.exe` 的是同一套策略（Device Guard / 智能应用控制）。后果是 `setup.exe` 只落了 189 KB 的壳，
+**这台机器不能作为安装包的验收地点**：安装包由 CI（`windows-latest`，无此策略）出，本机只验 `zip` + `win-unpacked`。
+将来若要在本机补这一格，做法是给 NSIS 用的临时目录加白，或换台没装策略的机器。
+
+### 反向对照两条（都是真跑的）
+
+1. `PKG_PROBE_EXE=true node e2e/package-check.mjs` → 打印 `PKG_PROBE_EXE 只接受 '0' 或 '1'，收到 "true"`，`exit=2`。
+   没有静默落回等价路。
+2. 把 `src/renderer/style.css` 里 `'WithMe Num'` 的 url 临时改成 `fonts/nope-404.woff2`，重打进独立目录后跑探针：
+
+```
+AssertionError: woff2 经 app:// 取不到（第 2 层媒体没流出来）：
+{"family":"WithMe Num","url":"app://assets/renderer/fonts/nope-404.woff2","status":404,
+ "byteLength":9,"loadError":"NetworkError: A network error occurred.","checkAfterLoad":false}
+actual: 404, expected: 200    exit=1
+```
+
+   逐支兜 `document.fonts.load` 的效果就在这条输出里：报的是「哪一支、取到什么状态、load 说了什么」，
+   不是一句裸网络错误，而且另一支 Sans 照常验完。改回 url 重打 → `exit=0`。
+
+### 为什么探针多了个 `PKG_PROBE_ROOT`
+
+反向对照要「改点东西重打一次」，而 electron-builder 每次先清空它的输出目录。
+直接往 `release/` 里 `--win dir` 重来，中途撞上 `EBUSY`（`default_app.asar` 被 AV 句柄占着）
+就把真产物掏成了半个目录——`win-unpacked` 只剩 `resources/`，随后那次探针超时**不作数**。
+所以反向对照一律：
+
+```bash
+npx electron-builder --win dir --config.directories.output=release-rc --config.electronDist=node_modules/electron/dist
+PKG_PROBE_ROOT=release-rc/win-unpacked node e2e/package-check.mjs
+```
+
+**遗留（环境，不是代码）**：本仓库根下的 `release/`、`release_fresh/`、`release_verify/` 各有 asar
+删不掉（`rm` 报 `Device or resource busy`，进程表里查不到持有者，判定为杀软 minifilter）。
+下次跑 `npm run dist` 前先重启，或者照上面用 `--config.directories.output=<临时目录>`。
