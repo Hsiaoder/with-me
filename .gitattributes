@@ -11,3 +11,9 @@
 *.md eol=lf
 *.webm binary
 *.png binary
+
+# 许可正文不许被行尾转换改写：FSF 与 SIL 都只允许「逐字复制」，
+# 而 *.txt 落在上面的 `text=auto` 下会在 Windows 检出时变成 CRLF。
+*.txt eol=lf
+LICENSE eol=lf
+NOTICE.md eol=lf
