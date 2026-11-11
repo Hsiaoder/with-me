@@ -175,3 +175,20 @@ PKG_PROBE_ROOT=release-rc/win-unpacked node e2e/package-check.mjs
 **遗留（环境，不是代码）**：本仓库根下的 `release/`、`release_fresh/`、`release_verify/` 各有 asar
 删不掉（`rm` 报 `Device or resource busy`，进程表里查不到持有者，判定为杀软 minifilter）。
 下次跑 `npm run dist` 前先重启，或者照上面用 `--config.directories.output=<临时目录>`。
+
+## 「装好的 exe 能不能跑」第二次实测（2026-11-12，晚些时候）
+
+重新出了一份完整产物到 `release-out/`（`--win zip`，exit 0）：
+`with-me-0.1.0-portable.zip` 167,521,263 B、`win-unpacked/with-me.exe` 249,789,440 B，
+exe 旁边有 `LICENSE`、`NOTICE.md`（extraFiles 生效）。
+
+然后专打真 exe 那一路：
+
+```
+PKG_PROBE_ROOT=release-out/win-unpacked PKG_PROBE_EXE=1 node e2e/package-check.mjs
+→ Error: Process failed to launch!      exit=1
+```
+
+**这台机器上确认起不来**，与早先那次同源：改名后的未签名 exe 被 Device Guard / 智能应用控制拦住。
+所以这一格只能换一台没这策略的机器勾，或者在别的机器上直接双击 `with-me.exe` / 解压 zip。
+不是打包坏了的旁证：同一份 `app.asar` + 同一套断言，用有信誉的 `electron.exe` 起就全绿。
