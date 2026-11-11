@@ -9,12 +9,11 @@ directories:
 
 # 白名单：src/test/e2e/spike/docs/codex-review 一律不进包。
 # dependencies 为空，所以 asar 里只有我们自己的文件。
+# LICENSE / NOTICE.md 不在这里——运行时代码不读它们，塞进 asar 等于藏起来；见 extraFiles。
 files:
   - dist/**
   - skins/block/**
   - package.json
-  - LICENSE
-  - NOTICE.md
 
 asar: true
 # 重素材留在 asar 外面（qqpet 的 extraResources 是同一路子，见 spike/package-asar.md 的判定）
@@ -22,6 +21,14 @@ asarUnpack:
   - '**/*.webm'
   - '**/*.mp3'
   - '**/*.woff2'
+
+# GPLv3 §4 要「随程序一起给出这份许可的副本」。只塞在 app.asar 里的话，
+# 下免压 zip 的人在文件系统上根本看不到许可——所以往 exe 旁边再放一份。
+extraFiles:
+  - from: LICENSE
+    to: LICENSE
+  - from: NOTICE.md
+    to: NOTICE.md
 
 npmRebuild: false
 

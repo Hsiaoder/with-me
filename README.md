@@ -620,6 +620,7 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 | [`docs/superpowers/plans/2026-11-02-desktop-pet-v1.md`](docs/superpowers/plans/2026-11-02-desktop-pet-v1.md) | 14 个任务、83 个步骤的施工单 |
 | [`docs/实现进度.md`](docs/实现进度.md) | 现在做到哪了（由脚本生成，别手改） |
 | [`spike/README.md`](spike/README.md) | 整屏透明窗 + 硬件加速的真机实测数据 |
+| [`spike/package-asar.md`](spike/package-asar.md) | 装机产物实测：`app://` 在 asar / unpacked 下到底取不取得到媒体 |
 | [`problem/`](problem/README.md) | 开发中真实踩到的坑：症状、根因、修法、怎么验、教训 |
 
 `docs/` 与 `codex-review/` 按决定不入库（只在本地），所以克隆下来的人看不到上面那几行链接；
