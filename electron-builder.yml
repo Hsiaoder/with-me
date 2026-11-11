@@ -1,0 +1,39 @@
+# 发布打包配置。取舍的理由写在 docs/superpowers/specs/2026-11-11-release-packaging-design.md 第二节，
+# 改这里先改那份文档，别只动配置。
+appId: com.hsiaoder.with-me
+productName: with-me
+copyright: with-me contributors
+
+directories:
+  output: release      # 不能是 dist/：tsc 产物在那里
+
+# 白名单：src/test/e2e/spike/docs/codex-review 一律不进包。
+# dependencies 为空，所以 asar 里只有我们自己的文件。
+files:
+  - dist/**
+  - skins/block/**
+  - package.json
+  - LICENSE
+  - NOTICE.md
+
+asar: true
+# 重素材留在 asar 外面（qqpet 的 extraResources 是同一路子，见 spike/package-asar.md 的判定）
+asarUnpack:
+  - '**/*.webm'
+  - '**/*.mp3'
+  - '**/*.woff2'
+
+npmRebuild: false
+
+win:
+  target:
+    - nsis
+    - zip
+  artifactName: with-me-${version}-portable.${ext}
+  forceCodeSigning: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: with-me-${version}-setup.${ext}
