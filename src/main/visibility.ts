@@ -35,8 +35,11 @@ export interface VisibilityPolicy {
   hideManually(): void
   /** 清掉手动隐藏门控，并按当前场景与设置立即重新判断。 */
   showManually(): void
-  /** 立刻放出来，不走去抖。探测进程半路死掉时用——那时不会再有下一拍把状态翻回来。 */
-  reveal(): void
+  /**
+   * 尝试立刻放出来，不走去抖。手动隐藏仍优先；返回本次是否真的恢复了显示。
+   * 探测进程半路死掉时用——那时不会再有下一拍把状态翻回来。
+   */
+  reveal(): boolean
   readonly hidden: boolean
 }
 
@@ -99,11 +102,12 @@ export function createVisibilityPolicy(
       apply(decideVisibility(scenario, current), false)
     },
     reveal() {
-      if (manualHidden) return
+      if (manualHidden) return false
       clear = 0
-      if (!hidden) return
+      if (!hidden) return false
       hidden = false
       platform.show()
+      return true
     },
   }
 }
@@ -237,9 +241,8 @@ export function startVisibilityWatch(platform: Platform, settings: Settings): Vi
   // 让路失效至少比宠物消失好，所以当场放出来。
   child.on('close', () => {
     if (dying) return
-    const wasHidden = policy.hidden
-    policy.reveal()
-    if (wasHidden) console.error('[visibility] 探测进程退出，宠物已恢复显示，本轮不再隐藏')
+    const restored = policy.reveal()
+    if (restored) console.error('[visibility] 探测进程退出，宠物已恢复显示，本轮不再隐藏')
   })
 
   return {

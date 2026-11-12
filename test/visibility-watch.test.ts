@@ -71,11 +71,21 @@ describe('可见性策略的执行', () => {
     const { platform, calls } = fakePlatform()
     const w = createVisibilityPolicy(platform, HIDE, 4)
     w.setScenario('fullscreen')
-    w.reveal()
+    expect(w.reveal()).toBe(true)
     expect(calls).toEqual(['hide', 'show'])
     expect(w.hidden).toBe(false)
-    w.reveal()
+    expect(w.reveal()).toBe(false)
     expect(calls, '已经显示着就不重复调').toEqual(['hide', 'show'])
+  })
+
+  it('手动隐藏时 reveal 不恢复显示，并明确报告没有恢复', () => {
+    const { platform, calls } = fakePlatform()
+    const w = createVisibilityPolicy(platform, SHOW)
+    w.hideManually()
+
+    expect(w.reveal()).toBe(false)
+    expect(calls).toEqual(['hide'])
+    expect(w.hidden).toBe(true)
   })
 
   it('改设置当场重新评估，不用等下一拍探测', () => {
