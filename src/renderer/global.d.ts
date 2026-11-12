@@ -26,6 +26,8 @@ declare global {
       onStats(cb: (s: StatsSnapshot) => void): void
       /** 用户点了「退出桌宠」：渲染层说完 bye 后调它，主进程落盘并 app.quit()。 */
       quitApp(): void
+      /** 托盘「退出」：主进程已把宠物亮出来，渲染层照旧走一遍告别序列。 */
+      onQuitRequested(cb: () => void): void
     }
   }
 }
