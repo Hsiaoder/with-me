@@ -95,3 +95,11 @@ The missing 256-pixel frame is acceptable for the tray. Windows Explorer can sca
 - Update panel DOM tests to assert four buttons and absence of settings UI.
 - Run typecheck, all unit tests, build, license audit, and an electron-builder directory build.
 - Inspect the packaged directory for `dafeiyu.ico` and verify builder config resolves the Windows icon.
+
+## 执行修订（2026-11-12 晚）
+
+原方案要求把 `E:/ai-pet/ico/dafeiyu.ico`（由「大肥鱼2.png」生成）复制进仓库用作托盘与 exe 图标。
+执行时核对 `NOTICE.md` 与大肥鱼条款发现：该形象是 CC BY-NC-SA 4.0，明确禁止进入 GPL 主程序与安装包，
+许可闸门也会拦下含 `dafeiyu` 的包内路径。因此改用本项目自制的通用蓝鲸图标 `assets/with-me.ico`
+（由 `src/renderer/icons/game-fly.png` 缩放生成），其余打包机制不变。
+如能证明该 ICO 是本项目原创（与 dsh-pet 形象无关），可再换回。

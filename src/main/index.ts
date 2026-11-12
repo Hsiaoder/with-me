@@ -141,8 +141,8 @@ void app.whenReady().then(() => {
    * 图标在开发期从仓库读，打包后从 resources 读（见 electron-builder 的 extraResources）。
    */
   const trayIconPath = app.isPackaged
-    ? join(process.resourcesPath, 'dafeiyu.ico')
-    : join(app.getAppPath(), 'assets', 'dafeiyu.ico')
+    ? join(process.resourcesPath, 'with-me.ico')
+    : join(app.getAppPath(), 'assets', 'with-me.ico')
   const trayExit = createTrayExit({
     // 先清手动门控再强制亮出窗口：全屏规则此刻仍说「隐藏」也要让人看见告别。
     reveal: () => { watch.showManually(); watch.reveal() },

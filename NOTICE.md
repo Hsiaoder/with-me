@@ -35,6 +35,7 @@ Copyright (C) 2026 Hsiaoder
 | `src/renderer/icons`、`foods`、`emotes` | CC0-1.0 | [Kenney](https://kenney.nl) UI Pack / Emotes；部分按本项目配色重染、削描边。CC0 无署名义务，这里写出来是为了可追溯 |
 | `src/renderer/fonts` | OFL-1.1 | Noto Sans SC 可变字重子集与 Fredoka 数字子集。两份 `OFL-*.txt` 是**上游发布的原文，逐字节不改**——其中思源那份的版权行写的是 Adobe 与保留名 `Source`，这是 google/fonts 对 Noto Sans SC 的原始发布正文；子集已改名 `with-me-*`，没有使用保留名 |
 | `skins/block` | GPL-3.0-only | 本项目 `tools/make-test-skin.mjs` 用 ffmpeg 现场生成的蓝幕抠像片段，纯占位 |
+| `assets/with-me.ico` | GPL-3.0-only | 本项目自制：由 `src/renderer/icons/game-fly.png`（ImageGen 出图）缩放，用作 exe 与托盘图标 |
 
 新增任何第三方素材都要登记进 [`licenses.json`](licenses.json)，
 `node tools/check-licenses.mjs` 会在 CI 拦住没登记的那一份。
@@ -46,6 +47,8 @@ Copyright (C) 2026 Hsiaoder
 
 - 它以**单独的皮肤包**形式在同一个 GitHub Release 提供，许可与署名见包内 `ATTRIBUTION.md`。
 - 本仓库与两个安装包**都不含这些素材**，一个字节都不带；许可闸门（`tools/check-licenses.mjs`）会拦。
+- 应用图标与托盘图标**没有使用大肥鱼形象**：`assets/with-me.ico` 是一尾通用蓝鲸（本项目自制），
+  避免把 CC BY-NC-SA 素材带进 GPL 主程序。
 - 本程序的 GPL 授权不覆盖、也不会放开该形象。想商用的一律用内置的 `block` 皮肤或自皮肤。
 - 形象谱系（按 dsh-pet 的要求转述）：大肥鱼是社区二创的 DeepSeek「鲸鱼娘」，**非 DeepSeek 官方形象**；
   原型「溟月」出自 B 站 [@上善无形](https://space.bilibili.com/4456176)，

@@ -11,11 +11,11 @@ import { auditAssets, findForbidden } from '../src/shared/licenses.ts'
 const ROOT = process.cwd()
 
 /** 素材后缀：登记与禁放都只看这些，源码 .ts/.css/.html 不归它管。 */
-const ASSET_EXT = ['.webm', '.mp3', '.woff2', '.png', '.svg', '.jpg', '.gif', '.txt', '.ttf', '.otf']
+const ASSET_EXT = ['.webm', '.mp3', '.woff2', '.png', '.svg', '.jpg', '.gif', '.txt', '.ttf', '.otf', '.ico']
 /** 登记完整性查源树：一处真相。dist 是源树的拷贝，往它身上登记等于把 CC0 盖成 GPL。 */
-const SRC_TREES = ['src/renderer', 'skins']
+const SRC_TREES = ['src/renderer', 'skins', 'assets']
 /** 禁放扫描查包树：将要进包与已经进包的东西。 */
-const PACK_TREES = ['dist', 'skins', 'release']
+const PACK_TREES = ['dist', 'skins', 'release', 'assets']
 
 function walk(dir, out) {
   for (const name of readdirSync(dir)) {

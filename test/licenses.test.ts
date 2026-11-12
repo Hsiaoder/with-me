@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { auditAssets, findForbidden, type LicenseEntry } from '../src/shared/licenses.js'
 
 const E = (path: string, license = 'CC0-1.0', source = 'Kenney'): LicenseEntry => ({ path, license, source })
@@ -60,5 +61,24 @@ describe('findForbidden：不该出现的东西（只喂包树）', () => {
   it('干净的包树什么都不报', () => {
     expect(findForbidden(['dist/renderer/index.html', 'dist/renderer/fonts/with-me-sans-var.woff2',
       'skins/block/animation/idle/patrol.webm'])).toEqual([])
+  })
+})
+
+describe('应用图标与打包配置', () => {
+  it('应用图标存在且是合法 ICO', () => {
+    const buf = readFileSync('assets/with-me.ico')
+    expect(buf.subarray(0, 4)).toEqual(Buffer.from([0x00, 0x00, 0x01, 0x00]))
+    expect(buf.subarray(4, 6).readUInt16LE(0)).toBeGreaterThan(0)
+  })
+
+  it('licenses.json 登记了 assets/', () => {
+    const entries = JSON.parse(readFileSync('licenses.json', 'utf8')) as LicenseEntry[]
+    expect(entries.some((e) => e.path === 'assets/')).toBe(true)
+  })
+
+  it('builder 配置声明了 win.icon 与 extraResources 拷贝', () => {
+    const yml = readFileSync('electron-builder.yml', 'utf8')
+    expect(yml).toContain('win:\n  icon: assets/with-me.ico')
+    expect(yml).toContain('extraResources:\n  - from: assets/with-me.ico\n    to: with-me.ico')
   })
 })

@@ -30,9 +30,15 @@ extraFiles:
   - from: NOTICE.md
     to: NOTICE.md
 
+# 托盘在打包后从 process.resourcesPath 读一个稳定路径；见 src/main/index.ts。
+extraResources:
+  - from: assets/with-me.ico
+    to: with-me.ico
+
 npmRebuild: false
 
 win:
+  icon: assets/with-me.ico
   target:
     - nsis
     - zip

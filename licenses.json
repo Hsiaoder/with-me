@@ -34,5 +34,11 @@
     "license": "GPL-3.0-only",
     "source": "本项目自制占位皮肤（`tools/make-test-skin.mjs` 用 ffmpeg 现场生成的蓝幕抠像片段）",
     "note": "不含任何第三方美术素材"
+  },
+  {
+    "path": "assets/",
+    "license": "GPL-3.0-only",
+    "source": "本项目自制：由 `src/renderer/icons/game-fly.png`（ImageGen 出图）缩放为应用/托盘图标",
+    "note": "通用的蓝鲸图标，不是大肥鱼形象；打包时复制到 resources/with-me.ico"
   }
 ]
