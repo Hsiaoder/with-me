@@ -3,9 +3,10 @@ import type { Settings } from '../shared/visibility.js'
 
 export type TrayMenuItem = {
   label?: string
-  type?: 'separator' | 'checkbox'
+  type?: 'separator' | 'checkbox' | 'radio'
   checked?: boolean
   click?: (item: { checked: boolean }) => void
+  submenu?: TrayMenuItem[]
 }
 
 export interface TrayPort {
@@ -22,9 +23,14 @@ export interface TrayRuntime {
   buildMenu(template: TrayMenuItem[]): unknown
 }
 
+export type TraySkin = { id: string; name: string }
+
 export type TrayDeps = {
   iconPath: string
   getSettings(): Settings
+  listSkins(): TraySkin[]
+  getSkin(): string
+  selectSkin(id: string): void
   show(): void
   hide(): void
   updateSettings(patch: Partial<Settings>): void
@@ -94,6 +100,16 @@ export function createTrayController(
         type: 'checkbox',
         checked: settings.developerMode,
         click: (item) => deps.updateSettings({ developerMode: item.checked }),
+      },
+      { type: 'separator' },
+      {
+        label: '皮肤',
+        submenu: deps.listSkins().map((skin) => ({
+          label: skin.name,
+          type: 'radio' as const,
+          checked: skin.id === deps.getSkin(),
+          click: () => deps.selectSkin(skin.id),
+        })),
       },
       { type: 'separator' },
       { label: '退出', click: () => deps.quit() },

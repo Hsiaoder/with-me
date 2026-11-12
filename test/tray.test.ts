@@ -21,8 +21,11 @@ function setup(settings: Settings = { onFullscreen: 'show', developerMode: false
     }),
   }
   const deps = {
-    iconPath: 'assets/dafeiyu.ico',
+    iconPath: 'assets/with-me.ico',
     getSettings: vi.fn(() => settings),
+    listSkins: vi.fn(() => [{ id: 'block', name: '色块' }, { id: 'dafeiyu', name: '大肥鱼' }]),
+    getSkin: vi.fn(() => 'block'),
+    selectSkin: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
     updateSettings: vi.fn(),
@@ -39,7 +42,7 @@ describe('tray controller', () => {
 
     expect(templates).toHaveLength(1)
     expect(templates[0]!.map((i) => i.label ?? i.type)).toEqual([
-      '显示桌宠', '隐藏桌宠', 'separator', '静音', '全屏时隐藏', '开发者模式', 'separator', '退出',
+      '显示桌宠', '隐藏桌宠', 'separator', '静音', '全屏时隐藏', '开发者模式', 'separator', '皮肤', 'separator', '退出',
     ])
     expect(templates[0]![3]).toMatchObject({ type: 'checkbox', checked: true })
     expect(templates[0]![4]).toMatchObject({ type: 'checkbox', checked: true })
@@ -52,7 +55,7 @@ describe('tray controller', () => {
     const { templates, deps, listeners } = setup()
     templates[0]![0]!.click?.({ checked: false })
     templates[0]![1]!.click?.({ checked: false })
-    templates[0]![7]!.click?.({ checked: false })
+    templates[0]![9]!.click?.({ checked: false })
     listeners.get('double-click')?.()
 
     expect(deps.show).toHaveBeenCalledTimes(2)
@@ -71,6 +74,16 @@ describe('tray controller', () => {
       [{ onFullscreen: 'hide' }],
       [{ developerMode: true }],
     ])
+  })
+
+  it('皮肤子菜单列出所有皮肤并标出当前项，点击委托切换', () => {
+    const { templates, deps } = setup()
+    const skins = templates[0]![7]!
+    expect(skins.label).toBe('皮肤')
+    expect(skins.submenu?.map((i) => i.label)).toEqual(['色块', '大肥鱼'])
+    expect(skins.submenu?.map((i) => i.checked)).toEqual([true, false])
+    skins.submenu![1]!.click?.({ checked: false })
+    expect(deps.selectSkin).toHaveBeenCalledWith('dafeiyu')
   })
 
   it('refresh rebuilds from current settings and dispose is idempotent', () => {
@@ -103,6 +116,7 @@ describe('tray controller', () => {
     const controller = createTrayController({
       iconPath: 'missing.ico',
       getSettings: () => ({ onFullscreen: 'show', developerMode: false, muted: false }),
+      listSkins: () => [], getSkin: () => 'block', selectSkin: vi.fn(),
       show: vi.fn(), hide: vi.fn(), updateSettings: vi.fn(), quit: vi.fn(), reportError,
     }, runtime)
     controller.refresh()

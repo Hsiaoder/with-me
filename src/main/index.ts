@@ -1,13 +1,14 @@
 import { app, screen } from 'electron'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shared/config.js'
 import { IPC } from '../shared/ipc.js'
-import { toSkinPayload } from '../shared/skin.js'
+import { toSkinPayload, validateManifest } from '../shared/skin.js'
 import { applySettings } from '../shared/save.js'
 import { startStats, type StatsSnapshot } from './stats.js'
 import { loadFrom, saveTo } from './storage.js'
-import { FALLBACK_SKIN, findSkinDir, platformDataDir } from './paths.js'
+import { FALLBACK_SKIN, findSkinDir, listSkinDirs, platformDataDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
 import { startVisibilityWatch, type VisibilityWatch } from './visibility.js'
 import { createTrayController, type TrayController } from './tray.js'
@@ -143,6 +144,33 @@ void app.whenReady().then(() => {
   const trayIconPath = app.isPackaged
     ? join(process.resourcesPath, 'with-me.ico')
     : join(app.getAppPath(), 'assets', 'with-me.ico')
+
+  /** 托盘里的皮肤菜单：读 manifest 的展示名，坏掉的包按目录名显示但不隐藏。 */
+  const listSkins = (): { id: string; name: string }[] => listSkinDirs().map(({ id, dir }) => {
+    try {
+      const checked = validateManifest(JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')))
+      return { id, name: checked.ok ? checked.manifest.name : id }
+    } catch {
+      return { id, name: id }
+    }
+  })
+
+  /**
+   * 换皮肤要在启动时装载，热换会牵动协议、渲染层和整条皮肤缓存，所以保存后直接重启。
+   * 先落盘再重启：app.exit 不触发 before-quit，不能指望那里再写一次。
+   */
+  const selectSkin = (id: string): void => {
+    if (id === save.skin || findSkinDir(id) === null) return
+    save.skin = id
+    if (!saveTo(dataDir, save)) {
+      console.log('[save] 存档版本比本程序新，跳过换皮肤')
+      return
+    }
+    setTimeout(() => {
+      app.relaunch()
+      app.exit(0)
+    }, 120)
+  }
   const trayExit = createTrayExit({
     // 先清手动门控再强制亮出窗口：全屏规则此刻仍说「隐藏」也要让人看见告别。
     reveal: () => { watch.showManually(); watch.reveal() },
@@ -158,6 +186,9 @@ void app.whenReady().then(() => {
   tray = createTrayController({
     iconPath: trayIconPath,
     getSettings: () => save.settings,
+    listSkins,
+    getSkin: () => save.skin,
+    selectSkin,
     show: () => watch.showManually(),
     hide: () => watch.hideManually(),
     updateSettings,
