@@ -36,6 +36,7 @@ Copyright (C) 2026 Hsiaoder
 | `src/renderer/fonts` | OFL-1.1 | Noto Sans SC 可变字重子集与 Fredoka 数字子集。两份 `OFL-*.txt` 是**上游发布的原文，逐字节不改**——其中思源那份的版权行写的是 Adobe 与保留名 `Source`，这是 google/fonts 对 Noto Sans SC 的原始发布正文；子集已改名 `with-me-*`，没有使用保留名 |
 | `skins/block` | GPL-3.0-only | 本项目 `tools/make-test-skin.mjs` 用 ffmpeg 现场生成的蓝幕抠像片段，纯占位 |
 | `assets/with-me.ico` | GPL-3.0-only | 本项目自制：由 `src/renderer/icons/game-fly.png`（ImageGen 出图）缩放，用作 exe 与托盘图标 |
+| `fflate`（随 app.asar 打包） | MIT | 皮肤包导入用的解压库，© Arjun Barrett |
 
 新增任何第三方素材都要登记进 [`licenses.json`](licenses.json)，
 `node tools/check-licenses.mjs` 会在 CI 拦住没登记的那一份。

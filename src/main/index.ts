@@ -1,4 +1,4 @@
-import { app, screen } from 'electron'
+import { app, dialog, screen } from 'electron'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,11 +8,12 @@ import { toSkinPayload, validateManifest } from '../shared/skin.js'
 import { applySettings } from '../shared/save.js'
 import { startStats, type StatsSnapshot } from './stats.js'
 import { loadFrom, saveTo } from './storage.js'
-import { FALLBACK_SKIN, findSkinDir, listSkinDirs, platformDataDir } from './paths.js'
+import { FALLBACK_SKIN, findSkinDir, listSkinDirs, platformDataDir, userSkinsDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
 import { startVisibilityWatch, type VisibilityWatch } from './visibility.js'
 import { createTrayController, type TrayController } from './tray.js'
 import { createSettingsHub, createTrayExit } from './tray-integration.js'
+import { installSkinPack, inspectSkinPack } from './skin-import.js'
 import { startCursorPolling } from './cursor.js'
 import { registerIpc } from './ipc.js'
 import { attachAppHandler, declareAppScheme } from './protocol.js'
@@ -159,8 +160,7 @@ void app.whenReady().then(() => {
    * 换皮肤要在启动时装载，热换会牵动协议、渲染层和整条皮肤缓存，所以保存后直接重启。
    * 先落盘再重启：app.exit 不触发 before-quit，不能指望那里再写一次。
    */
-  const selectSkin = (id: string): void => {
-    if (id === save.skin || findSkinDir(id) === null) return
+  const applySkinAndRestart = (id: string): void => {
     save.skin = id
     if (!saveTo(dataDir, save)) {
       console.log('[save] 存档版本比本程序新，跳过换皮肤')
@@ -170,6 +170,65 @@ void app.whenReady().then(() => {
       app.relaunch()
       app.exit(0)
     }, 120)
+  }
+
+  const selectSkin = (id: string): void => {
+    if (id === save.skin || findSkinDir(id) === null) return
+    applySkinAndRestart(id)
+  }
+
+  /**
+   * 用户自己挑一个皮肤 zip。压缩包先整体校验再落盘，确认框里把包内许可摊给用户看，
+   * 导入成功后直接切过去并重启——和托盘里点皮肤同一条路径。
+   */
+  const importSkin = async (): Promise<void> => {
+    const picked = await dialog.showOpenDialog({
+      title: '选择皮肤包',
+      properties: ['openFile'],
+      filters: [{ name: '皮肤包', extensions: ['zip'] }],
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return
+
+    let zip: Uint8Array
+    try {
+      zip = readFileSync(picked.filePaths[0]!)
+    } catch (e) {
+      dialog.showErrorBox('无法读取文件', e instanceof Error ? e.message : String(e))
+      return
+    }
+
+    const inspected = inspectSkinPack(zip)
+    if (!inspected.ok) {
+      dialog.showErrorBox('这个皮肤包不能导入', inspected.error)
+      return
+    }
+
+    const { pack } = inspected
+    const terms = [
+      pack.attribution ? pack.attribution : '',
+      pack.license ? `许可：${pack.license}` : '',
+      '第三方皮肤包的条款由作者提供，导入即表示你接受包内许可。'
+        + '如果它标记了「禁止商用」，请勿把皮肤用于商业用途。',
+    ].filter(Boolean).join('\n\n')
+
+    const confirm = await dialog.showMessageBox({
+      type: 'question',
+      title: '导入皮肤包',
+      message: `导入「${pack.manifest.name}」（id: ${pack.id}）并重启桌宠？`,
+      detail: terms.slice(0, 2000),
+      buttons: ['取消', '导入并重启'],
+      defaultId: 1,
+      cancelId: 0,
+      noLink: true,
+    })
+    if (confirm.response !== 1) return
+
+    const installed = installSkinPack(zip, userSkinsDir())
+    if (!installed.ok) {
+      dialog.showErrorBox('导入失败', installed.error)
+      return
+    }
+    applySkinAndRestart(installed.id)
   }
   const trayExit = createTrayExit({
     // 先清手动门控再强制亮出窗口：全屏规则此刻仍说「隐藏」也要让人看见告别。
@@ -189,6 +248,7 @@ void app.whenReady().then(() => {
     listSkins,
     getSkin: () => save.skin,
     selectSkin,
+    importSkin: () => { void importSkin() },
     show: () => watch.showManually(),
     hide: () => watch.hideManually(),
     updateSettings,

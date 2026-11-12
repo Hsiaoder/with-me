@@ -26,6 +26,7 @@ function setup(settings: Settings = { onFullscreen: 'show', developerMode: false
     listSkins: vi.fn(() => [{ id: 'block', name: '色块' }, { id: 'dafeiyu', name: '大肥鱼' }]),
     getSkin: vi.fn(() => 'block'),
     selectSkin: vi.fn(),
+    importSkin: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
     updateSettings: vi.fn(),
@@ -80,10 +81,12 @@ describe('tray controller', () => {
     const { templates, deps } = setup()
     const skins = templates[0]![7]!
     expect(skins.label).toBe('皮肤')
-    expect(skins.submenu?.map((i) => i.label)).toEqual(['色块', '大肥鱼'])
-    expect(skins.submenu?.map((i) => i.checked)).toEqual([true, false])
+    expect(skins.submenu?.map((i) => i.label)).toEqual(['色块', '大肥鱼', undefined, '导入皮肤包…'])
+    expect(skins.submenu?.map((i) => i.checked)).toEqual([true, false, undefined, undefined])
     skins.submenu![1]!.click?.({ checked: false })
     expect(deps.selectSkin).toHaveBeenCalledWith('dafeiyu')
+    skins.submenu![3]!.click?.({ checked: false })
+    expect(deps.importSkin).toHaveBeenCalledOnce()
   })
 
   it('refresh rebuilds from current settings and dispose is idempotent', () => {
@@ -116,7 +119,7 @@ describe('tray controller', () => {
     const controller = createTrayController({
       iconPath: 'missing.ico',
       getSettings: () => ({ onFullscreen: 'show', developerMode: false, muted: false }),
-      listSkins: () => [], getSkin: () => 'block', selectSkin: vi.fn(),
+      listSkins: () => [], getSkin: () => 'block', selectSkin: vi.fn(), importSkin: vi.fn(),
       show: vi.fn(), hide: vi.fn(), updateSettings: vi.fn(), quit: vi.fn(), reportError,
     }, runtime)
     controller.refresh()

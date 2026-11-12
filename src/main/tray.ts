@@ -31,6 +31,7 @@ export type TrayDeps = {
   listSkins(): TraySkin[]
   getSkin(): string
   selectSkin(id: string): void
+  importSkin(): void
   show(): void
   hide(): void
   updateSettings(patch: Partial<Settings>): void
@@ -104,12 +105,16 @@ export function createTrayController(
       { type: 'separator' },
       {
         label: '皮肤',
-        submenu: deps.listSkins().map((skin) => ({
-          label: skin.name,
-          type: 'radio' as const,
-          checked: skin.id === deps.getSkin(),
-          click: () => deps.selectSkin(skin.id),
-        })),
+        submenu: [
+          ...deps.listSkins().map((skin) => ({
+            label: skin.name,
+            type: 'radio' as const,
+            checked: skin.id === deps.getSkin(),
+            click: () => deps.selectSkin(skin.id),
+          })),
+          { type: 'separator' as const },
+          { label: '导入皮肤包…', click: () => deps.importSkin() },
+        ],
       },
       { type: 'separator' },
       { label: '退出', click: () => deps.quit() },
