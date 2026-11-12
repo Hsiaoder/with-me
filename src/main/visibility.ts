@@ -179,6 +179,8 @@ export interface VisibilityWatch {
   setSettings(s: Settings): void
   hideManually(): void
   showManually(): void
+  /** 跳过手动门控把窗口亮出来（托盘退出要让人看见告别动画）。 */
+  reveal(): boolean
 }
 
 /**
@@ -195,6 +197,7 @@ export function startVisibilityWatch(platform: Platform, settings: Settings): Vi
       setSettings: (s) => policy.setSettings(s),
       hideManually: () => policy.hideManually(),
       showManually: () => policy.showManually(),
+      reveal: () => policy.reveal(),
     }
   }
 
@@ -216,6 +219,7 @@ export function startVisibilityWatch(platform: Platform, settings: Settings): Vi
       setSettings: (s) => policy.setSettings(s),
       hideManually: () => policy.hideManually(),
       showManually: () => policy.showManually(),
+      reveal: () => policy.reveal(),
     }
   }
 
@@ -260,6 +264,9 @@ export function startVisibilityWatch(platform: Platform, settings: Settings): Vi
     },
     showManually() {
       policy.showManually()
+    },
+    reveal() {
+      return policy.reveal()
     },
   }
 }

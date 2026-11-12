@@ -9,7 +9,9 @@ import { startStats, type StatsSnapshot } from './stats.js'
 import { loadFrom, saveTo } from './storage.js'
 import { FALLBACK_SKIN, findSkinDir, platformDataDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
-import { startVisibilityWatch } from './visibility.js'
+import { startVisibilityWatch, type VisibilityWatch } from './visibility.js'
+import { createTrayController, type TrayController } from './tray.js'
+import { createSettingsHub, createTrayExit } from './tray-integration.js'
 import { startCursorPolling } from './cursor.js'
 import { registerIpc } from './ipc.js'
 import { attachAppHandler, declareAppScheme } from './protocol.js'
@@ -87,13 +89,31 @@ void app.whenReady().then(() => {
     now: Date.now,
   })
 
+  /**
+   * watch 要等建窗之后才起，而渲染层的设置消息首帧就可能到；先放一个安全的空实现，
+   * 避免回调里撞上 temporal dead zone。真正的 watch 建好后原地替换。
+   */
+  let watch: VisibilityWatch = {
+    stop() {}, setSettings() {}, hideManually() {}, showManually() {}, reveal: () => false,
+  }
+  let tray: TrayController | null = null
+
+  /**
+   * 设置只有这一条写路径：托盘勾选、渲染层改设置都走它。
+   * 顺序见 tray-integration.ts——先改内存，再同步可见性，落盘后回灌渲染层并刷新托盘。
+   */
+  const updateSettings = createSettingsHub({
+    applySettings: (patch) => (save.settings = applySettings(save, patch).settings),
+    setVisibility: (s) => watch.setSettings(s),
+    persist: () => {
+      if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
+    },
+    broadcast: (s) => platform.send(IPC.settingsLoaded, s),
+    refreshTray: () => tray?.refresh(),
+  })
+
   // 监听必须早于建窗：渲染层首帧就会发消息。
-  registerIpc(platform, bridge, (patch) => {
-    // 改设置要当场落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查
-    save.settings = applySettings(save, patch).settings
-    watch.setSettings(save.settings)
-    if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
-  }, (raw) => stats.event(raw), (raw) => stats.identity(raw), () => app.quit(), (raw) => {
+  registerIpc(platform, bridge, updateSettings, (raw) => stats.event(raw), (raw) => stats.identity(raw), () => app.quit(), (raw) => {
     // 调试改档只在开发者模式开着时接受。设置里关掉只是把按钮藏起来——真正的权限闸在这侧，
     // 否则 renderer 一旦被注入脚本就能绕过界面直接改真实存档。
     if (save.settings.developerMode !== true) return
@@ -114,7 +134,35 @@ void app.whenReady().then(() => {
 
   // 可见性策略。探测是个常驻 PowerShell 子进程，必须跟着退出收掉。
   // 只能排在建窗之后：句柄要问窗口要，而 createWindow 之前 up() 会抛。
-  const watch = startVisibilityWatch(platform, save.settings)
+  watch = startVisibilityWatch(platform, save.settings)
+
+  /**
+   * 托盘放在 watch 之后创建：菜单里的显示/隐藏直接调可见性策略。
+   * 图标在开发期从仓库读，打包后从 resources 读（见 electron-builder 的 extraResources）。
+   */
+  const trayIconPath = app.isPackaged
+    ? join(process.resourcesPath, 'dafeiyu.ico')
+    : join(app.getAppPath(), 'assets', 'dafeiyu.ico')
+  const trayExit = createTrayExit({
+    // 先清手动门控再强制亮出窗口：全屏规则此刻仍说「隐藏」也要让人看见告别。
+    reveal: () => { watch.showManually(); watch.reveal() },
+    sendQuitRequested: () => platform.send(IPC.quitRequested, null),
+    scheduleFallback: (run, ms) => {
+      const timer = setTimeout(run, ms)
+      timer.unref()
+      return timer
+    },
+    cancelFallback: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    quit: () => app.quit(),
+  })
+  tray = createTrayController({
+    iconPath: trayIconPath,
+    getSettings: () => save.settings,
+    show: () => watch.showManually(),
+    hide: () => watch.hideManually(),
+    updateSettings,
+    quit: trayExit.request,
+  })
 
   // 覆盖层与主屏工作区重合。工作区在运行中会变（改分辨率 / 系统缩放 / 旋转 / 任务栏自动隐藏），
   // 所以原点不再"取一次"：refit 重读 workArea，同一件事里既改窗口尺寸又换光标原点，跟着显示器事件走。
@@ -152,6 +200,8 @@ void app.whenReady().then(() => {
     stopPolling()
     clearInterval(sweeper)
     stats.stop()
+    trayExit.cancel()
+    tray?.dispose()
     watch.stop()
     try {
       if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过退出写回')
