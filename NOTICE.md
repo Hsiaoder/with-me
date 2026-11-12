@@ -32,7 +32,7 @@ Copyright (C) 2026 Hsiaoder
 
 | 位置 | 许可 | 出处与说明 |
 |---|---|---|
-| `src/renderer/icons`、`foods`、`emotes` | CC0-1.0 | [Kenney](https://kenney.nl) UI Pack / Emotes；部分按本项目配色重染、削描边。CC0 无署名义务，这里写出来是为了可追溯 |
+| `src/renderer/icons`、`foods`、`emotes` | CC0-1.0 | [Kenney](https://kenney.nl) UI Pack / Emotes；部分按本项目配色重染、削描边。`rice` / `game` / `debug` / `heart` 四枚为 2026-11-13 本项目重绘并以 CC0-1.0 释出，不再使用 iconfont 素材。CC0 无署名义务，这里写出来是为了可追溯 |
 | `src/renderer/fonts` | OFL-1.1 | Noto Sans SC 可变字重子集与 Fredoka 数字子集。两份 `OFL-*.txt` 是**上游发布的原文，逐字节不改**——其中思源那份的版权行写的是 Adobe 与保留名 `Source`，这是 google/fonts 对 Noto Sans SC 的原始发布正文；子集已改名 `with-me-*`，没有使用保留名 |
 | `skins/block` | GPL-3.0-only | 本项目 `tools/make-test-skin.mjs` 用 ffmpeg 现场生成的蓝幕抠像片段，纯占位 |
 | `assets/with-me.ico` | GPL-3.0-only | 本项目自制：由 `src/renderer/icons/game-fly.png`（ImageGen 出图）缩放，用作 exe 与托盘图标 |

@@ -2,8 +2,8 @@
   {
     "path": "src/renderer/icons/",
     "license": "CC0-1.0",
-    "source": "Kenney (kenney.nl) — UI Pack / Emotes",
-    "note": "按钮圆底、箭头、光标等；部分按本项目配色重染（`spike/palette-recolor.mjs`），CC0 允许"
+    "source": "Kenney (kenney.nl) — UI Pack / Emotes；`rice` / `game` / `debug` / `heart` 为本项目 2026-11-13 重绘并以 CC0-1.0 释出",
+    "note": "按钮圆底、箭头、光标等来自 Kenney，部分按本项目配色重染；四枚重绘图不再包含任何 iconfont 路径"
   },
   {
     "path": "src/renderer/foods/",
