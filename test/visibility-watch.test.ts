@@ -93,6 +93,35 @@ describe('可见性策略的执行', () => {
     w.setScenario('none')
     expect(spy).not.toHaveBeenCalled()
   })
+
+  it('手动隐藏压过后续自动样本，不会被探测器下一拍重新放出来', () => {
+    const { platform, calls } = fakePlatform()
+    const w = createVisibilityPolicy(platform, SHOW, 1)
+    w.hideManually()
+    w.setScenario('none')
+    w.setScenario('fullscreen')
+    expect(calls).toEqual(['hide'])
+    expect(w.hidden).toBe(true)
+  })
+
+  it('手动显示清掉门控，并按当前普通场景立即恢复', () => {
+    const { platform, calls } = fakePlatform()
+    const w = createVisibilityPolicy(platform, SHOW, 4)
+    w.hideManually()
+    w.showManually()
+    expect(calls).toEqual(['hide', 'show'])
+    expect(w.hidden).toBe(false)
+  })
+
+  it('手动显示不越过「全屏时隐藏」设置', () => {
+    const { platform, calls } = fakePlatform()
+    const w = createVisibilityPolicy(platform, HIDE, 1)
+    w.setScenario('fullscreen')
+    w.hideManually()
+    w.showManually()
+    expect(calls).toEqual(['hide'])
+    expect(w.hidden).toBe(true)
+  })
 })
 
 /**
