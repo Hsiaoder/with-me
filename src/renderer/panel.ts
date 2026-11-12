@@ -17,7 +17,7 @@ import {
   statBand,
 } from '../shared/stats.js'
 import { GENDER_GLYPHS, GENDER_LABELS, type Gender, type StatsSnapshot, otherGender } from '../shared/save.js'
-import type { Settings, Visibility } from '../shared/visibility.js'
+import type { Settings } from '../shared/visibility.js'
 import type { Point, Rect } from '../shared/types.js'
 import { createDebugPlate, type DebugContext } from './debug.js'
 
@@ -26,8 +26,8 @@ import { createDebugPlate, type DebugContext } from './debug.js'
  *
  * 根节点 `.pet-panel` 铺满覆盖层、不吃命中，只当 `data-hit` 的宿主；
  * 里面最多同时存在两块：
- * - `.pet-actions` 按钮条（动作/食物/状态视图都在，设置视图整块替换时才收起）
- * - `.pet-plate` 副板（食物列表、状态读数、设置行）
+ * - `.pet-actions` 按钮条（动作/食物/状态视图都在，跨视图常驻）
+ * - `.pet-plate` 副板（食物列表、游戏列表、状态读数、调试板）
  * 两块各自有 transform，因为它们的锚点不同：按钮条贴宠物脚下，
  * 状态栏挂宠物右侧，食物列表挂在按钮条下面。合成一块就没法同时满足这三条。
  *
@@ -42,7 +42,7 @@ import { createDebugPlate, type DebugContext } from './debug.js'
 
 /** 按钮的形状完全由 config 的 PANEL_BUTTONS 决定，这里不复制一份。 */
 export type PanelAction = PanelButton
-export type PanelView = 'actions' | 'settings' | 'foods' | 'games' | 'stats' | 'debug'
+export type PanelView = 'actions' | 'foods' | 'games' | 'stats' | 'debug'
 
 /**
  * 状态栏底下那两行「此刻」的读数。
@@ -55,12 +55,10 @@ export type PanelRuntime = { activity: string; online: string }
 
 export interface PanelHandlers {
   /**
-   * 按了动作视图里的某个按钮。带 `pool` 才回调——带 `view` 的那两颗（喂食、设置）
+   * 按了动作视图里的某个按钮。带 `pool` 才回调——带 `view` 的按钮
    * 由面板自己处理视图切换，不会走到这里。
    */
   action(a: PanelAction & { pool: string }): void
-  /** 按了设置视图里的某个选项。只报被点的那一项，别整包覆盖。 */
-  setting(patch: Partial<Settings>): void
   /** 点了食物列表里的某一格。播哪条动画、说什么话由装配层决定，面板只管「选了哪个」。 */
   pick(f: Food): void
   /** 点了游戏列表里某个「开始」。开哪个游戏、怎么接管整屏由装配层决定，面板只管「选了哪个」。 */
@@ -69,15 +67,13 @@ export interface PanelHandlers {
   identity(patch: { name?: string; gender?: string }): void
   /** 视图换了。调用方据此换收起延时（操作型视图要更宽裕的时间）。 */
   view(v: PanelView): void
-  /** 点了设置视图里的「退出桌宠」：装配层先说 bye 再让主进程退出。 */
-  quit(): void
 }
 
 export interface Panel {
   readonly el: HTMLElement
   readonly isOpen: boolean
   readonly view: PanelView
-  /** 摆主块（设置视图的主块就是那块板，其余视图是按钮条）。at 是覆盖层 CSS 坐标。 */
+  /** 摆主块（按钮条）。at 是覆盖层 CSS 坐标。 */
   show(at: Point): void
   /** 摆副板。只在有副板的视图里有意义；装配层按视图决定用哪条锚点。 */
   showPlate(at: Point): void
@@ -117,15 +113,6 @@ export interface Panel {
 export function defaultActions(): PanelAction[] {
   return PANEL_BUTTONS.map((b) => ({ ...b }))
 }
-
-const OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'show', label: '陪我' },
-  { value: 'hide', label: '隐藏' },
-]
-
-const ROWS: { key: keyof Settings; label: string }[] = [
-  { key: 'onFullscreen', label: '全屏时' },
-]
 
 /**
  * 状态栏每个标签后面跟一个中文冒号（用户 2026-11-06 要）。
@@ -209,12 +196,12 @@ export function createPanel(
     node.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px)`
   }
 
-  /** 主块永远是按钮条：用户要「设置板弹出来时原按钮也不消失」（2026-11-11），所以没有任何视图整块替换它。 */
+  /** 主块永远是按钮条：所有视图都复用它，没有任何视图整块替换它。 */
   function primary(): HTMLElement | null {
     return actionsEl
   }
 
-  /** 这个视图有没有副板（除动作视图外都有）。副板都挂自己的锚点：食物/游戏在按钮条外侧，状态/调试挂右侧，设置挂左侧。 */
+  /** 这个视图有没有副板（除动作视图外都有）。副板都挂自己的锚点：食物/游戏在按钮条外侧，状态/调试挂右侧。 */
   const hasPlate = (v: PanelView): boolean => v !== 'actions'
 
   // 滚动状态只属于食物视图，就住在这里：一个数，其余全是纯函数算出来的（shared/scroll.ts）。
@@ -753,51 +740,12 @@ export function createPanel(
     return row
   }
 
-  /** 布尔开关一行：标签 + [开][关] 两颗，和可见性那两行同一套形状（data-key/data-value/.on）。 */
-  function boolRow(host: HTMLElement, key: 'developerMode' | 'muted', label: string): void {
-    const line = document.createElement('div')
-    line.className = 'pet-setting'
-    const lab = document.createElement('span')
-    lab.textContent = label
-    line.append(lab)
-    for (const o of [{ v: true, label: '开' }, { v: false, label: '关' }]) {
-      const b = btn(o.label, { key, value: o.v ? 'on' : 'off' }, values[key] === o.v)
-      b.addEventListener('click', () => handlers.setting({ [key]: o.v }))
-      line.append(b)
-    }
-    host.append(line)
-  }
-
-  function renderSettings(host: HTMLElement): void {
-    // 顺序：开发者模式 → 全屏 → 静音 → 退出（放映已并入全屏，共用一挡）。
-    boolRow(host, 'developerMode', '开发者模式')
-    for (const row of ROWS) {
-      const line = document.createElement('div')
-      line.className = 'pet-setting'
-      const label = document.createElement('span')
-      label.textContent = row.label
-      line.append(label)
-      for (const o of OPTIONS) {
-        const b = btn(o.label, { key: row.key, value: o.value }, values[row.key] === o.value)
-        b.addEventListener('click', () => handlers.setting({ [row.key]: o.value }))
-        line.append(b)
-      }
-      host.append(line)
-    }
-    boolRow(host, 'muted', '静音')
-    // 退出桌宠：走装配层的 bye 流程（先说再见、再让主进程落盘退出），面板自己不关窗。
-    // 收设置板靠再点一次齿轮（回动作视图）或离开满延时，不再单列「返回」按钮。
-    const quit = btn('退出桌宠', { id: 'quit' }, false)
-    quit.addEventListener('click', () => handlers.quit())
-    host.append(quit)
-  }
-
   /**
    * 重绘两块。**按钮条跨视图复用**，不跟着每次重建，两个原因：
    * ① 出场的错峰动画靠的是「从 display:none 出来」那一次状态变化，节点要是每次换视图都重建，
    *    数值快照每 60 秒推过来（`setStats` 会 render）就会把五颗重新弹一遍，列表开着时最明显；
    * ② 重建还会把监听器与焦点状态一起丢掉。
-   * 副板（列表 / 读数 / 设置）内容随视图变，照旧整块换——它换一次就是「来了一张新卡片」，该弹。
+   * 副板（列表 / 读数 / 调试）内容随视图变，照旧整块换——它换一次就是「来了一张新卡片」，该弹。
    */
   /** 调试副板：构造一次后复用，每次进视图只重挂 + refresh 读数（不重建，保住 tab 与滑条状态）。 */
   function renderDebug(host: HTMLElement): void {
@@ -836,7 +784,6 @@ export function createPanel(
       else if (current === 'games') renderGames(plateEl)
       else if (current === 'stats') renderStats(plateEl)
       else if (current === 'debug') renderDebug(plateEl)
-      else renderSettings(plateEl)
       el.append(plateEl)
     }
     // 按钮条跨视图复用之后，「哪一颗是当前视图」得单独同步——以前是重建时顺手带上的
@@ -897,7 +844,7 @@ export function createPanel(
       plateAt = null
       el.hidden = true
       resetScroll()
-      // 收起来就回到动作视图：下次点开看到的是按钮而不是设置页或列表，
+      // 收起来就回到动作视图：下次点开看到的是按钮而不是列表或调试板，
       // 不然用户会觉得自己上次离开时面板坏在了那里。
       if (current !== 'actions') {
         current = 'actions'
@@ -919,8 +866,7 @@ export function createPanel(
       return { w: plateEl.offsetWidth, h: plateEl.offsetHeight }
     },
     plateRect() {
-      // 只看「有没有副板且开着」：设置视图的副板如今也是独立一块（挂左侧），
-      // 它同样占着宠物旁边那块地方，飘字该躲的是它占的位置。
+      // 只看「有没有副板且开着」：副板同样占着宠物旁边那块地方，飘字该躲的是它占的位置。
       if (at === null || plateEl === null) return null
       const r = plateEl.getBoundingClientRect()
       return { x: r.x, y: r.y, w: r.width, h: r.height }
@@ -940,10 +886,9 @@ export function createPanel(
     },
     setSettings(s) {
       values = s
-      // 设置视图开着就整块重绘（render 里会同步调试按钮）；没开着也要就地翻一下调试按钮的显隐，
+      // 设置已经搬到托盘，面板里没有设置视图了；这里只需同步调试按钮的显隐，
       // 否则主进程回灌开发者模式时按钮条上的门控不更新。
-      if (current === 'settings') render()
-      else syncDebugGate()
+      syncDebugGate()
     },
     setStats(s) {
       snap = s

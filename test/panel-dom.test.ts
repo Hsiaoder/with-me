@@ -23,16 +23,16 @@ const mount = (onClick = vi.fn()) => {
   const root = document.createElement('div')
   document.body.replaceChildren(root)
   const identity = vi.fn()
-  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), game: vi.fn(), identity, quit: vi.fn() })
+  const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action: onClick, view: vi.fn(), pick: vi.fn(), game: vi.fn(), identity })
   return { panel, root, onClick, identity }
 }
 
 afterEach(() => { document.body.replaceChildren() })
 
 describe('defaultActions', () => {
-  it('五个按钮：喂食/小游戏/状态/设置/调试，顺序即 PANEL_BUTTONS', () => {
-    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status', 'settings', 'debug'])
-    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态', '设置', '调试'])
+  it('四个按钮：喂食/小游戏/状态/调试，顺序即 PANEL_BUTTONS', () => {
+    expect(defaultActions().map((a) => a.id)).toEqual(['feed', 'game', 'status', 'debug'])
+    expect(defaultActions().map((a) => a.label)).toEqual(['喂食', '小游戏', '状态', '调试'])
   })
 
   it('每个按钮都带一张能进 dist 的图：icons/ 下的 SVG 或 emotes/ 下的 PNG', () => {
@@ -94,7 +94,7 @@ describe('createPanel', () => {
       root,
       [{ id: 'poke', label: '戳', icon: 'icons/heart.svg', pool: 'click' }],
       { ...DEFAULT_SETTINGS },
-      { action: onClick, setting: vi.fn(), view: vi.fn(), pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() },
+      { action: onClick, view: vi.fn(), pick: vi.fn(), game: vi.fn(), identity: vi.fn() },
     )
     panel.show({ x: 0, y: 0 })
     panel.el.querySelector<HTMLButtonElement>('button[data-id="poke"]')!.dispatchEvent(
@@ -125,53 +125,30 @@ describe('createPanel', () => {
   })
 })
 
-describe('设置视图', () => {
-  /** 带设置的面板：动作视图多一个「设置」按钮，点它切到设置视图。 */
-  const mountWithSettings = (settings: Settings = { ...DEFAULT_SETTINGS }) => {
+describe('动作视图', () => {
+  const mountPanel = (settings: Settings = { ...DEFAULT_SETTINGS }) => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const action = vi.fn()
-    const set = vi.fn()
     const view = vi.fn()
-    const panel = createPanel(root, defaultActions(), settings, { action, setting: set, view, pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
+    const panel = createPanel(root, defaultActions(), settings, { action, view, pick: vi.fn(), game: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
-    return { panel, root, action, set, view }
+    return { panel, root, action, view }
   }
 
-  it('动作视图是五枚图标：图在按钮里，文字退成 title 与 aria-label', () => {
-    const { panel } = mountWithSettings()
+  it('动作视图是四枚图标：图在按钮里，文字退成 title 与 aria-label', () => {
+    const { panel } = mountPanel()
     const buttons = [...panel.el.querySelectorAll('button')]
     expect(buttons.map((b) => b.querySelector('img')?.getAttribute('src'))).toEqual([
-      'icons/rice.svg', 'icons/game.svg', 'icons/heart.svg', 'icons/settings.svg', 'icons/debug.svg',
+      'icons/rice.svg', 'icons/game.svg', 'icons/heart.svg', 'icons/debug.svg',
     ])
-    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '设置', '调试'])
-    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '设置', '调试'])
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['喂食', '小游戏', '状态', '调试'])
+    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['喂食', '小游戏', '状态', '调试'])
     expect(panel.view).toBe('actions')
   })
 
-  it('点设置切成三行开关（开发者模式/全屏/静音），并通知调用方换收起延时', () => {
-    const { panel, view } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
-    expect(panel.view).toBe('settings')
-    expect(view).toHaveBeenCalledWith('settings')
-    const rows = panel.el.querySelectorAll('.pet-setting')
-    expect(rows).toHaveLength(3)
-    expect([...rows[0]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['开', '关'])
-    expect([...rows[1]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['陪我', '隐藏'])
-    expect([...rows[2]!.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['开', '关'])
-  })
-
-  it('开发者模式/静音是布尔开关：点「开」只报那一项 true', () => {
-    const { panel, set } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
-    panel.el.querySelector<HTMLButtonElement>('button[data-key="developerMode"][data-value="on"]')!.click()
-    expect(set).toHaveBeenCalledWith({ developerMode: true })
-    panel.el.querySelector<HTMLButtonElement>('button[data-key="muted"][data-value="on"]')!.click()
-    expect(set).toHaveBeenCalledWith({ muted: true })
-  })
-
   it('开发者模式关着时调试按钮藏掉；开了立刻露面（默认不显示调试按钮）', () => {
-    const { panel } = mountWithSettings()
+    const { panel } = mountPanel()
     const debug = () => panel.el.querySelector<HTMLButtonElement>('button[data-id="debug"]')!
     expect(debug().hidden).toBe(true)
     panel.setSettings({ ...DEFAULT_SETTINGS, developerMode: true })
@@ -188,39 +165,9 @@ describe('设置视图', () => {
     expect(css).toMatch(/\.pet-panel button\[hidden\]\s*\{[^}]*display:\s*none/)
   })
 
-  it('点「隐藏」只报被点的那一项，不整包覆盖', () => {
-    const { panel, set } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
-    panel.el.querySelector<HTMLButtonElement>('button[data-key="onFullscreen"][data-value="hide"]')!.click()
-    expect(set).toHaveBeenCalledWith({ onFullscreen: 'hide' })
-  })
-
-  it('选中态跟着 setSettings 重绘，当前项标出来', () => {
-    const { panel } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
-    const on = () => [...panel.el.querySelectorAll('.pet-setting')]
-      .map((r) => r.querySelector('button.on')?.getAttribute('data-value'))
-    expect(on()).toEqual(['off', 'show', 'off'])
-    panel.setSettings({ onFullscreen: 'hide', developerMode: false, muted: false })
-    expect(on()).toEqual(['off', 'hide', 'off'])
-    panel.setSettings({ onFullscreen: 'hide', developerMode: true, muted: true })
-    expect(on()).toEqual(['on', 'hide', 'on'])
-  })
-
-  it('再点一次齿轮收回设置板，回动作视图（不再单列返回按钮）', () => {
-    const { panel, view } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
-    expect(panel.view).toBe('settings')
-    expect(panel.el.querySelector('button[data-view="actions"]')).toBeNull()
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
-    expect(panel.view).toBe('actions')
-    expect(view).toHaveBeenLastCalledWith('actions')
-    expect(panel.el.querySelectorAll('.pet-setting')).toHaveLength(0)
-  })
-
   it('收起面板就回到动作视图，并通知调用方换回延时', () => {
-    const { panel, view } = mountWithSettings()
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
+    const { panel, view } = mountPanel()
+    panel.setView('foods')
     view.mockClear()
     panel.hide()
     expect(panel.view).toBe('actions')
@@ -228,9 +175,9 @@ describe('设置视图', () => {
   })
 
   it('切视图不重新挂载面板：根节点还在原位，data-hit 不丢', () => {
-    const { panel, root } = mountWithSettings()
+    const { panel, root } = mountPanel()
     const el = panel.el
-    panel.el.querySelector<HTMLButtonElement>('button[data-id="settings"]')!.click()
+    panel.setView('foods')
     expect(panel.el).toBe(el)
     expect(root.lastElementChild).toBe(el)
     expect(el.dataset.hit).toBe('')
@@ -255,7 +202,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
+      { action: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setStats({
       stats: { hunger: 50, mood: 50, weight: 50, bond: 50 },
@@ -377,7 +324,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
+      { action: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setView('foods')
     const cells = [...panel.el.querySelectorAll<HTMLButtonElement>('.pet-food')]
@@ -424,7 +371,7 @@ describe('食物视图', () => {
     const root = document.createElement('div')
     document.body.replaceChildren(root)
     const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS },
-      { action: vi.fn(), setting: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
+      { action: vi.fn(), view: vi.fn(), pick, game: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.setEating(true)
     panel.setView('foods')
@@ -534,7 +481,7 @@ describe('食物视图', () => {
     const view = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, view, pick: vi.fn(), game: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     ;(panel.el.querySelector('button[data-id="feed"]') as HTMLElement).click()
     expect(action).not.toHaveBeenCalled()
@@ -547,7 +494,7 @@ describe('食物视图', () => {
     const game = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), game, identity: vi.fn(), quit: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, view, pick: vi.fn(), game, identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     ;(panel.el.querySelector('button[data-id="game"]') as HTMLElement).click()
     expect(action).not.toHaveBeenCalled()
@@ -814,7 +761,7 @@ describe('状态视图', () => {
     const view = vi.fn()
     const root = document.createElement('div')
     document.body.replaceChildren(root)
-    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, setting: vi.fn(), view, pick: vi.fn(), game: vi.fn(), identity: vi.fn(), quit: vi.fn() })
+    const panel = createPanel(root, defaultActions(), { ...DEFAULT_SETTINGS }, { action, view, pick: vi.fn(), game: vi.fn(), identity: vi.fn() })
     panel.show({ x: 0, y: 0 })
     panel.el.querySelector<HTMLButtonElement>('button[data-id="status"]')?.click()
     expect(action).not.toHaveBeenCalled()
@@ -828,7 +775,7 @@ describe('状态视图', () => {
  * 两块各自定位，所以命中区、光标、夹屏幕都得分别问，不能再拿根节点当矩形。
  */
 describe('两块结构：按钮条常驻，副板另算一块', () => {
-  const openView = (v: 'foods' | 'stats' | 'settings') => {
+  const openView = (v: 'foods' | 'stats') => {
     const m = mount()
     m.panel.show({ x: 0, y: 0 })
     if (v === 'stats') m.panel.setStats({ stats: { hunger: 82, mood: 45, weight: 20, bond: 97 }, identity: { name: '小鲸', gender: 'female' }, exp: 0, startedAt: 1_000 })
@@ -846,7 +793,7 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(panel.plateSize()).toBeNull()
   })
 
-  it('食物视图：五颗按钮还在，列表在另一块里', () => {
+  it('食物视图：四颗按钮还在，列表在另一块里', () => {
     const { panel } = openView('foods')
     expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
     const plate = panel.el.querySelector('.pet-plate')!
@@ -855,7 +802,7 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(plate.closest('.pet-actions')).toBeNull()
   })
 
-  it('状态视图：五颗按钮还在，读数在副板里', () => {
+  it('状态视图：四颗按钮还在，读数在副板里', () => {
     const { panel } = openView('stats')
     expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
     const plate = panel.el.querySelector('.pet-plate')!
@@ -863,18 +810,10 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     expect(plate.querySelectorAll('.pet-stat')).toHaveLength(4)
   })
 
-  it('设置视图：五颗按钮还在，设置板在另一块里（用户 2026-11-11 要原按钮不消失）', () => {
-    const { panel } = openView('settings')
-    expect(actionBtns(panel)).toHaveLength(PANEL_BUTTONS.length)
-    const plate = panel.el.querySelector('.pet-plate')!
-    expect(plate.querySelector('.pet-setting')).not.toBeNull()
-    expect(plate.closest('.pet-actions')).toBeNull()
-  })
-
   /**
    * 出场动画的前提，比动画本身更要紧：按钮条必须是**同一批节点**跨视图活着。
    * 每次换视图都重建的话，「从 display:none 出来才跑一次」的 @starting-style 会变成
-   * 「每次 render 都跑」——数值快照每 60 秒推一次，五颗就会在列表开着时重新弹一遍。
+   * 「每次 render 都跑」——数值快照每 60 秒推一次，四颗就会在列表开着时重新弹一遍。
    */
   it('换视图不重建按钮条：节点是同一个', () => {
     const { panel } = mount()
@@ -883,16 +822,6 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     panel.setView('foods')
     expect(panel.el.querySelector('.pet-actions')).toBe(before)
     panel.setView('stats')
-    expect(panel.el.querySelector('.pet-actions')).toBe(before)
-  })
-
-  it('设置页也复用同一批按钮条（不再整块替换，节点始终活着）', () => {
-    const { panel } = mount()
-    panel.show({ x: 0, y: 0 })
-    const before = panel.el.querySelector('.pet-actions')
-    panel.setView('settings')
-    expect(panel.el.querySelector('.pet-actions')).toBe(before)
-    panel.setView('foods')
     expect(panel.el.querySelector('.pet-actions')).toBe(before)
   })
 
@@ -914,16 +843,16 @@ describe('两块结构：按钮条常驻，副板另算一块', () => {
     panel.show({ x: 0, y: 0 })
     const i = [...panel.el.querySelectorAll<HTMLElement>('.pet-actions button[data-id]')]
       .map((b) => b.style.getPropertyValue('--i'))
-    expect(i).toEqual(['0', '1', '2', '3', '4'])
+    expect(i).toEqual(['0', '1', '2', '3'])
   })
 
-  it('主块永远是按钮条；设置板是副板，单独量（不再顶替主块）', () => {
+  it('主块永远是按钮条；副板单独量（不再顶替主块）', () => {
     const actions = mount()
     actions.panel.show({ x: 0, y: 0 })
     expect(actions.panel.primaryEl()?.classList.contains('pet-actions')).toBe(true)
-    const settings = openView('settings')
-    expect(settings.panel.primaryEl()?.classList.contains('pet-actions')).toBe(true)
-    expect(settings.panel.plateSize()).not.toBeNull()
+    const stats = openView('stats')
+    expect(stats.panel.primaryEl()?.classList.contains('pet-actions')).toBe(true)
+    expect(stats.panel.plateSize()).not.toBeNull()
   })
 
   it('再点一次喂食把副板收回：回动作视图，副板移出布局', () => {

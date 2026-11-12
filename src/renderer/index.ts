@@ -22,7 +22,7 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, rectContains, settingsAnchor, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
@@ -441,15 +441,6 @@ function bootstrap(skin: SkinPayload): void {
     identity: (patch) => {
       window.petBridge?.setIdentity(patch)
     },
-    setting: (patch) => {
-      settings = { ...settings, ...patch }
-      panel.setSettings(settings)
-      // 静音现问现生效，勾上就把正在播的那句掐掉（不静音等它自己念完）。
-      if (settings.muted) voice.stop()
-      window.petBridge?.setSettings(settings)
-      // 选中态换了类，面板高度可能变，重新夹一次位置免得溢出屏幕
-      if (panel.isOpen) placePanel()
-    },
     view: (v) => {
       // 操作型视图（设置要连点两行开关、食物列表要拖横条逐个挑）用宽裕的收起延时，
       // 1500ms 不够操作完；回动作视图换回快档。顺带重挂自动收起的定时器。
@@ -461,7 +452,6 @@ function bootstrap(skin: SkinPayload): void {
         if (bubble.isOpen) placeBubble()
       }
     },
-    quit: requestExit,
   }, debugCtx)
 
   // 托盘「退出」：主进程先亮出宠物再发这条，走的还是面板那条告别序列。
@@ -802,10 +792,6 @@ function bootstrap(skin: SkinPayload): void {
         PANEL_GAP,
         at.side === 'below' ? at.y : null,
       ))
-    } else if (panel.view === 'settings') {
-      // 设置板挂宠物**左侧**（左边放不下翻右侧）：按钮条常驻脚下、状态栏挂右，设置再去右边就挤同一列。
-      // 锚看得见的身子（inkRect），和状态栏同一条横向距离账。
-      panel.showPlate(settingsAnchor(inkRect(body, inkInsets), ps, screen, PANEL_GAP))
     }
   }
 
