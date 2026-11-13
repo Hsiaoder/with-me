@@ -48,4 +48,17 @@ describe('界面字体接入（2026-11-07）', () => {
       expect(text).toMatch(/SIL OPEN FONT LICENSE/)
     }
   })
+
+  /**
+   * 随包的思源 OFL 正文是**上游自己发布的那一份**，逐字节一致。
+   * 它的版权行写着 Adobe + Reserved Font Name 'Source'，看起来和「我们用 Noto 而非 Adobe 原版」矛盾——
+   * 但 google/fonts 的 `ofl/notosanssc/OFL.txt` 就是这个开头（Noto Sans SC 与思源黑体同源，版权沿 Adobe 那条）。
+   * RFN 约束管的是「改名后的 Modified Version 不许再用保留名」：子集已改名 with-me-sans-var，没踩。
+   * 钉住字节数与首行，是为了防止有人「顺手改成 Google 的版权行」——那才是篡改上游许可正文。
+   */
+  it('随包的思源 OFL 是上游原文（改一个字都不行）', () => {
+    const text = readFileSync('src/renderer/fonts/OFL-noto-sans-sc.txt', 'utf8').replace(/\r\n/g, '\n')
+    expect(text.length).toBe(4388)
+    expect(text.split('\n')[0]).toBe("Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'")
+  })
 })

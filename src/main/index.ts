@@ -1,15 +1,19 @@
-import { app, screen } from 'electron'
+import { app, dialog, screen } from 'electron'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shared/config.js'
 import { IPC } from '../shared/ipc.js'
-import { toSkinPayload } from '../shared/skin.js'
+import { toSkinPayload, validateManifest } from '../shared/skin.js'
 import { applySettings } from '../shared/save.js'
 import { startStats, type StatsSnapshot } from './stats.js'
 import { loadFrom, saveTo } from './storage.js'
-import { FALLBACK_SKIN, findSkinDir, platformDataDir } from './paths.js'
+import { FALLBACK_SKIN, findSkinDir, listSkinDirs, platformDataDir, userSkinsDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
-import { startVisibilityWatch } from './visibility.js'
+import { startVisibilityWatch, type VisibilityWatch } from './visibility.js'
+import { createTrayController, type TrayController } from './tray.js'
+import { createSettingsHub, createTrayExit } from './tray-integration.js'
+import { installSkinPack, inspectSkinPack } from './skin-import.js'
 import { startCursorPolling } from './cursor.js'
 import { registerIpc } from './ipc.js'
 import { attachAppHandler, declareAppScheme } from './protocol.js'
@@ -87,13 +91,31 @@ void app.whenReady().then(() => {
     now: Date.now,
   })
 
+  /**
+   * watch 要等建窗之后才起，而渲染层的设置消息首帧就可能到；先放一个安全的空实现，
+   * 避免回调里撞上 temporal dead zone。真正的 watch 建好后原地替换。
+   */
+  let watch: VisibilityWatch = {
+    stop() {}, setSettings() {}, hideManually() {}, showManually() {}, reveal: () => false,
+  }
+  let tray: TrayController | null = null
+
+  /**
+   * 设置只有这一条写路径：托盘勾选、渲染层改设置都走它。
+   * 顺序见 tray-integration.ts——先改内存，再同步可见性，落盘后回灌渲染层并刷新托盘。
+   */
+  const updateSettings = createSettingsHub({
+    applySettings: (patch) => (save.settings = applySettings(save, patch).settings),
+    setVisibility: (s) => watch.setSettings(s),
+    persist: () => {
+      if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
+    },
+    broadcast: (s) => platform.send(IPC.settingsLoaded, s),
+    refreshTray: () => tray?.refresh(),
+  })
+
   // 监听必须早于建窗：渲染层首帧就会发消息。
-  registerIpc(platform, bridge, (patch) => {
-    // 改设置要当场落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查
-    save.settings = applySettings(save, patch).settings
-    watch.setSettings(save.settings)
-    if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过写回')
-  }, (raw) => stats.event(raw), (raw) => stats.identity(raw), () => app.quit(), (raw) => {
+  registerIpc(platform, bridge, updateSettings, (raw) => stats.event(raw), (raw) => stats.identity(raw), () => app.quit(), (raw) => {
     // 调试改档只在开发者模式开着时接受。设置里关掉只是把按钮藏起来——真正的权限闸在这侧，
     // 否则 renderer 一旦被注入脚本就能绕过界面直接改真实存档。
     if (save.settings.developerMode !== true) return
@@ -114,7 +136,124 @@ void app.whenReady().then(() => {
 
   // 可见性策略。探测是个常驻 PowerShell 子进程，必须跟着退出收掉。
   // 只能排在建窗之后：句柄要问窗口要，而 createWindow 之前 up() 会抛。
-  const watch = startVisibilityWatch(platform, save.settings)
+  watch = startVisibilityWatch(platform, save.settings)
+
+  /**
+   * 托盘放在 watch 之后创建：菜单里的显示/隐藏直接调可见性策略。
+   * 图标在开发期从仓库读，打包后从 resources 读（见 electron-builder 的 extraResources）。
+   */
+  const trayIconPath = app.isPackaged
+    ? join(process.resourcesPath, 'with-me.ico')
+    : join(app.getAppPath(), 'assets', 'with-me.ico')
+
+  /** 托盘里的皮肤菜单：读 manifest 的展示名，坏掉的包按目录名显示但不隐藏。 */
+  const listSkins = (): { id: string; name: string }[] => listSkinDirs().map(({ id, dir }) => {
+    try {
+      const checked = validateManifest(JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')))
+      return { id, name: checked.ok ? checked.manifest.name : id }
+    } catch {
+      return { id, name: id }
+    }
+  })
+
+  /**
+   * 换皮肤要在启动时装载，热换会牵动协议、渲染层和整条皮肤缓存，所以保存后直接重启。
+   * 先落盘再重启：app.exit 不触发 before-quit，不能指望那里再写一次。
+   */
+  const applySkinAndRestart = (id: string): void => {
+    save.skin = id
+    if (!saveTo(dataDir, save)) {
+      console.log('[save] 存档版本比本程序新，跳过换皮肤')
+      return
+    }
+    setTimeout(() => {
+      app.relaunch()
+      app.exit(0)
+    }, 120)
+  }
+
+  const selectSkin = (id: string): void => {
+    if (id === save.skin || findSkinDir(id) === null) return
+    applySkinAndRestart(id)
+  }
+
+  /**
+   * 用户自己挑一个皮肤 zip。压缩包先整体校验再落盘，确认框里把包内许可摊给用户看，
+   * 导入成功后直接切过去并重启——和托盘里点皮肤同一条路径。
+   */
+  const importSkin = async (): Promise<void> => {
+    const picked = await dialog.showOpenDialog({
+      title: '选择皮肤包',
+      properties: ['openFile'],
+      filters: [{ name: '皮肤包', extensions: ['zip'] }],
+    })
+    if (picked.canceled || picked.filePaths.length === 0) return
+
+    let zip: Uint8Array
+    try {
+      zip = readFileSync(picked.filePaths[0]!)
+    } catch (e) {
+      dialog.showErrorBox('无法读取文件', e instanceof Error ? e.message : String(e))
+      return
+    }
+
+    const inspected = inspectSkinPack(zip)
+    if (!inspected.ok) {
+      dialog.showErrorBox('这个皮肤包不能导入', inspected.error)
+      return
+    }
+
+    const { pack } = inspected
+    const terms = [
+      pack.attribution ? pack.attribution : '',
+      pack.license ? `许可：${pack.license}` : '',
+      '第三方皮肤包的条款由作者提供，导入即表示你接受包内许可。'
+        + '如果它标记了「禁止商用」，请勿把皮肤用于商业用途。',
+    ].filter(Boolean).join('\n\n')
+
+    const confirm = await dialog.showMessageBox({
+      type: 'question',
+      title: '导入皮肤包',
+      message: `导入「${pack.manifest.name}」（id: ${pack.id}）并重启桌宠？`,
+      detail: terms.slice(0, 2000),
+      buttons: ['取消', '导入并重启'],
+      defaultId: 1,
+      cancelId: 0,
+      noLink: true,
+    })
+    if (confirm.response !== 1) return
+
+    const installed = installSkinPack(zip, userSkinsDir())
+    if (!installed.ok) {
+      dialog.showErrorBox('导入失败', installed.error)
+      return
+    }
+    applySkinAndRestart(installed.id)
+  }
+  const trayExit = createTrayExit({
+    // 先清手动门控再强制亮出窗口：全屏规则此刻仍说「隐藏」也要让人看见告别。
+    reveal: () => { watch.showManually(); watch.reveal() },
+    sendQuitRequested: () => platform.send(IPC.quitRequested, null),
+    scheduleFallback: (run, ms) => {
+      const timer = setTimeout(run, ms)
+      timer.unref()
+      return timer
+    },
+    cancelFallback: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    quit: () => app.quit(),
+  })
+  tray = createTrayController({
+    iconPath: trayIconPath,
+    getSettings: () => save.settings,
+    listSkins,
+    getSkin: () => save.skin,
+    selectSkin,
+    importSkin: () => { void importSkin() },
+    show: () => watch.showManually(),
+    hide: () => watch.hideManually(),
+    updateSettings,
+    quit: trayExit.request,
+  })
 
   // 覆盖层与主屏工作区重合。工作区在运行中会变（改分辨率 / 系统缩放 / 旋转 / 任务栏自动隐藏），
   // 所以原点不再"取一次"：refit 重读 workArea，同一件事里既改窗口尺寸又换光标原点，跟着显示器事件走。
@@ -152,6 +291,8 @@ void app.whenReady().then(() => {
     stopPolling()
     clearInterval(sweeper)
     stats.stop()
+    trayExit.cancel()
+    tray?.dispose()
     watch.stop()
     try {
       if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过退出写回')

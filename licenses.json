@@ -1,0 +1,44 @@
+[
+  {
+    "path": "src/renderer/icons/",
+    "license": "CC0-1.0",
+    "source": "Kenney (kenney.nl) — UI Pack / Emotes；`rice` / `game` / `debug` / `heart` 为本项目 2026-11-13 重绘并以 CC0-1.0 释出",
+    "note": "按钮圆底、箭头、光标等来自 Kenney，部分按本项目配色重染；四枚重绘图不再包含任何 iconfont 路径"
+  },
+  {
+    "path": "src/renderer/foods/",
+    "license": "CC0-1.0",
+    "source": "Kenney UI Pack 底板 + 本项目生成脚本（`tools/make-food-icons.mjs`）",
+    "note": "没用 iconfont 那批：上游条款禁止商用再分发"
+  },
+  {
+    "path": "src/renderer/emotes/",
+    "license": "CC0-1.0",
+    "source": "Kenney Emotes，经 `spike/emote-thin.mjs` / `emote-shorten.mjs` 削描边删中段",
+    "note": "32×32 位图，CSS 放大显示"
+  },
+  {
+    "path": "src/renderer/fonts/",
+    "license": "OFL-1.1",
+    "source": "Noto Sans SC 可变子集（`with-me-sans-var.woff2`）/ Fredoka（`with-me-num-400.woff2`）",
+    "note": "两份 OFL 正文是上游发布的原文，逐字节不改；子集已改名，未使用 Reserved Font Name。源 TTF 各 16MB 不入库，见 `tools/make-font-subset.mjs`"
+  },
+  {
+    "path": "src/renderer/voice/",
+    "license": "GPL-3.0-only",
+    "source": "台词派生自 qqpet（© Ankio，GPL-3.0-only），语音由 BreezeBlue TTS 合成",
+    "note": "平台条款允许再分发（账号持有人 2026-11-12 确认），语音随包发行"
+  },
+  {
+    "path": "skins/block/",
+    "license": "GPL-3.0-only",
+    "source": "本项目自制占位皮肤（`tools/make-test-skin.mjs` 用 ffmpeg 现场生成的蓝幕抠像片段）",
+    "note": "不含任何第三方美术素材"
+  },
+  {
+    "path": "assets/",
+    "license": "GPL-3.0-only",
+    "source": "本项目自制：由 `src/renderer/icons/game-fly.png`（ImageGen 出图）缩放为应用/托盘图标",
+    "note": "通用的蓝鲸图标，不是大肥鱼形象；打包时复制到 resources/with-me.ico"
+  }
+]

@@ -211,14 +211,13 @@ export type PanelButton = {
   label: string
   icon: string
   pool?: string
-  view?: 'settings' | 'foods' | 'stats' | 'games' | 'debug'
+  view?: 'foods' | 'stats' | 'games' | 'debug'
 }
 
 export const PANEL_BUTTONS: readonly PanelButton[] = [
   { id: 'feed', label: '喂食', icon: 'icons/rice.svg', view: 'foods' },
   { id: 'game', label: '小游戏', icon: 'icons/game.svg', view: 'games' },
   { id: 'status', label: '状态', icon: 'icons/heart.svg', view: 'stats' },
-  { id: 'settings', label: '设置', icon: 'icons/settings.svg', view: 'settings' },
   // 调试台：条件触发 / 动画全集 / 台词全表 / 游戏食物 + 等级与数值滑条。测试用，替换旧的「说话」按钮。
   { id: 'debug', label: '调试', icon: 'icons/debug.svg', view: 'debug' },
 ]

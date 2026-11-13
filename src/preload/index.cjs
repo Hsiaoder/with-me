@@ -26,4 +26,6 @@ contextBridge.exposeInMainWorld('petBridge', {
   onStats: (cb) => ipcRenderer.on('pet:stats-loaded', (_e, s) => cb(s)),
   /** 用户点了「退出桌宠」：渲染层先说完 bye，再走这条让主进程落盘并退出。 */
   quitApp: () => ipcRenderer.send('pet:quit'),
+  /** 托盘点了「退出」：先走和面板一样的告别动画/语音，演完再 quitApp 让主进程收窗。 */
+  onQuitRequested: (cb) => ipcRenderer.on('pet:quit-requested', (_e) => cb()),
 })

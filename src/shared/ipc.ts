@@ -17,6 +17,7 @@ export const IPC = {
   identity: 'pet:identity',              // renderer → main，{ name?, gender? }，改名与性别
   statsLoaded: 'pet:stats-loaded',       // main → renderer，StatsSnapshot（开局推一次，之后每次变化推）
   quit: 'pet:quit',                       // renderer → main，用户点了「退出桌宠」，先说完 bye 再走这条
+  quitRequested: 'pet:quit-requested',   // main → renderer，托盘点了「退出」，让渲染层先演完告别序列
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

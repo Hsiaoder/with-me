@@ -31,8 +31,15 @@ export function parseSample(line: string): Sample | null {
 export interface VisibilityPolicy {
   setScenario(s: Scenario): void
   setSettings(s: Settings): void
-  /** 立刻放出来，不走去抖。探测进程半路死掉时用——那时不会再有下一拍把状态翻回来。 */
-  reveal(): void
+  /** 用户从托盘明确要求隐藏：后续自动样本不能把窗口重新放出来。 */
+  hideManually(): void
+  /** 清掉手动隐藏门控，并按当前场景与设置立即重新判断。 */
+  showManually(): void
+  /**
+   * 尝试立刻放出来，不走去抖。手动隐藏仍优先；返回本次是否真的恢复了显示。
+   * 探测进程半路死掉时用——那时不会再有下一拍把状态翻回来。
+   */
+  reveal(): boolean
   readonly hidden: boolean
 }
 
@@ -53,6 +60,7 @@ export function createVisibilityPolicy(
   let current = settings
   let scenario: Scenario = 'none'
   let hidden = false
+  let manualHidden = false
   let clear = 0
 
   function apply(wantVisible: boolean, debounced: boolean): void {
@@ -79,17 +87,27 @@ export function createVisibilityPolicy(
     },
     setScenario(s) {
       scenario = s
-      apply(decideVisibility(s, current), true)
+      apply(!manualHidden && decideVisibility(s, current), true)
     },
     setSettings(s) {
       current = s
-      apply(decideVisibility(scenario, s), false)
+      apply(!manualHidden && decideVisibility(scenario, s), false)
+    },
+    hideManually() {
+      manualHidden = true
+      apply(false, false)
+    },
+    showManually() {
+      manualHidden = false
+      apply(decideVisibility(scenario, current), false)
     },
     reveal() {
+      if (manualHidden) return false
       clear = 0
-      if (!hidden) return
+      if (!hidden) return false
       hidden = false
       platform.show()
+      return true
     },
   }
 }
@@ -159,6 +177,10 @@ while ($true) {
 export interface VisibilityWatch {
   stop(): void
   setSettings(s: Settings): void
+  hideManually(): void
+  showManually(): void
+  /** 跳过手动门控把窗口亮出来（托盘退出要让人看见告别动画）。 */
+  reveal(): boolean
 }
 
 /**
@@ -168,7 +190,16 @@ export interface VisibilityWatch {
  * 不接受调用方传字符串，就没有被拼进 PowerShell 源码的空间。
  */
 export function startVisibilityWatch(platform: Platform, settings: Settings): VisibilityWatch {
-  if (process.platform !== 'win32') return { stop: () => {}, setSettings: () => {} }
+  if (process.platform !== 'win32') {
+    const policy = createVisibilityPolicy(platform, settings)
+    return {
+      stop: () => {},
+      setSettings: (s) => policy.setSettings(s),
+      hideManually: () => policy.hideManually(),
+      showManually: () => policy.showManually(),
+      reveal: () => policy.reveal(),
+    }
+  }
 
   const policy = createVisibilityPolicy(platform, settings)
   let child: ChildProcess | null = null
@@ -183,7 +214,13 @@ export function startVisibilityWatch(platform: Platform, settings: Settings): Vi
     })
   } catch (e) {
     console.error('[visibility] 探测进程起不来，宠物不会隐藏但功能照常：', e)
-    return { stop: () => {}, setSettings: (s) => policy.setSettings(s) }
+    return {
+      stop: () => {},
+      setSettings: (s) => policy.setSettings(s),
+      hideManually: () => policy.hideManually(),
+      showManually: () => policy.showManually(),
+      reveal: () => policy.reveal(),
+    }
   }
 
   if (child.stdout) {
@@ -208,9 +245,8 @@ export function startVisibilityWatch(platform: Platform, settings: Settings): Vi
   // 让路失效至少比宠物消失好，所以当场放出来。
   child.on('close', () => {
     if (dying) return
-    const wasHidden = policy.hidden
-    policy.reveal()
-    if (wasHidden) console.error('[visibility] 探测进程退出，宠物已恢复显示，本轮不再隐藏')
+    const restored = policy.reveal()
+    if (restored) console.error('[visibility] 探测进程退出，宠物已恢复显示，本轮不再隐藏')
   })
 
   return {
@@ -222,6 +258,15 @@ export function startVisibilityWatch(platform: Platform, settings: Settings): Vi
     },
     setSettings(s) {
       policy.setSettings(s)
+    },
+    hideManually() {
+      policy.hideManually()
+    },
+    showManually() {
+      policy.showManually()
+    },
+    reveal() {
+      return policy.reveal()
     },
   }
 }

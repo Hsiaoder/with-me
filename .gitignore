@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.runtime/
+userdata/
+skins-inbox/*.zip
 spike/out/
 e2e/artifacts/
 npm-install.log
@@ -11,3 +14,6 @@ playwright-report/
 docs/
 codex-review/
 spike/food-sheet.png
+.superpowers/
+release*/
+build/

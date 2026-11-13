@@ -22,7 +22,7 @@ import {
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
 import { createPicker, nextClip, type NextClip, type PoolSource } from '../shared/behavior.js'
-import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, rectContains, settingsAnchor, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
+import { anyContains, bodyRect, bubbleAnchor, floatAnchor, inkRect, panelAnchor, rectContains, stackAnchor, statsAnchor, unionRect } from '../shared/geometry.js'
 import { createHoverTimer } from '../shared/hover.js'
 import { bodyInsetOf, createMotion, feetOffsetOf } from '../shared/motion.js'
 import { bodyBoxOf, clipUrl, inkInsetsOf, isLooping, isMirrorable, type SkinPayload } from '../shared/skin.js'
@@ -42,6 +42,7 @@ import type { ClipRef, Point, Rect } from '../shared/types.js'
 import { createBubble, type BubbleContent } from './bubble.js'
 import { createVoicePlayer, type VoiceEntry, type VoicePlayer } from './audio.js'
 import { createFloatLayer } from './float.js'
+import { createExitSequencer } from './exit.js'
 import { createPanel, defaultActions } from './panel.js'
 import { createSprite } from './sprite.js'
 import { createFlyGame } from './game.js'
@@ -376,6 +377,40 @@ function bootstrap(skin: SkinPayload): void {
     },
   }
 
+  /**
+   * 退出桌宠：随机一条收尾动画 + 一句再见（带语音），**等动画和语音都演完**再让主进程落盘退出。
+   * 包一层「只启动一次」：托盘退出、面板旧入口、主进程重发的请求都走这里。
+   */
+  const requestExit = createExitSequencer(() => {
+    exiting = true
+    exitAnimDone = false
+    exitVoiceDone = false
+    // 收尾片皮肤里没有（占位皮肤没 daily 池）就回落 click，保证有动作送别；吃饭时 requestClip 拒换，
+    // 那就等正在播的那条演完——行为链演完当前这条照样会标记 exitAnimDone。
+    const clip = pickExit(talkRng)
+    if (!(clip && requestClip(clip.pool, clip.name))) requestClip('click')
+    // 再见台词 + 语音由 say 内部播。先清掉上一句的音频引用：say 没播（游戏态/静音）就当没有语音要等。
+    lastVoiceAudio = null
+    const line = pickLine('bye', talkRng)
+    if (line !== null) say({ text: line.say, reply: line.reply })
+    // say() 在内部把 lastVoiceAudio 设成这句的音频；经 readVoiceAudio 读回，保住联合类型。
+    const a = readVoiceAudio()
+    if (a === null || a.ended) {
+      exitVoiceDone = true
+    } else {
+      // 播完（ended）、出错（error）、或语音单独兜底超时，都算"语音这条演完了"——
+      // 否则 autoplay 被拒 / 素材坏 / 中途静音会一直不触发 ended，把退出拖到总兜底那 10 秒。
+      const voiceDone = (): void => { exitVoiceDone = true; maybeFinishExit() }
+      a.addEventListener('ended', voiceDone, { once: true })
+      a.addEventListener('error', voiceDone, { once: true })
+      setTimeout(voiceDone, EXIT_VOICE_MAX_MS)
+    }
+    // 动画那条由行为链演完那一拍标记 exitAnimDone；两边都齐才 quit。
+    maybeFinishExit()
+    // 兜底：素材坏 / autoplay 被拒把动画或音频卡住时，最多等 10 秒也必须退得出去。
+    exitSafety = setTimeout(() => window.petBridge?.quitApp(), 10000)
+  })
+
   const panel = createPanel(root, defaultActions(), settings, {
     action: (a) => {
       lastInteractionAt = Date.now()
@@ -406,15 +441,6 @@ function bootstrap(skin: SkinPayload): void {
     identity: (patch) => {
       window.petBridge?.setIdentity(patch)
     },
-    setting: (patch) => {
-      settings = { ...settings, ...patch }
-      panel.setSettings(settings)
-      // 静音现问现生效，勾上就把正在播的那句掐掉（不静音等它自己念完）。
-      if (settings.muted) voice.stop()
-      window.petBridge?.setSettings(settings)
-      // 选中态换了类，面板高度可能变，重新夹一次位置免得溢出屏幕
-      if (panel.isOpen) placePanel()
-    },
     view: (v) => {
       // 操作型视图（设置要连点两行开关、食物列表要拖横条逐个挑）用宽裕的收起延时，
       // 1500ms 不够操作完；回动作视图换回快档。顺带重挂自动收起的定时器。
@@ -426,38 +452,10 @@ function bootstrap(skin: SkinPayload): void {
         if (bubble.isOpen) placeBubble()
       }
     },
-    // 退出桌宠：随机一条收尾动画 + 一句再见（带语音），**等动画和语音都演完**再让主进程落盘退出。
-    quit: () => {
-      if (exiting) return
-      exiting = true
-      exitAnimDone = false
-      exitVoiceDone = false
-      // 收尾片皮肤里没有（占位皮肤没 daily 池）就回落 click，保证有动作送别；吃饭时 requestClip 拒换，
-      // 那就等正在播的那条演完——行为链演完当前这条照样会标记 exitAnimDone。
-      const clip = pickExit(talkRng)
-      if (!(clip && requestClip(clip.pool, clip.name))) requestClip('click')
-      // 再见台词 + 语音由 say 内部播。先清掉上一句的音频引用：say 没播（游戏态/静音）就当没有语音要等。
-      lastVoiceAudio = null
-      const line = pickLine('bye', talkRng)
-      if (line !== null) say({ text: line.say, reply: line.reply })
-      // say() 在内部把 lastVoiceAudio 设成这句的音频；经 readVoiceAudio 读回，保住联合类型。
-      const a = readVoiceAudio()
-      if (a === null || a.ended) {
-        exitVoiceDone = true
-      } else {
-        // 播完（ended）、出错（error）、或语音单独兜底超时，都算"语音这条演完了"——
-        // 否则 autoplay 被拒 / 素材坏 / 中途静音会一直不触发 ended，把退出拖到总兜底那 10 秒。
-        const voiceDone = (): void => { exitVoiceDone = true; maybeFinishExit() }
-        a.addEventListener('ended', voiceDone, { once: true })
-        a.addEventListener('error', voiceDone, { once: true })
-        setTimeout(voiceDone, EXIT_VOICE_MAX_MS)
-      }
-      // 动画那条由行为链演完那一拍标记 exitAnimDone；两边都齐才 quit。
-      maybeFinishExit()
-      // 兜底：素材坏 / autoplay 被拒把动画或音频卡住时，最多等 10 秒也必须退得出去。
-      exitSafety = setTimeout(() => window.petBridge?.quitApp(), 10000)
-    },
   }, debugCtx)
+
+  // 托盘「退出」：主进程先亮出宠物再发这条，走的还是面板那条告别序列。
+  window.petBridge?.onQuitRequested(requestExit)
 
   window.petBridge?.onSettings((s) => {
     settings = s
@@ -794,10 +792,6 @@ function bootstrap(skin: SkinPayload): void {
         PANEL_GAP,
         at.side === 'below' ? at.y : null,
       ))
-    } else if (panel.view === 'settings') {
-      // 设置板挂宠物**左侧**（左边放不下翻右侧）：按钮条常驻脚下、状态栏挂右，设置再去右边就挤同一列。
-      // 锚看得见的身子（inkRect），和状态栏同一条横向距离账。
-      panel.showPlate(settingsAnchor(inkRect(body, inkInsets), ps, screen, PANEL_GAP))
     }
   }
 

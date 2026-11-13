@@ -537,11 +537,6 @@ body.pet-over {
   height: 24px;
 }
 
-.pet-panel button[data-id="settings"] .pet-icon {
-  width: 20px;
-  height: 20px;
-}
-
 /* 调试那枚是 iconfont 的方形齿轮/虫图标（viewBox 1024，深墨实心），和 game/guess 同一类矢量图，
    按方框给 22×22 压进青圈内半径；不加 image-rendering: pixelated（它不是像素图），也不单独加投影
    （深墨图在 2× 远程桌面上加投影只会糊出一圈灰晕，同另外四枚的处理）。 */
@@ -565,12 +560,6 @@ body.pet-over {
    读起来比三处都素更怪。留白回到基类的 6px（素材那版是 8px 边框 + 3px 内边距）。 */
 
 /* 设置视图是文字行，竖排两列。 */
-.pet-plate.is-settings {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-}
-
 /* 状态栏：竖一条，昵称在上、四条读数在中间、「此刻」两行在下面。宽度定死 150px——它站在宠物右侧，
    再宽就会在宠物贴右边缘时顶出屏幕，那时它只能翻到左边，反而压住宠物。
    行间距 5 → 9（用户 2026-11-06 要「行间距大一点」）→ 6 → 4 → 3（同一天连着长了两行：经验条、标题行）
@@ -584,11 +573,10 @@ body.pet-over {
   width: 150px;
 }
 
-/* 状态栏与设置视图里的文字卡片。两条规则以前只差 padding（3/7 vs 4/8），合并成一条统一 4px 8px。
+/* 状态栏里的文字卡片。两条规则以前只差 padding（3/7 vs 4/8），合并成一条统一 4px 8px。
    卡片必须有**真边框**：`.pet-plate button.on` 靠 border-color 加深来表意「当前生效」，
    而基类是 `border: none`——那行一直是死声明，选中态只剩底色加粗，等于靠颜色单独表意。 */
-.pet-plate.is-stats button,
-.pet-plate.is-settings button {
+.pet-plate.is-stats button {
   width: auto;
   height: auto;
   padding: 4px 8px;
@@ -600,13 +588,12 @@ body.pet-over {
 }
 
 /* 悬停换底色。动作视图不画底色——那里没有底板，画了就成了悬浮的方片。 */
-.pet-plate.is-stats button:hover,
-.pet-plate.is-settings button:hover {
+.pet-plate.is-stats button:hover {
   background: var(--hover-fill);
 }
 
 /* 调试副板：竖排卡片，标签条 + 可滚内容 + 常驻数值区。它是测试台，信息密度优先，
-   复用状态/设置那套文字按钮口径（真边框 + 浅底 + 悬停换色），不垫圆底素材。 */
+   复用状态栏那套文字按钮口径（真边框 + 浅底 + 悬停换色），不垫圆底素材。 */
 .pet-plate.is-debug {
   flex-direction: column;
   align-items: stretch;
@@ -1327,18 +1314,6 @@ body.pet-over {
   background: var(--scroll-fill);
   cursor: grab;
   touch-action: none;
-}
-
-.pet-setting {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.pet-setting > span {
-  flex: 0 0 auto;
-  min-width: 46px;
-  color: rgba(0, 0, 0, 0.62);
 }
 
 /* 当前生效的那一项。不靠颜色单独表意，同时加粗。
