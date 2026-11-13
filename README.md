@@ -35,6 +35,29 @@ v1 先证明架构成立，角色形象另说（见「文档」一节）。
 
 ---
 
+## 源码包（免签名渠道）
+
+Release 里除了安装包，还有一个 `with-me-<版本>-source.zip`。它不带 Electron 运行时，
+整条链路上没有「签过名的 exe」这回事，也就不存在 SmartScreen 的未知发布者；
+代价是用户的机器上要先有 Node.js。
+
+1. 装 [Node.js](https://nodejs.org/zh-cn) 22 或更高；
+2. 解压，双击 `run.cmd`（首次会下载 Electron 运行时，约 350MB，只需一次）；
+3. 之后日常双击 `启动.vbs`，不弹控制台窗口。
+
+这个目录本身就是一份完整安装：存档和已装皮肤都在包内的 `userdata\`。
+删掉 `userdata\` = 恢复出厂（默认小鲸、Lv.1、色块皮肤）；删掉整个目录 = 卸载。
+不写注册表，也没有开始菜单项和开机自启。
+
+**皮肤**：把下载到的皮肤包 zip 原样丢进 `skins-inbox\`，下次启动自动装好。
+源码包里仍然**不含**大肥鱼素材——它在同一个 Release 里单独下载（CC BY-NC-SA 4.0），
+混进 GPL 主程序会让许可边界变糊，见 `NOTICE.md`。
+
+`run.cmd` 只装 `electron` 一个包，不跑 `npm install`：devDependencies 里的
+`ffmpeg-static`、`playwright` 会联网下二进制，跟运行无关。要改代码的走上面「怎么跑起来」。
+
+---
+
 ## 怎么用起来
 
 - **面板怎么叫出来**：**点一下宠物**才出，鼠标路过或停上去都不弹（以前是停留 400ms 自动弹，
@@ -591,6 +614,7 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 | 想做 | 命令 | 出什么 |
 |---|---|---|
 | 出主程序包 | `npm run dist` | `with-me-<版本>-setup.exe` + `with-me-<版本>-portable.zip` |
+| 出源码包 | `npm run source:zip` | `with-me-<版本>-source.zip`（含 `dist/`，不含 `node_modules`） |
 | 验装机产物 | `node e2e/package-check.mjs` | 页面 / 动画 / 语音 / 字体是不是真从包里取到了 |
 | 查素材许可 | `npm run check:license` | 没登记的、形象素材混进来的，逐条报错并退码 1 |
 | 装大肥鱼包 | `npm run skin:pack` | `with-me-skin-dafeiyu-<版本>.zip`（素材不进 git，只能本地出） |
@@ -598,12 +622,12 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 ### 发一版
 
 1. 全门禁：`npm run typecheck && npm test && npm run build && npm run e2e && npm run check:license`
-2. 出包自检：`npm run dist && node e2e/package-check.mjs && npm run skin:pack`
+2. 出包自检：`npm run dist && node e2e/package-check.mjs && npm run source:zip && npm run skin:pack`
 3. **仓库得是 Public**，否则 Release 下载页要登录才打得开——目标是不登录就能下。
 4. 推 tag：`git tag v<版本> && git push origin v<版本>`，CI 自动出包并建 Release。
 5. 补挂皮肤包（素材不在 git，CI 拿不到，这一步只能手工）：
    `gh release upload v<版本> release/with-me-skin-dafeiyu-<版本>.zip`
-6. 用没登录的浏览器开一次 Release 页，三个文件都下得动，才算发完。
+6. 用没登录的浏览器开一次 Release 页，四个文件（两个安装包 + 源码包 + 皮肤包）都下得动，才算发完。
 
 版本号只改 `package.json` 的 `version`，tag 与它对齐。
 `e2e` 不进 CI：它要真机窗口和 Win32 z 序读数，runner 上的结果不可信。
@@ -611,6 +635,7 @@ npm run alpha:check skins/mine/animation/idle/patrol.webm
 ### v1 明确没有的两件事
 
 - **代码签名**：没证书。Windows SmartScreen 会弹「未知发布者」，这是预期，不是坏了。
+  不想碰未签名 exe 的用户走「源码包」那条路（`run.cmd`），那条路不产出任何签名产物。
 - **自动更新**：不检查新版也不下载，要更新就自己回 Release 页拿。
 
 ---

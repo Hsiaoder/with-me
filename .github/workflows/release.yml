@@ -35,17 +35,27 @@ jobs:
       # runner 能正常下载 Electron 预编译包，带着反而会指向一个不存在的相对路径。
       - run: npx electron-builder --win
 
+      # 第二渠道：源码包。不带 Electron 运行时，用户现场装，全程没有签名产物。
+      # 带 dist/ 是故意的——用户不该为了跑起来去装 TypeScript。
+      - run: node tools/make-source-zip.mjs
+
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             release/with-me-*-setup.exe
             release/with-me-*-portable.zip
+            release/with-me-*-source.zip
           # GPLv3 §6 要求「在同一处、以同样的方式、不再收费」提供对应源码，
           # 并且要「在对象代码旁边写清源码在哪」——所以这段话是义务，不是客套，别删。
           body: |
             ## 源码
             与本次安装包对应的完整机器可读源码就在本仓库的这个 tag：`${{ github.ref_name }}`。
             `setup.exe` 与免压 `portable.zip` 内容一致，任选其一。
+
+            ## 免签名渠道（源码包）
+            不想运行未签名 exe 的话，下载 `with-me-<版本>-source.zip`：装 Node.js 22 或更高，
+            解压后双击 `run.cmd`。首次会下载 Electron 运行时（约 350MB，只需一次），
+            之后日常双击 `启动.vbs`。存档在包内 `userdata\`，删掉即恢复出厂。
 
             ## 许可
             代码与台词：**GPL-3.0-only**（全文见仓库 `LICENSE`，逐项出处见 `NOTICE.md`）。

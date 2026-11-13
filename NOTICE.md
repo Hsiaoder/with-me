@@ -48,6 +48,8 @@ Copyright (C) 2026 Hsiaoder
 
 - 它以**单独的皮肤包**形式在同一个 GitHub Release 提供，许可与署名见包内 `ATTRIBUTION.md`。
 - 本仓库与两个安装包**都不含这些素材**，一个字节都不带；许可闸门（`tools/check-licenses.mjs`）会拦。
+- 源码包（`with-me-<版本>-source.zip`）同样不含；`skins-inbox\` 只是用户自己丢包进来的入口，
+  包内只有一份说明文件，随包分发的仍只有内置的 `block` 占位皮肤。
 - 应用图标与托盘图标**没有使用大肥鱼形象**：`assets/with-me.ico` 是一尾通用蓝鲸（本项目自制），
   避免把 CC BY-NC-SA 素材带进 GPL 主程序。
 - 本程序的 GPL 授权不覆盖、也不会放开该形象。想商用的一律用内置的 `block` 皮肤或自皮肤。

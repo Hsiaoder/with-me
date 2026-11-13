@@ -10,6 +10,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "dist": "npm run build && electron-builder --win --config.electronDist=node_modules/electron/dist",
+    "source:zip": "node tools/make-source-zip.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

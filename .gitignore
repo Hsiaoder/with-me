@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.runtime/
+userdata/
+skins-inbox/*.zip
 spike/out/
 e2e/artifacts/
 npm-install.log
