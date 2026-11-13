@@ -18,6 +18,7 @@ import {
   PLATE_GAP,
   VIEW_HIDE_MS,
   STAGE_W_CSS,
+  TALK_IDLE_GAP_MS,
   VOICE_BUBBLE_PAD_MS,
   WALK_SPEED_PX_PER_SEC,
 } from '../shared/config.js'
@@ -152,6 +153,8 @@ function bootstrap(skin: SkinPayload): void {
         if (r === 'cancelled') {
           // 素材坏了或被协议挡下。停住并留痕，不许空转把 CPU 吃满
           console.error('[pet] 行为链停住：播放未开始', ref)
+          // 这一口根本没演起来，挂在上面的台词也就没有「演完」那一刻了
+          feedTalkRef = null
           return
         }
         // 「猜动作」正在考某动作、还没被答：在它**真播完**这一拍无缝续挂同一条，别掉回 idle
@@ -160,6 +163,13 @@ function bootstrap(skin: SkinPayload): void {
         if (gloop && gloop.pool === ref.pool && gloop.name === ref.name) {
           player.prepare(ref)
           continue
+        }
+        // 这一口吃完了：喂食那句现在才开口，和飘字落在同一拍。
+        // 理由和 holdGainsForClip 是同一条——点完就说像回执，咽下去再说才是「它吃了，所以有话」。
+        // 这里绕开冷却：这是用户刚做的动作，再被冷却吞掉就成了「喂了没反应」。
+        if (feedTalkRef !== null && feedTalkRef.pool === ref.pool && feedTalkRef.name === ref.name) {
+          feedTalkRef = null
+          sayFor('feed', { ignoreCooldown: true })
         }
         const nxt = nextClip({ rules, picker, source, loops: loopsOf, ref })
         if (nxt.kind === 'loop') {
@@ -237,6 +247,9 @@ function bootstrap(skin: SkinPayload): void {
       ? picker.pickFrom(source, pool, current)
       : picker.pickNamed(source, pool, name)
     if (!ref) return false
+    // 换了片子 = 上一口那句「演完再说」失去了落脚点。吃饭期间本来就换不动（上面那道闸），
+    // 走到这儿的是「这一口没有专属吃相、回退 click」那种情况——被拖起来顶掉之后不许赖到下一条 click 上。
+    if (feedTalkRef !== null && (feedTalkRef.pool !== ref.pool || feedTalkRef.name !== ref.name)) feedTalkRef = null
     current = ref
     syncEating()
     syncRuntime()
@@ -271,6 +284,20 @@ function bootstrap(skin: SkinPayload): void {
     .then((r) => (r.ok ? r.json() : []))
     .then((entries: VoiceEntry[]) => { voice = createVoicePlayer(entries, () => settings.muted) })
     .catch(() => {})
+
+  /**
+   * 播放器状态。用户 2026-11-14：电脑在放音乐/视频时，宠物说话只弹气泡、不出声。
+   * 一来别跟用户正在听的东西叠音；二来音乐本来就是他主动开的，宠物该让路。
+   * 音乐一起就把正在说的那句掐掉——气泡留着，字他已经在看了。
+   */
+  window.petBridge?.onMedia((m) => {
+    musicPlaying = m.playing
+    if (musicPlaying) {
+      voice.stop()
+      // 掐掉的那句不再算「在播」：退出收尾与调试读数都看这个引用
+      lastVoiceAudio = null
+    }
+  })
   /** 最近一句开口播的音频（静音/查无此句为 null）。退出收尾要等它播完，故露给装配层。 */
   let lastVoiceAudio: HTMLAudioElement | null = null
   /** 经函数读回，类型保持联合：say() 会在内部改它，直接读会被 TS 沿用上一处赋值的窄化。 */
@@ -328,7 +355,17 @@ function bootstrap(skin: SkinPayload): void {
   const activeGame = () => (flyGame.active() ? flyGame : guessGame.active() ? guessGame : bubbleGame.active() ? bubbleGame : null)
 
   /**
-   * 喂一口：点哪格播哪条吃相（缺这一口回落 click，绝不播池里随便一条假装吃的是别的）+ 说一句 feed + 报养成数值。
+   * 这一口吃完要说的那句挂在**哪条片子上**。null = 没有待说的。
+   *
+   * 只记「池 + 名字」：吃相是用户点名的固定一条，所以比对两个字段就够。
+   * 被别的动作顶掉（正常路径上吃饭期间顶不动，见 requestClip 那道闸）就作废——
+   * 绝不能让一句喂食台词落到一条毫不相干的片段演完时冒出来。
+   */
+  let feedTalkRef: ClipRef | null = null
+
+  /**
+   * 喂一口：点哪格播哪条吃相（缺这一口回落 click，绝不播池里随便一条假装吃的是别的）+ 报养成数值，
+   * 那句 feed 台词等这一口**演完**再说。
    * 面板食物格与调试板共用。**选完不收面板**：手还停在这块区域上，收掉会让按钮消失、那块像素不再归宠物、
    * 光标当场变回系统箭头；收起交给「离开满延时」和「再点一次喂食/点宠物」。这一口没吃完时整列格子是灰的（syncEating）。
    */
@@ -341,7 +378,11 @@ function bootstrap(skin: SkinPayload): void {
     rules.feed('interacted')
     if (f.anim !== undefined && !requestActionClip(f.anim.pool, f.anim.name)) requestActionClip('click')
     else if (f.anim === undefined) requestActionClip('click')
-    sayFor('feed')
+    // 台词挂到这一口上，演到最后一帧才说（用户 2026-11-13：「动画播放完，宠物应该说一句话」）。
+    // 以前这里直接 sayFor('feed')，两个毛病：话比动画先出口，读起来像喂下去的回执；
+    // 而且它和上一句共用一个 25 秒冷却，连着喂第二口、或者刚点过状态再看它吃，
+    // 这句就被整句吞掉——用户说的「有的时候不会说」就是这个。
+    feedTalkRef = current
     window.petBridge?.statEvent({ kind: 'feed', food: f.id })
   }
 
@@ -463,6 +504,14 @@ function bootstrap(skin: SkinPayload): void {
     // 主进程回灌也可能是「刚被设成静音」（比如另一个入口/开机存档就是静音）：同样掐掉正在播的语音。
     if (settings.muted) voice.stop()
   })
+
+  /**
+   * 有没有播放器在放东西。主进程用 Windows 的媒体会话（SMTC）探测，状态变化时推一次。
+   * 它改两件事：日常动画偏向音乐那组；说话**只出气泡不配音**（别跟用户在听的歌打架）。
+   * 数值、面板、冷却这些一概不受影响。订阅本身挂在 voice 建好之后（见下面），
+   * 因为「音乐一起来」要能当场掐掉正在说的那句。
+   */
+  let musicPlaying = false
 
   /** 主进程推来的数值快照。状态视图直接吃它，台词档也要看它。 */
   let snap: StatsSnapshot | null = null
@@ -671,6 +720,7 @@ function bootstrap(skin: SkinPayload): void {
       lateNightWorking: h < 5 && idleMs < 60000,       // 过凌晨、且主人这阵子还在动
       lastWasSleepy,
       clickStreak: Date.now() - lastClickAt > CLICK_STREAK_MS ? 0 : clickStreak,
+      music: musicPlaying,
     }
   }
 
@@ -683,6 +733,9 @@ function bootstrap(skin: SkinPayload): void {
     // 游戏态不弹聊天气泡（用户 2026-11-07 要「开始后宠物不该弹气泡」）：把这一个总出口堵住，
     // 比在每个调用点各判一次强——idle / 事件 / 升级 / 调试台词全从这儿过，漏判的机会为零。
     if (activeGame()) return false
+    // 吃饭期间已经有人抢着说了一句（跨级、调试台点的台词）：这口吃完就别再补 feed 那句，
+    // 否则迟到的它会把刚才那句更重要的话盖掉。
+    if (current.pool === 'eat') feedTalkRef = null
     const line = typeof content === 'string' ? { text: content } : content
     const clean = clamp(line.text)
     if (clean === '') return false
@@ -691,7 +744,8 @@ function bootstrap(skin: SkinPayload): void {
     const token = ++bubbleSayToken
     armBubble(ms)
     // 弹气泡同时播这句的语音；停留时长按语音真实事件走（下面 keep/done），默认 ms 只是没语音时的兜底。
-    const a = voice.play(clean)
+    // 有播放器在放东西时不配音：气泡照出，声音让位（用户 2026-11-14）。
+    const a = musicPlaying ? null : voice.play(clean)
     lastVoiceAudio = a
     if (a !== null) {
       // 有语音：气泡必须活过语音，不能靠 duration 算（本地 mp3 也可能报 Infinity / 还没解码完，
@@ -734,13 +788,21 @@ function bootstrap(skin: SkinPayload): void {
         : talkRng() < 0.25
           ? 'comfort'
           : 'idle'
-    const line = pickTalk(reason, { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng)
+    // 自己搭话用长间隔（TALK_IDLE_GAP_MS），不走事件那道 8 秒短冷却：这两件事的节奏不一样。
+    const line = pickTalk(reason, { now: Date.now(), idleMs: Date.now() - lastInteractionAt, lastTalkAt }, talkRng, TALK_IDLE_GAP_MS)
     if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech(reason) }
   }
 
-  /** 事件驱动的台词：用户做了动作就必说（只受冷却约束），不看概率。 */
-  function sayFor(reason: TalkReason): void {
-    const line = pickTalk(reason, { now: Date.now(), idleMs: 0, lastTalkAt }, talkRng)
+  /**
+   * 事件驱动的台词：用户做了动作就必说，不看概率。
+   *
+   * `ignoreCooldown` 只有「喂食」用：那一口吃完是用户自己刚做的事，被冷却吞掉就是「喂了没反应」。
+   * 跨级那句本来就绕过冷却（走 pickLine），同一个理由。
+   */
+  function sayFor(reason: TalkReason, opts: { ignoreCooldown?: boolean } = {}): void {
+    const line = opts.ignoreCooldown
+      ? pickLine(reason, talkRng)
+      : pickTalk(reason, { now: Date.now(), idleMs: 0, lastTalkAt }, talkRng)
     if (line !== null) { say({ text: line.say, reply: line.reply }); pairSpeech(reason) }
   }
 
@@ -1095,6 +1157,12 @@ function bootstrap(skin: SkinPayload): void {
     },
     /** 冷却时钟。e2e 传 0 表示「很久没说了」，传 Date.now() 还原。 */
     setLastTalk: (v: number): number => (lastTalkAt = v),
+    /** 手动改「有没有音乐在放」：没有真播放器时用它验权重（e2e / 调试用）。 */
+    setMusic: (v: boolean): boolean => (musicPlaying = v === true),
+    /** 读当前值：验 IPC 那条路（真播放器 → 主进程 → 渲染层）有没有接通。 */
+    music: (): boolean => musicPlaying,
+    /** 上一句有没有真的出声（静音 / 无素材 / 被音乐让路时是 false）。 */
+    voiceAudio: (): boolean => lastVoiceAudio !== null,
     /** 交互时钟。传 0 让 idle 的「闲够了」成立，传 Date.now() 还原。 */
     setLastInteraction: (v: number): number => (lastInteractionAt = v),
     /** 直接走一次「闲下来那一拍」的接缝，不改行为链的正常运行。 */

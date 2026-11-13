@@ -26,6 +26,8 @@ export type Situation = {
   lateNightWorking: boolean
   lastWasSleepy: boolean
   clickStreak: number
+  /** 有播放器在放东西（主进程探测 Windows 媒体会话）。只用来抬音乐那组片段的权重。 */
+  music: boolean
 }
 
 const d = (name: string): ClipRef => ({ pool: 'daily', name })        // 新增日常片段都在 daily 池
@@ -47,6 +49,16 @@ export const MOOD_HIGH: readonly ClipRef[] = [g('maid'), g('otaku'), d('hum'), g
 
 /** 心情很低（<BLUE_BELOW）时播。 */
 export const MOOD_LOW: readonly ClipRef[] = [d('tailslap')]
+
+/**
+ * 有播放器在放东西时权重抬高的片段（用户 2026-11-14：放音乐时宠物该跟着动）。
+ * 哼歌 / 吹笛 / 拉琴 / 摇摆 / 转圈——都是「跟着音乐动」那一类。
+ * 它们本来散在 MOOD_HIGH 和 AMBIENT 里，单列一组只是为了能被整体加权。
+ */
+export const MUSIC: readonly ClipRef[] = [d('hum'), g('flute'), g('violin'), g('swing'), d('spin')]
+
+/** 音乐那组的权重：日常池一条算 1，这里一条算 6。五条合起来能占到大半，但不会把别的全赶走。 */
+export const MUSIC_WEIGHT = 6
 
 /** 过凌晨仍在用 → 哈欠连天。 */
 export const LATE_NIGHT: readonly ClipRef[] = [d('yawn')]
@@ -85,10 +97,15 @@ export const EXIT_CLIPS: readonly ClipRef[] = [
 /** 连点到这个数就判定「连续点击」。 */
 export const CLICK_STREAK_MIN = 3
 
-/** 把 AMBIENT(+犯困加权) 摊成带权重的候选：久未互动时 SLEEPY 权重抬高。 */
-function ambientCandidates(idleMs: number): { clip: ClipRef; weight: number }[] {
-  const sleepyWeight = idleMs > IDLE_LONG_MS ? 3 : 1
-  return [...AMBIENT.map((clip) => ({ clip, weight: 1 })), ...SLEEPY.map((clip) => ({ clip, weight: sleepyWeight }))]
+/** 把 AMBIENT(+犯困加权+音乐加权) 摊成带权重的候选：久未互动时 SLEEPY 抬高，有音乐时 MUSIC 那组整体抬起来。 */
+function ambientCandidates(s: Situation): { clip: ClipRef; weight: number }[] {
+  const sleepyWeight = s.idleMs > IDLE_LONG_MS ? 3 : 1
+  const music = s.music ? MUSIC.map((clip) => ({ clip, weight: MUSIC_WEIGHT })) : []
+  return [
+    ...AMBIENT.map((clip) => ({ clip, weight: 1 })),
+    ...SLEEPY.map((clip) => ({ clip, weight: sleepyWeight })),
+    ...music,
+  ]
 }
 
 /** 等/加权随机抽一条（rng 注入；越界夹到末条，空表返回 null）。 */
@@ -117,10 +134,13 @@ export function pickInteract(s: Situation): ClipRef | null {
  * 各档都从对应集合随机一条，rng 注入。
  */
 export function pickAmbient(s: Situation, rng: () => number): ClipRef | null {
+  // 有音乐在放就先走加权池：音乐那组被抬高，同时「心情/深夜」这两档偏向让位——
+  // 它们是「没别的刺激时」的倾向，而音乐是当下最明确的刺激（用户 2026-11-14）。
+  if (s.music) return weightedPick(ambientCandidates(s), rng)
   if (s.mood > BAND_HIGH_ABOVE) return flatPick(MOOD_HIGH, rng)
   if (s.mood < BLUE_BELOW) return flatPick(MOOD_LOW, rng)
   if (s.lateNightWorking) return flatPick(LATE_NIGHT, rng)
-  return weightedPick(ambientCandidates(s.idleMs), rng)
+  return weightedPick(ambientCandidates(s), rng)
 }
 
 /** 说话这条该配什么动画；该档没配（如 feed）返回 null。 */
@@ -146,7 +166,7 @@ function flatPick(list: readonly ClipRef[], rng: () => number): ClipRef | null {
 
 /** 本模块用到的全部具名片段（供单测/装配层核对「候选名都在皮肤池清单里」）。 */
 export const ALL_CLIPS: readonly ClipRef[] = [
-  ...AMBIENT, ...SLEEPY, ...MOOD_HIGH, ...MOOD_LOW, ...LATE_NIGHT,
+  ...AMBIENT, ...SLEEPY, ...MOOD_HIGH, ...MOOD_LOW, ...LATE_NIGHT, ...MUSIC,
   REACT_CLICKSTREAK, REACT_SLEEPY_WAKE, LEVELUP_CLIP,
   ...STARTUP_CLIPS, ...EXIT_CLIPS,
   ...Object.values(SPEECH).flatMap((v) => v ?? []),

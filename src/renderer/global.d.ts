@@ -24,6 +24,8 @@ declare global {
       debugStats(patch: { stats?: Partial<Stats>; exp?: number }): void
       setIdentity(patch: { name?: string; gender?: string }): void
       onStats(cb: (s: StatsSnapshot) => void): void
+      /** 有没有播放器在放东西：{ playing }。只影响日常动画的权重。 */
+      onMedia(cb: (m: { playing: boolean }) => void): void
       /** 用户点了「退出桌宠」：渲染层说完 bye 后调它，主进程落盘并 app.quit()。 */
       quitApp(): void
       /** 托盘「退出」：主进程已把宠物亮出来，渲染层照旧走一遍告别序列。 */

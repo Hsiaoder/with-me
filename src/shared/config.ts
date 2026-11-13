@@ -129,10 +129,19 @@ export const VOICE_BUBBLE_PAD_MS = 1000
 /** 退出收尾等再见语音的最长时间：autoplay 被拒 / 素材坏 / 中途静音时，语音这一路最多等这么久，
  *  不等满退出的总兜底（见 index 的 10 秒）。 */
 export const EXIT_VOICE_MAX_MS = 6000
-/** 距上次说话不足这么久就不再插一句，六个 reason 都受它约束。 */
-export const TALK_COOLDOWN_MS = 25000
+/** 事件台词（喂食/逗玩/状态/跨级…）之间的最小间隔：只防同一秒两句叠着冒，不压正常回应。 */
+export const TALK_COOLDOWN_MS = 8000
+/**
+ * 自己搭话（idle/hungry/blue/comfort）之间的最小间隔，把「说话」和「被叫就应」分成了两条账。
+ *
+ * 对照 qqpet：它的待机计时器每次 20–60 秒（每个动作演完重新上弦），每拍只有约 1/3 的机会真开口
+ * （走路、玩耍各占一拍，都算这一拍用掉了），换算下来平均 1.5–2 分钟才一句。
+ * 我们原来是「闲 20 秒 + 每个待机片段 35% + 25 秒冷却」，平均 30–40 秒一句。
+ * 用户 2026-11-13 报「说话太快」，这里按 qqpet 的均值调到 100 秒，概率降到 30%。
+ */
+export const TALK_IDLE_GAP_MS = 100000
 /** 「闲到交出决策权」那一拍里开口的概率。事件驱动的台词不受它约束。 */
-export const TALK_IDLE_PROB = 0.35
+export const TALK_IDLE_PROB = 0.3
 /** 台词迁移后最长 40 字；气泡靠缩字号容纳长句、不压缩原话，上限放宽到 50 留余量（见 style.css 气泡正文）。 */
 export const TALK_MAX_CHARS = 50
 /**

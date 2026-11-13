@@ -372,10 +372,18 @@ export function clamp(text: string): string {
 
 /**
  * 该不该开口、说什么。返回 null 就是这句不说。
- * 概率只作用于「自己搭话」那几档（SELF_TALK_REASONS）；事件驱动不受概率管。冷却对两者都生效。
+ * 概率只作用于「自己搭话」那几档（SELF_TALK_REASONS）；事件驱动不受概率管。
+ *
+ * `cooldownMs` 默认是事件台词那道短冷却；自己搭话由调用方传 `TALK_IDLE_GAP_MS`——
+ * 两条账分开算，才能做到「叫它必应、它自己别话痨」（见 config 里那两条常量的注释）。
  */
-export function pickTalk(reason: TalkReason, ctx: TalkCtx, rng: () => number): Line | null {
-  if (ctx.now - ctx.lastTalkAt < TALK_COOLDOWN_MS) return null
+export function pickTalk(
+  reason: TalkReason,
+  ctx: TalkCtx,
+  rng: () => number,
+  cooldownMs: number = TALK_COOLDOWN_MS,
+): Line | null {
+  if (ctx.now - ctx.lastTalkAt < cooldownMs) return null
   if (SELF_TALK_REASONS.includes(reason)) {
     if (ctx.idleMs <= IDLE_LONG_MS) return null
     if (rng() >= TALK_IDLE_PROB) return null

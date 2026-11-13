@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { clamp, nextTalkIndex, pickLine, pickTalk, REPLY_MAX_WIDTH, replyFits, TALK_FLOW, TALK_LINES, type TalkReason } from '../src/shared/talk.js'
 import { labelWidth } from '../src/shared/text.js'
-import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_MAX_CHARS } from '../src/shared/config.js'
+import { IDLE_LONG_MS, TALK_COOLDOWN_MS, TALK_IDLE_GAP_MS, TALK_MAX_CHARS } from '../src/shared/config.js'
 
 /** rng 用队列桩：pickTalk 先掷概率（仅 idle）再抽句子，调用次数与顺序是契约的一部分。 */
 const seq = (...xs: number[]) => {
@@ -60,6 +60,22 @@ describe('pickTalk', () => {
     expect(pickTalk('idle', ctx({ idleMs: IDLE_LONG_MS }), seq(0, 0))).toBeNull()
     expect(pickTalk('idle', ctx(), seq(0.99, 0))).toBeNull()
     expect(pickTalk('idle', ctx(), seq(0.1, 0))).not.toBeNull()
+  })
+
+  it('自己搭话走长间隔，事件台词走短冷却：两条账不能混', () => {
+    // 同一句「10 秒前刚说过」：事件台词放行，自己搭话闭嘴。
+    const tenSecondsAgo = ctx({ lastTalkAt: 100000 - 10000 })
+    expect(pickTalk('feed', tenSecondsAgo, seq(0, 0)), '事件台词被长间隔挡住了').not.toBeNull()
+    expect(pickTalk('idle', tenSecondsAgo, seq(0, 0), TALK_IDLE_GAP_MS), '自己搭话没用长间隔').toBeNull()
+    // 间隔走够了就照常放行（概率仍得掷中）。
+    const gapPassed = ctx({ lastTalkAt: 100000 - TALK_IDLE_GAP_MS })
+    expect(pickTalk('idle', gapPassed, seq(0.1, 0), TALK_IDLE_GAP_MS)).not.toBeNull()
+  })
+
+  it('搭话间隔按 qqpet 的均值定，不是三十秒一句（用户 2026-11-13 报太快）', () => {
+    // qqpet：20–60 秒一拍、每拍约 1/3 开口 → 平均 1.5–2 分钟；下限给到 1 分钟。
+    expect(TALK_IDLE_GAP_MS).toBeGreaterThanOrEqual(60000)
+    expect(TALK_IDLE_GAP_MS).toBeGreaterThan(TALK_COOLDOWN_MS * 5)
   })
 
   it('事件驱动的台词必说，不看概率', () => {
