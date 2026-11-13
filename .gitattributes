@@ -8,6 +8,9 @@
 *.jsonc eol=lf
 *.css eol=lf
 *.html eol=lf
+*.svg eol=lf
+*.yml eol=lf
+*.yaml eol=lf
 *.md eol=lf
 *.webm binary
 *.png binary
