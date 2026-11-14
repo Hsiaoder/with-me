@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
-  AMBIENT, SLEEPY, MOOD_HIGH, MOOD_LOW, LATE_NIGHT, SPEECH, LEVELUP_CLIP, CLICK_STREAK_MIN,
+  AMBIENT, SLEEPY, MOOD_HIGH, MOOD_LOW, LATE_NIGHT, MUSIC, MUSIC_WEIGHT, SPEECH, LEVELUP_CLIP, CLICK_STREAK_MIN,
   STARTUP_CLIPS, EXIT_CLIPS, ALL_CLIPS, pickAmbient, pickForSpeech, pickInteract, pickStartup, pickExit, type Situation,
 } from '../src/shared/animation.js'
 
 const fixed = (v: number) => () => v
 const S = (over: Partial<Situation> = {}): Situation => ({
-  mood: 50, idleMs: 0, lateNightWorking: false, lastWasSleepy: false, clickStreak: 0, ...over,
+  mood: 50, idleMs: 0, lateNightWorking: false, lastWasSleepy: false, clickStreak: 0, music: false, ...over,
 })
 
 describe('日常动画 · 纯选择器', () => {
@@ -53,6 +53,28 @@ describe('日常动画 · 纯选择器', () => {
     }
     // 犯困加权后占比应明显高于「只算 4/23 均等」的基线（这里只验它会偏多，不钉死具体值）
     expect(sleepyHit).toBeGreaterThan(n * 0.1)
+  })
+
+  it('pickAmbient：有音乐在放时音乐那组被加权（占大头，但别的没被赶尽杀绝）', () => {
+    let musicHit = 0
+    const n = 200
+    for (let i = 0; i < n; i++) {
+      const c = pickAmbient(S({ music: true, idleMs: 0 }), fixed((i % 100) / 100))!
+      expect([...AMBIENT, ...SLEEPY, ...MUSIC]).toContain(c)
+      if (MUSIC.includes(c)) musicHit++
+    }
+    expect(musicHit).toBeGreaterThan(n * 0.4)
+    expect(musicHit).toBeLessThan(n)
+  })
+
+  it('pickAmbient：有音乐时压过「心情很高→只出舞动片」那档', () => {
+    // rng 落在加权池尾段 = 音乐那组（它是最后追加的），心情那档不再截走
+    expect(MUSIC).toContain(pickAmbient(S({ music: true, mood: 90 }), fixed(0.9))!)
+  })
+
+  it('MUSIC_WEIGHT 得真的比日常那档高，否则等于没加权', () => {
+    expect(MUSIC_WEIGHT).toBeGreaterThan(1)
+    expect(MUSIC.length).toBeGreaterThan(1)
   })
 
   it('pickAmbient：同一情境 + 同一 rng 必然同结果（确定性）', () => {

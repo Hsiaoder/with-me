@@ -19,6 +19,9 @@ import { CLOUD, cloudScale } from '../src/shared/bubble-shape.ts'
 import { FOODS, isUnlocked, unlockBadge, unlockHint } from '../src/shared/food.ts'
 import { GUESS_OPTIONS } from '../src/shared/guess.ts'
 import { pageStep } from '../src/shared/scroll.ts'
+// 台词表从 dist 取：talk.ts 自己还 import 着 ./config.js，Node 的类型擦除解析不了 src 里那串 .js 后缀。
+// 反正 build 在 e2e 前面跑，dist 就是这只宠物真正在用的那份。
+import { TALK_LINES } from '../dist/shared/talk.js'
 import { EXP_GAIN, LEVEL_CUM, LEVEL_STEPS, STAT_KEYS, STAT_LABELS, STAT_MAX, levelOf } from '../src/shared/stats.ts'
 
 const require = createRequire(import.meta.url)
@@ -541,6 +544,32 @@ check('idle 那一拍按概率开口；事件驱动的必说；冷却挡住连�
   await page.waitForTimeout(PANEL_HIDE_MS + 400)
 })
 
+check('有播放器在放时只弹气泡不配音；关掉之后配音回来', async () => {
+  /**
+   * 用户 2026-11-14：电脑在放音乐/视频时，宠物说话只弹气泡、不出声。
+   * 判据取「这句是不是真的有 Audio 在播」（__petDebug.voiceAudio），不取气泡——气泡本来就要出。
+   * 前置那一步必须验「没音乐时它是出声的」，否则语音素材丢了 / 清单对不上，
+   * 下面的「没声」就是假绿。
+   */
+  const line = TALK_LINES.idle[0].say
+  const spoken = () => page.evaluate(() => window.__petDebug.voiceAudio())
+
+  await page.evaluate(() => { window.__petDebug.setMusic(false); window.__petDebug.hideBubble() })
+  await page.evaluate((t) => window.__petDebug.say(t), line)
+  await page.waitForTimeout(150)
+  assert.equal(await spoken(), true, '前置：没音乐时这句也没出声（语音清单/素材对不上）')
+
+  await page.evaluate(() => { window.__petDebug.setMusic(true); window.__petDebug.hideBubble() })
+  await page.evaluate((t) => window.__petDebug.say(t), line)
+  await page.waitForTimeout(150)
+  assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), true, '有音乐时连气泡都不出了')
+  assert.equal(await page.evaluate(() => window.__petDebug.bubbleText), line, '气泡里的字不对')
+  assert.equal(await spoken(), false, '有音乐时还在配音：用户的歌被叠了一句')
+
+  // 收尾：关掉音乐、收气泡，别把状态留给下一条检查
+  await page.evaluate(() => { window.__petDebug.setMusic(false); window.__petDebug.hideBubble() })
+})
+
 /**
  * 「鲸鲸会飞」端到端：按面板按钮进游戏 → HUD 出现（高度/最高/速度 + 退出键）→
  * 抓起来往上抛 → 「最高」记下一个正高度 → 点退出键 → HUD 消失、回到普通态（身体还能叫出面板）。
@@ -808,23 +837,18 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   // 开发者模式默认关：调试按钮藏掉（用户 2026-11-11 要默认不显示调试按钮）。
   const debugHidden = await page.evaluate(() => document.querySelector('.pet-panel button[data-id="debug"]').hidden)
   assert.equal(debugHidden, true, '开发者模式默认关，调试按钮该藏掉')
-  // 走设置 UI 打开开发者模式，调试按钮才露面（后面的图标尺寸/调试板检查需要它）。
-  await page.click('.pet-panel button[data-id="settings"]')
-  await page.waitForSelector('.pet-panel .pet-setting')
-  // 设置板弹出来时原按钮条不许整块消失（用户 2026-11-11）：五颗动作按钮还在 DOM 里
-  // （调试那颗此刻因开发者模式默认关而 hidden，但节点仍在——量的是「按钮条没被摘掉」）。
+  // 设置搬到系统托盘（2026-11-12），面板里没有设置页可点了：直接走 preload 那条 settings 通道
+  // 打开开发者模式——和托盘菜单里点「开发者模式」是同一条路（主进程收敛 → 落盘 → 广播回来 → 按钮露面）。
+  await page.evaluate(() =>
+    window.petBridge.setSettings({ onFullscreen: 'show', developerMode: true, muted: false }))
+  await page.waitForFunction(() => !document.querySelector('.pet-panel button[data-id="debug"]').hidden)
+  // 按钮条常驻：四颗动作按钮都在 DOM 里（调试那颗刚露出来）。
   const actionsStill = await page.evaluate(() =>
     document.querySelectorAll('.pet-actions button[data-id]').length)
-  assert.equal(actionsStill, 5, `设置板出来时按钮条被摘掉了：只剩 ${actionsStill} 颗`)
-  await page.click('.pet-panel button[data-key="developerMode"][data-value="on"]')
-  await page.waitForFunction(() => !document.querySelector('.pet-panel button[data-id="debug"]').hidden)
-  await page.click('.pet-panel button[data-id="settings"]')   // 再点设置收回副板，回动作视图
-  await page.waitForTimeout(80)
+  assert.equal(actionsStill, PANEL_BUTTONS.length, `按钮条少了：只剩 ${actionsStill} 颗`)
   const labels = await page.locator('.pet-panel button').evaluateAll((bs) =>
     bs.map((b) => `${b.getAttribute('aria-label')}=${b.querySelector('img')?.getAttribute('src')}`))
-  assert.deepEqual(labels,
-    ['喂食=icons/rice.svg', '小游戏=icons/game.svg', '状态=icons/heart.svg', '设置=icons/settings.svg',
-      '调试=icons/debug.svg'],
+  assert.deepEqual(labels, PANEL_BUTTONS.map((b) => `${b.label}=${b.icon}`),
     `按钮的文字/图标不对：${JSON.stringify(labels)}`)
   // 图必须真的解码出来：路径错了 img 是 0×0，按钮看着就是一枚空片。
   // 先等 decode 落地再断言，否则抢到的是「还没解完」而不是「解不出来」。
@@ -832,7 +856,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
     await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
     return imgs.map((i) => `${i.naturalWidth > 0}/${i.complete}`)
   })
-  assert.deepEqual(decoded, ['true/true', 'true/true', 'true/true', 'true/true', 'true/true'],
+  assert.deepEqual(decoded, PANEL_BUTTONS.map(() => 'true/true'),
     `图标没解码成功：${JSON.stringify(decoded)}`)
 
   // 圆底（Kenney button_round_depth_line）：计算样式里有 url 不算数——404 也照样在样式里，
@@ -858,26 +882,8 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   const shadow = await page.evaluate(() =>
     getComputedStyle(document.querySelector('.pet-panel button[data-id]')).filter)
   assert.match(shadow, /drop-shadow/, `圆底没有投影（用户要「更立体」）：${shadow}`)
-  // 圆底只给动作按钮：切进设置视图，那里的按钮有自己的方形底板，叠两层会像画歪了。
-  // 要真的切过去看——动作视图里没有 .pet-setting 按钮，选择器写错就是一条永远为真的断言。
-  await page.click('.pet-panel button[data-id="settings"]')
-  await page.waitForSelector('.pet-panel .pet-setting')
-  // 设置板挂宠物侧面（左侧优先，放不下翻右），按钮条常驻脚下（用户 2026-11-11）。
-  const sPos = await page.evaluate(() => {
-    const plate = document.querySelector('.pet-plate.is-settings').getBoundingClientRect()
-    const b = window.__petDebug.inkBox
-    const actions = document.querySelector('.pet-actions').getBoundingClientRect()
-    return { px: plate.x, pw: plate.width, bx: b.x, bw: b.w, sw: innerWidth, actionsW: actions.width }
-  })
-  assert.ok(sPos.actionsW > 0, '设置视图里按钮条不在布局里')
-  assert.ok(sPos.px + sPos.pw <= sPos.bx + 1 || sPos.px >= sPos.bx + sPos.bw - 1,
-    `设置板没挂在宠物侧面：${JSON.stringify(sPos)}`)
-  assert.ok(sPos.px >= -0.5 && sPos.px + sPos.pw <= sPos.sw + 0.5, `设置板横向溢出屏幕：${JSON.stringify(sPos)}`)
-  const plateBtn = await page.evaluate(() =>
-    getComputedStyle(document.querySelector('.pet-panel .pet-setting button')).backgroundImage)
-  // 匹配整个按钮底家族（Kenney 的 button_round_* 与试过的手绘 whale_round）而不是具体一枚：
-  // 素材换了名这条还得是真检查，不能退化成「比一个不会出现的字符串」
-  assert.ok(!/button_round|whale_round/.test(plateBtn), `设置视图的按钮也被套上按钮底了：${plateBtn}`)
+  // （设置视图 2026-11-12 搬去托盘：这一段原本验「设置板里的按钮不该叠圆底」，
+  //   那条视图已经不存在了；副板挂侧面的定位由下面的调试板检查接着钉。）
   await page.evaluate(() => window.__petDebug.hidePanel())
 
   // 点击开的东西就得能点击关：重新点一下叫出来，再点一下收掉
@@ -891,7 +897,7 @@ check('点一下身体出面板，再点一下收起，五个按钮齐全', asyn
   assert.equal((await dbg()).open, false, '再点一下没能把面板收掉')
 })
 
-check('五枚图标按实测墨迹逐枚定尺寸，调试那枚是方图不被拉变形', async () => {
+check('四枚图标按实测墨迹逐枚定尺寸，调试那枚是方图不被拉变形', async () => {
   assert.ok(await openOnBody(), '前置：面板叫不出来就量不到图标')
   // 真实鼠标停在上一处点击的位置，悬停的 scale(1.15) 会把量到的矩形放大——先挪开
   await page.mouse.move(2, 2)
@@ -911,7 +917,7 @@ check('五枚图标按实测墨迹逐枚定尺寸，调试那枚是方图不被�
     })
   })
   assert.deepEqual(icons.map((i) => `${i.id}:${i.box}`),
-    ['feed:20x20', 'game:24x24', 'status:24x24', 'settings:20x20', 'debug:22x22'],
+    ['feed:20x20', 'game:24x24', 'status:24x24', 'debug:22x22'],
     `图标尺寸和实测表不一致：${JSON.stringify(icons.map((i) => i.box))}`)
   // 调试图标是方形矢量图（viewBox 1024），渲染框也按方形给，长宽比要和素材一致，别被拉变形。
   const dbgIcon = icons.find((i) => i.id === 'debug')
@@ -1181,7 +1187,7 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
       overlapsBody: p.y < b.y + b.h && p.y + p.height > b.y,
     }
   })
-  assert.equal(stack.btns, 5, `列表开着按钮少了：${stack.btns} 颗`)
+  assert.equal(stack.btns, PANEL_BUTTONS.length, `列表开着按钮少了：${stack.btns} 颗`)
   assert.ok(!stack.overlapsButtons, `列表和按钮条叠住了：${JSON.stringify(stack)}`)
   assert.ok(!stack.overlapsBody, `列表压到身上了（该在按钮条外侧）：${JSON.stringify(stack)}`)
   assert.ok(stack.gap >= 4 && stack.gap <= 8, `列表与按钮条的间距该是 4..8px，现在 ${stack.gap}`)
@@ -1201,7 +1207,7 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
     return v.getBoundingClientRect().width < v.scrollWidth
   }), '视口没把内容夹住，滚动条就没有意义')
 
-  // 点一格 → 播**它自己那一条**吃相（不是池里随机一条）+ 出气泡（feed 台词）
+  // 点一格 → 播**它自己那一条**吃相（不是池里随机一条）+ **吃完才**出气泡（feed 台词）
   await page.evaluate(() => window.__petDebug.setLastTalk(0))
   // 先把光标"停"在要点的格子上：e2e 冻住了系统光标轮询，喂进去的坐标就是渲染层最后收到的那点。
   // 后面断言「点完还接得住」用的就是这个位置——真实用户点完食物，手就是停在那儿不动的。
@@ -1213,11 +1219,17 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   await notEating()   // 上一条检查可能留着一口没吃完：灰格子点不动，Playwright 会干等
 
   assert.equal((await dbg()).grab, true, '前置：光标压在格子上，该接住鼠标')
+  // 台词挂在「这一口演完」那一拍（2026-11-13）。判据取**文字**不取 bubbleOpen：
+  // 上一条检查可能留着气泡，开着不等于这句是喂食说的。
+  const feedTexts = TALK_LINES.feed.map((l) => l.say)
+  const readText = () => page.evaluate(() => (window.__petDebug.bubbleOpen ? window.__petDebug.bubbleText : ''))
+  const preText = await readText()
   await page.click('.pet-panel .pet-food[data-food="rice"]')
   await page.waitForFunction(() => window.__petDebug.current.pool === 'eat', null, { timeout: 5000 })
   assert.equal((await dbg()).pool, 'eat')
   assert.deepEqual((await dbg()).current, { pool: 'eat', name: 'rice' }, '点白饭没播白饭那一条')
-  assert.equal(await page.evaluate(() => window.__petDebug.bubbleOpen), true, '点了食物没回话')
+  assert.equal(await readText(), preText, '吃相还没演完，喂食台词就先冒出来了——它该等这一口吃完')
+  await page.waitForFunction((list) => list.includes(window.__petDebug.bubbleText), feedTexts, { timeout: 20000 })
   // 选完**不收**（2026-11-05 改）：吃饭那几秒用户的手就停在这块区域上，要连喂、要点着玩。
   // 列表和五颗按钮都留在布局里，光标也还在交互区——手没动的用户不该当场看到箭头。
   // 旧的「选完即收」理由是「列表压在宠物脚底看不到它吃」，两块拆分后副板长在按钮条**外侧**，
@@ -1225,7 +1237,7 @@ check('点喂食出食物列表；点一格播 click 池并回一句', async () 
   const after = await dbg()
   assert.equal(after.open, true, '点了食物把整个面板收掉了：按钮跟着消失')
   assert.equal(after.view, 'foods', '点了食物没留在食物视图（连喂得重新叫列表）')
-  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-actions button[data-id]').length), 5,
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.pet-actions button[data-id]').length), PANEL_BUTTONS.length,
     '点完食物按钮条不在布局里')
   const parked = await dbg()
   assert.deepEqual({ grab: parked.grab, over: await overClass() }, { grab: true, over: true },
@@ -1677,51 +1689,27 @@ check('可见性探测子进程已启动（新出现的 powershell，父进程�
   probePids = fresh.map(([pid]) => pid)
 })
 
-check('设置视图：切视图、改一项、当场落盘、收起延时更宽裕', async () => {
+check('副板视图（调试）的收起延时比动作视图宽裕，收起后回动作视图', async () => {
+  /**
+   * 用户 2026-11-06 定的事：操作型视图要留更宽的收起延时（1500ms 不够点完两下），
+   * 回动作视图换回快档。以前这条挂在「设置」视图上，设置 2026-11-12 搬去托盘之后，
+   * 面板里还剩下的操作型视图就是食物列表 / 游戏列表 / 状态 / 调试——拿调试板接着钉同一件事。
+   */
   assert.ok(await openOnBody(), '前置：面板叫不出来')
-  await page.click('.pet-panel button[data-id="settings"]')
-  await page.waitForSelector('.pet-panel .pet-setting')
-  const selected = () => page.locator('.pet-setting').evaluateAll((rows) =>
-    rows.map((r) => r.querySelector('button.on')?.dataset.value))
+  await page.click('.pet-panel button[data-id="debug"]')
+  await page.waitForSelector('.pet-plate.is-debug .pet-debug')
 
-  assert.equal(await page.locator('.pet-setting').count(), 3, '三行开关：开发者模式/全屏/静音')
-  // 行序固定：0 开发者模式、1 全屏、2 静音。开发者模式可能已被前面那条检查开启，
-  // 所以只钉全屏那档默认「陪我」，不钉死整排（免得依赖前序状态）。
-  const sel0 = await selected()
-  assert.equal(sel0[1], 'show', '全屏时默认陪我')
-
-  await page.click('.pet-panel button[data-key="onFullscreen"][data-value="hide"]')
-  const sel1 = await selected()
-  assert.equal(sel1[1], 'hide', '只该被点的那一项变选中态')
-  assert.equal(sel1[2], sel0[2], '没点的那一项不许跟着变')
-
-  // 立刻落盘：只在退出时写的话，进程被杀就丢，而设置丢了很难查。
-  // 轮询而不是睡一下：IPC 到写盘是异步的，读早了会误报成「没落盘」。
-  const file = join(userData, 'save.json')
-  let saved = null
-  for (let i = 0; i < 30; i++) {
-    try {
-      saved = JSON.parse(readFileSync(file, 'utf8')).settings
-      if (saved && saved.onFullscreen === 'hide') break
-    } catch {
-      /* 还没写出来 */
-    }
-    await page.waitForTimeout(100)
-  }
-  assert.ok(saved && saved.onFullscreen === 'hide',
-    `设置没在 3 秒内落盘：${JSON.stringify(saved)}`)
-
-  // 设置视图里挑选项要的时间更长：过了动作视图的 1500ms 还不能收
+  // 鼠标离开满 PANEL_HIDE_MS 还不该收
   const h = await page.evaluate(() => window.__petDebug.hitBox)
   await feed({ x: h.x + h.w / 2, y: h.y + h.h + 400 })
   await page.waitForTimeout(PANEL_HIDE_MS + 300)
-  assert.equal((await dbg()).open, true, `设置视图在 ${PANEL_HIDE_MS}ms 后就收了，VIEW_HIDE_MS 没生效`)
+  assert.equal((await dbg()).open, true, `副板在 ${PANEL_HIDE_MS}ms 后就收了，VIEW_HIDE_MS 没生效`)
   await page.waitForTimeout(VIEW_HIDE_MS)
-  assert.equal((await dbg()).open, false, '设置视图最终也没收，收起逻辑被绕过了')
+  assert.equal((await dbg()).open, false, '副板最终也没收，收起逻辑被绕过了')
 
-  // 收起后回动作视图；重新打开时看到的应该是按钮而不是设置页
+  // 收起后回动作视图；重新打开时看到的应该是按钮而不是调试板
   assert.ok(await openOnBody(), '前置：面板叫不回来')
-  assert.equal(await page.locator('.pet-panel .pet-setting').count(), 0, '收起再开还停在设置视图')
+  assert.equal(await page.locator('.pet-panel .pet-debug').count(), 0, '收起再开还停在调试视图')
   // 标签直接由 PANEL_BUTTONS 推：这里再抄一份清单，加按钮时就会多一处要记的账
   assert.deepEqual(await page.locator('.pet-panel button').evaluateAll((bs) =>
     bs.map((b) => b.getAttribute('aria-label'))), PANEL_BUTTONS.map((b) => b.label))
@@ -2517,7 +2505,7 @@ check('等级解锁：Lv.4 只放开开局四格，跨过 Lv.5 那一口当场�
   const app2 = await electron.launch({
     args: ['.'],
     cwd: process.cwd(),
-    env: { ...process.env, PET_USER_DATA: dir, PET_FREEZE_CURSOR: '1' },
+    env: { ...process.env, PET_USER_DATA: dir, PET_FREEZE_CURSOR: '1', PET_NO_MEDIA: '1' },
   })
   try {
     const p2 = await app2.firstWindow()
@@ -2794,7 +2782,7 @@ const userData = mkdtempSync(join(tmpdir(), 'pet-e2e-'))
 app = await electron.launch({
   args: ['.'],
   cwd: process.cwd(),
-  env: { ...process.env, PET_USER_DATA: userData, PET_FREEZE_CURSOR: '1' },
+  env: { ...process.env, PET_USER_DATA: userData, PET_FREEZE_CURSOR: '1', PET_NO_MEDIA: '1' },
 })
 try {
   page = await app.firstWindow()

@@ -1,6 +1,7 @@
 import type { Point } from './types.js'
 import type { SkinErrorPayload, SkinPayload } from './skin.js'
 import type { Settings } from './visibility.js'
+import type { MediaSample } from './media.js'
 
 /**
  * IPC 通道名的唯一来源。加一条通道只能改这里，并在 main/ipc.ts 注册、preload 内联、
@@ -16,6 +17,7 @@ export const IPC = {
   statsDebug: 'pet:stats-debug',         // renderer → main，调试面板直接设数值/经验 { stats?, exp? }，收敛后落盘广播
   identity: 'pet:identity',              // renderer → main，{ name?, gender? }，改名与性别
   statsLoaded: 'pet:stats-loaded',       // main → renderer，StatsSnapshot（开局推一次，之后每次变化推）
+  media: 'pet:media',                    // main → renderer，MediaSample：有没有播放器在放东西
   quit: 'pet:quit',                       // renderer → main，用户点了「退出桌宠」，先说完 bye 再走这条
   quitRequested: 'pet:quit-requested',   // main → renderer，托盘点了「退出」，让渲染层先演完告别序列
 } as const
@@ -28,6 +30,7 @@ export type ClickThroughPayload = { grab: boolean }
 export type SkinLoadedPayload = SkinPayload | SkinErrorPayload
 export type SettingsPayload = Settings
 export type SettingsPatchPayload = Partial<Settings>
+export type MediaPayload = MediaSample
 
 /** 所有已知通道，供测试穷举核对。 */
 export const ALL_CHANNELS: readonly IpcChannel[] = Object.values(IPC)

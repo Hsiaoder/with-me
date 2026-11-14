@@ -1,5 +1,5 @@
 import { app, dialog, screen } from 'electron'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shared/config.js'
@@ -10,6 +10,7 @@ import { startStats, type StatsSnapshot } from './stats.js'
 import { loadFrom, saveTo } from './storage.js'
 import { FALLBACK_SKIN, findSkinDir, listSkinDirs, platformDataDir, userSkinsDir } from './paths.js'
 import { createClickThroughBridge } from './clickthrough.js'
+import { startMediaWatch } from './media.js'
 import { startVisibilityWatch, type VisibilityWatch } from './visibility.js'
 import { createTrayController, type TrayController } from './tray.js'
 import { createSettingsHub, createTrayExit } from './tray-integration.js'
@@ -128,10 +129,13 @@ void app.whenReady().then(() => {
   // 挂在 createWindow 之后——onPageReady 要碰 webContents；同一段同步代码里订阅，
   // 不会漏掉 did-finish-load。
   const payload = loaded.ok ? toSkinPayload(loaded.skin, warnings) : { errors: loaded.errors, warnings }
+  /** 有没有播放器在放东西。第一拍可能比页面就绪还早，所以缓存一份、就绪时补推。 */
+  let mediaPlaying = false
   platform.onPageReady(() => {
     platform.send(IPC.skinLoaded, payload)
     platform.send(IPC.settingsLoaded, save.settings)
     platform.send(IPC.statsLoaded, stats.snapshot())
+    platform.send(IPC.media, { playing: mediaPlaying })
   })
 
   // 可见性策略。探测是个常驻 PowerShell 子进程，必须跟着退出收掉。
@@ -139,12 +143,30 @@ void app.whenReady().then(() => {
   watch = startVisibilityWatch(platform, save.settings)
 
   /**
+   * 播放器探测：有音乐在放时，日常动画会偏向「哼歌 / 吹笛 / 拉琴 / 摇摆」那一组
+   * （权重在 shared/animation.ts）。和可见性探测一样是常驻子进程，退出必须收掉；
+   * 起不来就静默降级——这只是个彩蛋，不该让宠物起不来。
+   */
+  const mediaWatch = startMediaWatch((playing) => {
+    mediaPlaying = playing
+    platform.send(IPC.media, { playing })
+  })
+
+  /**
    * 托盘放在 watch 之后创建：菜单里的显示/隐藏直接调可见性策略。
    * 图标在开发期从仓库读，打包后从 resources 读（见 electron-builder 的 extraResources）。
+   *
+   * 按顺序试三个位置，而不是只认 `isPackaged`：想验打包产物时用的那条旁路
+   * （dev 的 electron.exe 直接跑 release 里的 app.asar，绕开 Smart App Control）
+   * 会让 `isPackaged` 保持 false、`getAppPath()` 又指向 asar 内部——只认一条的话
+   * 托盘图标读不到，连「退出」都没有入口，只能去任务管理器杀进程。
    */
-  const trayIconPath = app.isPackaged
-    ? join(process.resourcesPath, 'with-me.ico')
-    : join(app.getAppPath(), 'assets', 'with-me.ico')
+  const trayIconPath = [
+    join(process.resourcesPath, 'with-me.ico'),
+    join(app.getAppPath(), 'assets', 'with-me.ico'),
+    // appPath 是 ...\resources\app.asar 时，`..` 正好回到 resources（asar 是文件，path.join 按目录段处理）
+    join(app.getAppPath(), '..', 'with-me.ico'),
+  ].find((p) => existsSync(p)) ?? join(app.getAppPath(), 'assets', 'with-me.ico')
 
   /** 托盘里的皮肤菜单：读 manifest 的展示名，坏掉的包按目录名显示但不隐藏。 */
   const listSkins = (): { id: string; name: string }[] => listSkinDirs().map(({ id, dir }) => {
@@ -294,6 +316,7 @@ void app.whenReady().then(() => {
     trayExit.cancel()
     tray?.dispose()
     watch.stop()
+    mediaWatch.stop()
     try {
       if (!saveTo(dataDir, save)) console.log('[save] 存档版本比本程序新，跳过退出写回')
     } catch (e) {

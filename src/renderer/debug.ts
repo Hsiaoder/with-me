@@ -59,7 +59,7 @@ const REASON_LABEL: Record<string, string> = {
 const TABS = ['条件触发', '动画全集', '台词全表', '游戏食物'] as const
 
 const baseSit = (over: Partial<Situation> = {}): Situation => ({
-  mood: 50, idleMs: 0, lateNightWorking: false, lastWasSleepy: false, clickStreak: 0, ...over,
+  mood: 50, idleMs: 0, lateNightWorking: false, lastWasSleepy: false, clickStreak: 0, music: false, ...over,
 })
 
 function el(tag: string, cls: string, text?: string): HTMLElement {
@@ -109,6 +109,7 @@ export function createDebugPlate(
       { label: '心情 < 30 → 甩尾', run: () => play(pickAmbient(baseSit({ mood: 10 }), Math.random)) },
       { label: '深夜(0–5点)还在用 → 哈欠', run: () => play(pickAmbient(baseSit({ lateNightWorking: true }), Math.random)) },
       { label: `久未互动 > ${IDLE_LONG_MS / 1000}s → 犯困加权`, run: () => play(pickAmbient(baseSit({ idleMs: IDLE_LONG_MS + 5000 }), Math.random)) },
+      { label: '有播放器在放 → 音乐片段加权', run: () => play(pickAmbient(baseSit({ music: true }), Math.random)) },
       { label: `连点 ≥ ${CLICK_STREAK_MIN} → 挠痒`, run: () => play(pickInteract(baseSit({ clickStreak: CLICK_STREAK_MIN }))) },
       { label: '瞌睡后被点 → 惊醒', run: () => play(pickInteract(baseSit({ lastWasSleepy: true }))) },
       { label: '跨级 → 蓝鲸现世', run: () => play(LEVELUP_CLIP) },
