@@ -24,7 +24,7 @@ Windows 10 / 11（x64）。在 [Releases](https://github.com/FionnHsiao/with-me/
 
 1. 安装 [Node.js](https://nodejs.org/zh-cn) 22 或更高；
 2. 下载 `with-me-<版本>-source.zip` 并解压；
-3. 双击 `run.cmd`。首次会下载 Electron 运行时（约 350 MB，只需一次），
+3. 双击 `run.cmd`。首次会下载 Electron 运行时（约 110 MB，解压后约 350 MB，只需一次），
    之后日常双击 `启动.vbs` 即可，不弹控制台窗口。
 
 ### 卸载与重置

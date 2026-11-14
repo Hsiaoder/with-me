@@ -1,6 +1,8 @@
 ﻿# with-me 源码包启动器。
 #
 # 只做四件事：确认 Node、装 Electron 运行时（只一次）、装 skins-inbox 里的皮肤、启动。
+# 运行时只装 electron 一个包，不碰项目根的 devDependencies；electron 45 没有 postinstall，
+# 二进制由包内 install.js 下载，见下面第 3 节。
 # 刻意不跑 npm install：devDependencies 里的 ffmpeg-static / playwright 会联网下二进制，
 # 跟运行无关，也正是源码包这条路最容易失败的地方。
 #
@@ -48,28 +50,47 @@ try {
 }
 
 # ---- 3. Electron 运行时 ----
+# electron 45 起，它自己的 package.json 里已经没有 postinstall 了：npm 装完只是一个壳，
+# 真正的二进制由包内 install.js 现下（node_modules/electron/index.js 也是这么懒加载的）。
+# 所以分两步：npm install 拉依赖，再确认 electron.exe；没有就显式跑 install.js。
 $runtime = Join-Path $base '.runtime'
 $electronExe = Join-Path $runtime 'node_modules\electron\dist\electron.exe'
 if (-not (Test-Path -LiteralPath $electronExe)) {
-  $range = '45.2.1'
-  try {
-    $declared = (Get-Content -LiteralPath (Join-Path $base 'package.json') -Raw | ConvertFrom-Json).devDependencies.electron
-    if ($declared) { $range = $declared }
-  } catch { }
-  Write-Host "首次运行：正在下载 Electron 运行时 $range（约 350MB，只需一次）..."
+  # 版本取 package-lock 里锁定的那个，而不是 package.json 的 ^45.2.1：
+  # 后者会解析成更新的小版本，和安装包/CI 用的不是同一个 Electron。
+  $pkgPath = (Join-Path $base 'package.json') -replace '\\', '/'
+  $lockPath = (Join-Path $base 'package-lock.json') -replace '\\', '/'
+  $version = (& node -p "(() => { try { const v = require('$lockPath').packages['node_modules/electron'].version; if (v) return v } catch {} try { return require('$pkgPath').devDependencies.electron.replace(/^[^0-9]*/, '') } catch {} return '45.2.1' })()").Trim()
+  if (-not $version) { $version = '45.2.1' }
+
+  Write-Host "首次运行：正在准备 Electron $version 运行时（下载约 110MB，解压后约 350MB，只需一次）..."
   $env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/'
   $env:npm_config_electron_mirror = 'https://npmmirror.com/mirrors/electron/'
+
   Push-Location $base
   try {
-    & npm install --prefix $runtime --no-audit --no-fund --loglevel=error "electron@$range"
+    & npm install --prefix $runtime --no-audit --no-fund --loglevel=error "electron@$version"
   } finally {
     Pop-Location
   }
   if ($LASTEXITCODE -ne 0) {
-    Stop-WithError "Electron 下载失败（npm 退出码 $LASTEXITCODE）。检查网络后重试，或者改用 Release 里的 portable.zip。"
+    Stop-WithError "Electron 依赖安装失败（npm 退出码 $LASTEXITCODE）。检查网络后重试，或者改用 Release 里的 portable.zip。"
   }
+
   if (-not (Test-Path -LiteralPath $electronExe)) {
-    Stop-WithError 'Electron 装完了但找不到 electron.exe，.runtime 可能被安全软件清掉了。'
+    $electronInstaller = Join-Path $runtime 'node_modules\electron\install.js'
+    if (-not (Test-Path -LiteralPath $electronInstaller)) {
+      Stop-WithError 'Electron 依赖装上了但缺少 install.js：.runtime 不完整，或被安全软件清掉了。删掉 .runtime 再启动一次。'
+    }
+    Write-Host '正在下载 Electron 二进制（没有进度条，慢的时候会停一两分钟）...'
+    & node $electronInstaller
+    if ($LASTEXITCODE -ne 0) {
+      Stop-WithError "Electron 二进制下载失败（退出码 $LASTEXITCODE）。常见原因：网络或代理不通、镜像不可达、安全软件拦截。也可以改用 Release 里的 portable.zip。"
+    }
+  }
+
+  if (-not (Test-Path -LiteralPath $electronExe)) {
+    Stop-WithError 'Electron 装完了但找不到 electron.exe。删掉 .runtime 目录再启动一次；还是不行就改用 portable.zip。'
   }
 }
 
