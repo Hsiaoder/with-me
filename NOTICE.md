@@ -2,7 +2,7 @@
 
 ## 本项目
 
-Copyright (C) 2026 Hsiaoder
+Copyright (C) 2026 FionnHsiao
 
 本程序是自由软件：你可以在 Free Software Foundation 发布的 **GNU General Public License
 版本 3**（不含更高版本选项）条款下再分发和/或修改它。
