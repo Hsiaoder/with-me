@@ -4,7 +4,7 @@
   "private": true,
   "description": "Windows 桌面宠物：整屏透明覆盖窗 + 可自定义皮肤 + 预渲染 webm 动画",
   "author": "Hsiaoder",
-  "homepage": "https://github.com/Hsiaoder/with-me",
+  "homepage": "https://github.com/FionnHsiao/with-me",
   "license": "GPL-3.0-only",
   "type": "module",
   "main": "dist/main/index.js",

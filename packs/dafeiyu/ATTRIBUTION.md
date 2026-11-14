@@ -1,6 +1,6 @@
 # 大肥鱼皮肤包 · 署名与许可
 
-本包是 [with-me](https://github.com/Hsiaoder/with-me) 桌宠的**可选皮肤**。
+本包是 [with-me](https://github.com/FionnHsiao/with-me) 桌宠的**可选皮肤**。
 主程序以 GPL-3.0-only 发行，本包以 CC BY-NC-SA 4.0 发行——两份独立下载、各自生效，
 主程序的开源授权**不覆盖、也不会放开**这个形象。
 
