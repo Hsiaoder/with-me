@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { MEDIA_PROBE_SCRIPT, parseMediaSample } from '../src/shared/media.js'
+import { APP_AUMID } from '../src/shared/config.js'
 
 /**
  * 播放器探测的契约。
@@ -34,10 +36,26 @@ describe('媒体探测 · 行解析', () => {
 })
 
 describe('媒体探测 · 脚本', () => {
-  it('唯一的外来值是父进程 PID，且脚本是纯 ASCII（WinPS 5.1 读不了中文 .ps1）', () => {
+  it('唯一的拼接值是父进程 PID，且脚本是纯 ASCII（WinPS 5.1 读不了中文 .ps1）', () => {
     const script = MEDIA_PROBE_SCRIPT(4242)
     expect(script).toContain('$parent = 4242')
     expect(/[^\x00-\x7f]/.test(script), '脚本里有非 ASCII 字符').toBe(false)
+  })
+
+  it('自己的 AUMID 走环境变量，不拼进脚本源码', () => {
+    const script = MEDIA_PROBE_SCRIPT(1)
+    expect(script).toContain('$env:PET_OWN_AUMID')
+    expect(script).not.toContain(APP_AUMID)
+  })
+
+  it('脚本会跳过自己的会话（否则自己的台词语音会把自己掐掉）', () => {
+    const script = MEDIA_PROBE_SCRIPT(1)
+    expect(script).toContain('if ($own -and $id -eq $own) { continue }')
+  })
+
+  it('APP_AUMID 与 electron-builder 的 appId 一致', () => {
+    const yml = readFileSync('electron-builder.yml', 'utf8')
+    expect(yml).toContain(`appId: ${APP_AUMID}`)
   })
 
   it('问的是系统媒体会话，看的是 Playing，且父进程没了自己退', () => {

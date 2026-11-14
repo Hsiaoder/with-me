@@ -4,7 +4,9 @@
  * 数据源是 Windows 的系统媒体控制（SMTC / GSMTC）：凡是用系统媒体浮层的应用
  * （网易云、QQ音乐、Spotify、浏览器里放的音乐/视频、支持 SMTC 的播放器…）
  * 都会在里面登记一个会话，会话状态是 `Playing` 就算在放。
- * 宠物自己播的台词 mp3 不走这条路，所以不会自己触发自己。
+ * **宠物自己的台词语音也会登记会话**：Chromium 给页面里的 <audio> 建的就是 SMTC 会话，
+ * AUMID 等于 app.setAppUserModelId 设的那个值。所以脚本必须按 AUMID 把自己排掉，
+ * 否则每说一句就把自己掐掉（2026-11-14 实测：语音放一半断掉，日志里是 [media] 开始播放）。
  *
  * 这一层只做两件事：解析子进程吐的那一行、提供那段脚本。
  * 「据此怎么加动画权重」是 shared/animation.ts 的事。
@@ -58,10 +60,13 @@ $parent = ${parentPid}
 while ($true) {
   if (-not (Get-Process -Id $parent -ErrorAction SilentlyContinue)) { break }
   $app = ''
+  $own = $env:PET_OWN_AUMID
   try {
     foreach ($s in $mgr.GetSessions()) {
+      $id = [string]$s.SourceAppUserModelId
+      if ($own -and $id -eq $own) { continue }
       $info = $s.GetPlaybackInfo()
-      if ($info -and ("$($info.PlaybackStatus)" -eq 'Playing')) { $app = [string]$s.SourceAppUserModelId; break }
+      if ($info -and ("$($info.PlaybackStatus)" -eq 'Playing')) { $app = $id; break }
     }
   } catch { $app = '' }
   if ($app) { [Console]::Out.WriteLine(('1 ' + $app)) } else { [Console]::Out.WriteLine('0') }

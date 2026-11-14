@@ -2,7 +2,7 @@ import { app, dialog, screen } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shared/config.js'
+import { APP_AUMID, APP_HOST, CURSOR_POLL_MS, SKIN_ANIMATION_DIR, SKIN_HOST } from '../shared/config.js'
 import { IPC } from '../shared/ipc.js'
 import { toSkinPayload, validateManifest } from '../shared/skin.js'
 import { applySettings } from '../shared/save.js'
@@ -31,6 +31,13 @@ const here = dirname(fileURLToPath(import.meta.url))   // 运行时是 dist/main
  * 所有测试实例共用一把锁，不同临时目录也照样互相顶掉（复审 #2 实测复现）。
  */
 if (process.env.PET_USER_DATA) app.setPath('userData', process.env.PET_USER_DATA)
+
+/**
+ * Windows 的应用身份。Chromium 给页面音频登记 SMTC 会话时用的就是它，
+ * 媒体探测脚本靠这个值把「宠物自己在说话」从「有播放器在放歌」里摘出去。
+ * 必须排在 startMediaWatch 之前；值要和 electron-builder.yml 的 appId 一致。
+ */
+app.setAppUserModelId(APP_AUMID)
 
 /**
  * 只允许一个实例。桌宠跑起两份就是屏幕上叠两只宠物，而且都是整屏透明窗，

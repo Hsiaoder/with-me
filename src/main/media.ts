@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { APP_AUMID } from '../shared/config.js'
 import { MEDIA_PROBE_SCRIPT, parseMediaSample } from '../shared/media.js'
 
 /**
@@ -28,6 +29,9 @@ export function startMediaWatch(onPlaying: (playing: boolean) => void): MediaWat
     child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
+      // 子进程靠它把自己登记的那个会话排掉：Chromium 给 <audio> 建的 SMTC 会话
+      // AUMID 就是我们 app.setAppUserModelId 设的值（见 shared/config.ts 的 APP_AUMID）。
+      env: { ...process.env, PET_OWN_AUMID: APP_AUMID },
     })
   } catch (e) {
     console.error('[media] 播放器探测进程起不来，音乐动画关掉但宠物照常：', e)

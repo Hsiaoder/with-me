@@ -262,6 +262,16 @@ export const GAME_GAP = 4
 export const SAVE_VERSION = 3
 export const SAVE_FILE = 'save.json'
 
+// ---- 应用身份 ----
+/**
+ * Windows 的 AppUserModelID。必须与 electron-builder.yml 的 appId 一致（test/media.test.ts 钉住）。
+ *
+ * 不只影响任务栏分组：Chromium 把页面里的 <audio> 登记成系统媒体会话（SMTC）时，
+ * 用的就是这个 AUMID。媒体探测器要靠它对上号、把自己排掉——否则宠物说一句话，
+ * 自己就会被当成「有音乐在放」，正在播的台词语音当场掐掉。
+ */
+export const APP_AUMID = 'com.hsiaoder.with-me'
+
 // ---- 窗口 ----
 /** 覆盖层的自定义协议前缀。Chromium 禁止 file:// 页面 import ES 模块，素材也必须同源。 */
 export const APP_SCHEME = 'app'
