@@ -1,6 +1,6 @@
 {
   "name": "with-me",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Windows 桌面宠物：整屏透明覆盖窗 + 可自定义皮肤 + 预渲染 webm 动画",
   "author": "FionnHsiao",
